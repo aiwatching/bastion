@@ -20,7 +20,7 @@ plugins:
     trimWhitespace: true
     reorderForCache: true
   audit:
-    enabled: false
+    enabled: true
     retentionHours: 168
 
 timeouts:
