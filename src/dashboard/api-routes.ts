@@ -5,6 +5,7 @@ import { DlpEventsRepository } from '../storage/repositories/dlp-events.js';
 import { OptimizerEventsRepository } from '../storage/repositories/optimizer-events.js';
 import { AuditLogRepository } from '../storage/repositories/audit-log.js';
 import { CacheRepository } from '../storage/repositories/cache.js';
+import { SessionsRepository } from '../storage/repositories/sessions.js';
 import type { ConfigManager } from '../config/manager.js';
 import type { PluginManager } from '../plugins/index.js';
 import { createLogger } from '../utils/logger.js';
@@ -39,6 +40,7 @@ export function createApiRouter(
   const optimizerRepo = new OptimizerEventsRepository(db);
   const auditRepo = new AuditLogRepository(db);
   const cacheRepo = new CacheRepository(db);
+  const sessionsRepo = new SessionsRepository(db);
 
   return (req: IncomingMessage, res: ServerResponse): boolean => {
     const url = parseUrl(req);
@@ -118,7 +120,8 @@ export function createApiRouter(
         sendJson(res, { error: 'No audit entries for this session' }, 404);
         return true;
       }
-      sendJson(res, timeline);
+      const session = sessionsRepo.get(sessionId) ?? null;
+      sendJson(res, { session, timeline });
       return true;
     }
 

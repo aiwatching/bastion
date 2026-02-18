@@ -1,13 +1,52 @@
 import type { Plugin, ResponseCompleteContext } from '../types.js';
 import { extractMetrics } from '../../metrics/collector.js';
 import { RequestsRepository } from '../../storage/repositories/requests.js';
+import { SessionsRepository } from '../../storage/repositories/sessions.js';
 import { createLogger } from '../../utils/logger.js';
 import type Database from 'better-sqlite3';
+import { basename } from 'node:path';
 
 const log = createLogger('metrics-plugin');
 
+/**
+ * Extract project path from the request body's system prompt.
+ * Claude Code includes "Primary working directory: /path/to/project" in system prompts.
+ */
+function extractProjectPath(parsedBody: Record<string, unknown>): string | null {
+  let systemText = '';
+  if (typeof parsedBody.system === 'string') {
+    systemText = parsedBody.system;
+  } else if (Array.isArray(parsedBody.system)) {
+    for (const block of parsedBody.system) {
+      if (typeof block === 'string') systemText += block;
+      else if (block?.type === 'text' && typeof block.text === 'string') systemText += block.text;
+    }
+  }
+
+  // Also check first user message for system-reminder style content
+  if (!systemText && Array.isArray(parsedBody.messages)) {
+    const first = parsedBody.messages[0];
+    if (first?.role === 'user') {
+      const content = first.content;
+      if (typeof content === 'string') systemText = content;
+      else if (Array.isArray(content)) {
+        for (const block of content) {
+          if (typeof block === 'string') systemText += block;
+          else if (block?.type === 'text' && typeof block.text === 'string') systemText += block.text;
+        }
+      }
+    }
+  }
+
+  const match = systemText.match(/Primary working directory:\s*([^\n]+)/);
+  if (match) return match[1].trim();
+
+  return null;
+}
+
 export function createMetricsCollectorPlugin(db: Database.Database): Plugin {
   const requestsRepo = new RequestsRepository(db);
+  const sessionsRepo = new SessionsRepository(db);
 
   return {
     name: 'metrics-collector',
@@ -15,6 +54,7 @@ export function createMetricsCollectorPlugin(db: Database.Database): Plugin {
 
     async onResponseComplete(context: ResponseCompleteContext): Promise<void> {
       const metrics = extractMetrics(context);
+      const sessionId = context.request.sessionId ?? null;
 
       requestsRepo.insert({
         id: context.request.id,
@@ -32,15 +72,28 @@ export function createMetricsCollectorPlugin(db: Database.Database): Plugin {
         cached: 0,
         dlp_action: null,
         dlp_findings: 0,
-        session_id: context.request.sessionId ?? null,
+        session_id: sessionId,
         api_key_hash: context.request.apiKeyHash ?? null,
       });
+
+      // Persist session metadata with client info
+      if (sessionId) {
+        try {
+          const projectPath = extractProjectPath(context.request.parsedBody);
+          const label = projectPath ? basename(projectPath) : null;
+          const source = context.request.sessionSource ?? 'auto';
+          sessionsRepo.upsert(sessionId, { label: label ?? undefined, source, projectPath: projectPath ?? undefined });
+        } catch (err) {
+          log.debug('Failed to upsert session', { error: (err as Error).message });
+        }
+      }
 
       log.debug('Recorded request metrics', {
         id: context.request.id,
         model: context.request.model,
         cost: metrics.costUsd.toFixed(6),
         latency: metrics.latencyMs,
+        sessionId,
       });
     },
   };

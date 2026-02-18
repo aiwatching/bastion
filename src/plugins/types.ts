@@ -10,6 +10,7 @@ export interface RequestContext {
   isStreaming: boolean;
   startTime: number;
   sessionId?: string;
+  sessionSource?: string; // 'wrap' | 'auto' | 'direct'
   apiKeyHash?: string;
 }
 
