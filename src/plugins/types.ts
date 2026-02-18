@@ -41,9 +41,24 @@ export interface PluginRequestResult {
   modifiedBody?: string;
 }
 
+export interface ResponseInterceptContext {
+  request: RequestContext;
+  statusCode: number;
+  headers: Record<string, string>;
+  body: string;
+  parsedBody: Record<string, unknown> | null;
+  isStreaming: boolean;
+}
+
+export interface PluginResponseResult {
+  blocked?: { reason: string };
+  modifiedBody?: string;
+}
+
 export interface Plugin {
   name: string;
   priority: number; // Lower = runs first
   onRequest?(context: RequestContext): Promise<PluginRequestResult | void>;
+  onResponse?(context: ResponseInterceptContext): Promise<PluginResponseResult | void>;
   onResponseComplete?(context: ResponseCompleteContext): Promise<void>;
 }

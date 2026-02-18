@@ -123,6 +123,11 @@ const MIGRATIONS: string[] = [
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   `,
+
+  // Migration 5: DLP direction column (request vs response scanning)
+  `
+  ALTER TABLE dlp_events ADD COLUMN direction TEXT DEFAULT 'request';
+  `,
 ];
 
 export function runMigrations(db: Database.Database): void {

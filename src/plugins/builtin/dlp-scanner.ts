@@ -1,4 +1,11 @@
-import type { Plugin, RequestContext, ResponseCompleteContext, PluginRequestResult } from '../types.js';
+import type {
+  Plugin,
+  RequestContext,
+  ResponseInterceptContext,
+  ResponseCompleteContext,
+  PluginRequestResult,
+  PluginResponseResult,
+} from '../types.js';
 import { scanText, type DlpPattern } from '../../dlp/engine.js';
 import type { DlpAction } from '../../dlp/actions.js';
 import { DlpEventsRepository } from '../../storage/repositories/dlp-events.js';
@@ -61,8 +68,8 @@ export function createDlpScannerPlugin(db: Database.Database, config: DlpScanner
     name: 'dlp-scanner',
     priority: 20,
 
+    // ── Request-side: scan outgoing requests to LLM ──
     async onRequest(context: RequestContext): Promise<PluginRequestResult | void> {
-      // Load patterns from DB each request (12 rows, SQLite is fast)
       const patterns = patternsRepo.getEnabled();
       const result = scanText(context.body, patterns, config.action);
 
@@ -74,7 +81,7 @@ export function createDlpScannerPlugin(db: Database.Database, config: DlpScanner
         if (result.findings.length === 0) return;
       }
 
-      // Record DLP events with snippets
+      // Record DLP events
       for (const finding of result.findings) {
         const firstMatch = finding.matches[0] ?? '';
         const originalSnippet = extractSnippet(context.body, firstMatch);
@@ -105,7 +112,6 @@ export function createDlpScannerPlugin(db: Database.Database, config: DlpScanner
 
       // Auto-audit on DLP hit
       if (result.action === 'block') {
-        // Blocked requests won't reach onResponseComplete, write audit immediately
         const blockReason = `Request blocked: sensitive data detected (${result.findings.map((f) => f.patternName).join(', ')})`;
         try {
           auditRepo.insert({
@@ -117,39 +123,156 @@ export function createDlpScannerPlugin(db: Database.Database, config: DlpScanner
         } catch (err) {
           log.warn('Failed to write DLP auto-audit for blocked request', { error: (err as Error).message });
         }
-
-        return {
-          blocked: { reason: blockReason },
-        };
+        return { blocked: { reason: blockReason } };
       }
 
-      // Non-block: stash request body for onResponseComplete
+      // Non-block: stash request body for onResponseComplete audit
       pendingAudits.set(context.id, context.body);
 
       if (result.action === 'redact' && result.redactedBody) {
         return { modifiedBody: result.redactedBody };
       }
-
-      // 'warn' and 'pass' — continue without modification
     },
 
-    async onResponseComplete(context: ResponseCompleteContext): Promise<void> {
-      const requestBody = pendingAudits.get(context.request.id);
-      if (!requestBody) return;
-      pendingAudits.delete(context.request.id);
+    // ── Response-side: scan LLM response BEFORE sending to client (non-streaming only) ──
+    async onResponse(context: ResponseInterceptContext): Promise<PluginResponseResult | void> {
+      if (context.isStreaming) return; // streaming handled in onResponseComplete (post-send)
 
-      try {
-        // Avoid duplicate if audit-logger plugin already stored it
-        if (auditRepo.hasEntry(context.request.id)) return;
+      const patterns = patternsRepo.getEnabled();
+      const result = scanText(context.body, patterns, config.action);
 
-        auditRepo.insert({
+      if (result.findings.length === 0) return;
+
+      // AI validation on response findings
+      if (aiValidator?.ready) {
+        result.findings = await aiValidator.validate(result.findings, context.body);
+        if (result.findings.length === 0) return;
+      }
+
+      // Record response-side DLP events
+      for (const finding of result.findings) {
+        const firstMatch = finding.matches[0] ?? '';
+        const originalSnippet = extractSnippet(context.body, firstMatch);
+
+        let redactedSnippet: string | null = null;
+        if (result.action === 'redact' && result.redactedBody) {
+          const redactedTag = `[${finding.patternName.toUpperCase()}_REDACTED]`;
+          redactedSnippet = extractSnippet(result.redactedBody, redactedTag);
+        }
+
+        dlpRepo.insert({
           id: crypto.randomUUID(),
           request_id: context.request.id,
-          requestBody,
-          responseBody: context.body,
+          pattern_name: finding.patternName,
+          pattern_category: finding.patternCategory,
+          action: result.action,
+          match_count: finding.matchCount,
+          original_snippet: originalSnippet,
+          redacted_snippet: redactedSnippet,
+          direction: 'response',
         });
+      }
+
+      log.info('DLP response findings', {
+        requestId: context.request.id,
+        direction: 'response',
+        action: result.action,
+        findings: result.findings.map((f) => f.patternName),
+      });
+
+      // Auto-audit
+      try {
+        if (!auditRepo.hasEntry(context.request.id)) {
+          auditRepo.insert({
+            id: crypto.randomUUID(),
+            request_id: context.request.id,
+            requestBody: context.request.body,
+            responseBody: context.body,
+          });
+        }
       } catch (err) {
-        log.warn('Failed to write DLP auto-audit', { error: (err as Error).message });
+        log.warn('Failed to write DLP response auto-audit', { error: (err as Error).message });
+      }
+
+      // Apply action: block or redact the response
+      if (result.action === 'block') {
+        return {
+          blocked: {
+            reason: `Response blocked: sensitive data detected (${result.findings.map((f) => f.patternName).join(', ')})`,
+          },
+        };
+      }
+
+      if (result.action === 'redact' && result.redactedBody) {
+        return { modifiedBody: result.redactedBody };
+      }
+
+      // 'warn' and 'pass' — let through without modification
+    },
+
+    // ── Post-send: handle pending request-side audits + streaming response detection ──
+    async onResponseComplete(context: ResponseCompleteContext): Promise<void> {
+      // Handle pending request-side audit
+      const requestBody = pendingAudits.get(context.request.id);
+      if (requestBody) {
+        pendingAudits.delete(context.request.id);
+        try {
+          if (!auditRepo.hasEntry(context.request.id)) {
+            auditRepo.insert({
+              id: crypto.randomUUID(),
+              request_id: context.request.id,
+              requestBody,
+              responseBody: context.body,
+            });
+          }
+        } catch (err) {
+          log.warn('Failed to write DLP auto-audit', { error: (err as Error).message });
+        }
+      }
+
+      // Streaming responses: post-send detection only (can't block, but record + audit)
+      if (!context.isStreaming) return;
+
+      const patterns = patternsRepo.getEnabled();
+      const responseResult = scanText(context.body, patterns, 'warn');
+      if (responseResult.findings.length === 0) return;
+
+      if (aiValidator?.ready) {
+        responseResult.findings = await aiValidator.validate(responseResult.findings, context.body);
+        if (responseResult.findings.length === 0) return;
+      }
+
+      for (const finding of responseResult.findings) {
+        const firstMatch = finding.matches[0] ?? '';
+        dlpRepo.insert({
+          id: crypto.randomUUID(),
+          request_id: context.request.id,
+          pattern_name: finding.patternName,
+          pattern_category: finding.patternCategory,
+          action: 'warn',
+          match_count: finding.matchCount,
+          original_snippet: extractSnippet(context.body, firstMatch),
+          redacted_snippet: null,
+          direction: 'response',
+        });
+      }
+
+      log.info('DLP streaming response findings (post-send)', {
+        requestId: context.request.id,
+        findings: responseResult.findings.map((f) => f.patternName),
+      });
+
+      try {
+        if (!auditRepo.hasEntry(context.request.id)) {
+          auditRepo.insert({
+            id: crypto.randomUUID(),
+            request_id: context.request.id,
+            requestBody: context.request.body,
+            responseBody: context.body,
+          });
+        }
+      } catch (err) {
+        log.warn('Failed to write DLP streaming response auto-audit', { error: (err as Error).message });
       }
     },
   };
