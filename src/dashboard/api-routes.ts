@@ -100,19 +100,41 @@ export function createApiRouter(
       return true;
     }
 
-    // GET /api/audit/:requestId
-    if (req.method === 'GET' && path.startsWith('/api/audit/') && path !== '/api/audit/recent') {
+    // GET /api/audit/sessions — list sessions with audit data
+    if (req.method === 'GET' && path === '/api/audit/sessions') {
+      sendJson(res, auditRepo.getAuditSessions());
+      return true;
+    }
+
+    // GET /api/audit/session/:sessionId — full parsed timeline for a session
+    if (req.method === 'GET' && path.startsWith('/api/audit/session/')) {
+      const sessionId = path.slice('/api/audit/session/'.length);
+      if (!sessionId) {
+        sendJson(res, { error: 'Missing session ID' }, 400);
+        return true;
+      }
+      const timeline = auditRepo.getParsedSession(sessionId);
+      if (timeline.length === 0) {
+        sendJson(res, { error: 'No audit entries for this session' }, 404);
+        return true;
+      }
+      sendJson(res, timeline);
+      return true;
+    }
+
+    // GET /api/audit/:requestId — single request parsed
+    if (req.method === 'GET' && path.startsWith('/api/audit/') && !path.includes('/session')) {
       const requestId = path.slice('/api/audit/'.length);
       if (!requestId) {
         sendJson(res, { error: 'Missing request ID' }, 400);
         return true;
       }
-      const content = auditRepo.getByRequestId(requestId);
-      if (!content) {
+      const parsed = auditRepo.getParsedByRequestId(requestId);
+      if (!parsed) {
         sendJson(res, { error: 'Audit entry not found' }, 404);
         return true;
       }
-      sendJson(res, content);
+      sendJson(res, parsed);
       return true;
     }
 

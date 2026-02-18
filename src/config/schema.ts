@@ -18,6 +18,7 @@ export interface BastionConfig {
     optimizer: {
       enabled: boolean;
       cache: boolean;
+      cacheTtlSeconds: number;
       trimWhitespace: boolean;
       reorderForCache: boolean;
     };

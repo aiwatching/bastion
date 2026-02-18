@@ -11,12 +11,34 @@ const log = createLogger('optimizer-plugin');
 
 export interface TokenOptimizerConfig {
   cache: boolean;
+  cacheTtlSeconds?: number;
   trimWhitespace: boolean;
   reorderForCache: boolean;
 }
 
+/**
+ * Check if a request is part of an agentic loop (contains tool_result).
+ * These should not be cached because the same tool call may produce different results.
+ */
+function isAgenticRequest(parsedBody: Record<string, unknown>): boolean {
+  const messages = parsedBody.messages;
+  if (!Array.isArray(messages)) return false;
+  for (const msg of messages) {
+    // Anthropic format: content array with tool_result blocks
+    if (Array.isArray(msg.content)) {
+      for (const block of msg.content) {
+        if (block?.type === 'tool_result') return true;
+      }
+    }
+    // OpenAI format: role === 'tool'
+    if (msg.role === 'tool') return true;
+  }
+  return false;
+}
+
 export function createTokenOptimizerPlugin(db: Database.Database, config: TokenOptimizerConfig): Plugin {
-  const cache = config.cache ? new ResponseCache(db) : null;
+  const ttl = config.cacheTtlSeconds ?? 300;
+  const cache = config.cache ? new ResponseCache(db, ttl) : null;
   const optimizerRepo = new OptimizerEventsRepository(db);
 
   return {
@@ -26,8 +48,11 @@ export function createTokenOptimizerPlugin(db: Database.Database, config: TokenO
     async onRequest(context: RequestContext): Promise<PluginRequestResult | void> {
       const originalLength = context.body.length;
 
-      // Check cache first (only for non-streaming requests)
-      if (cache && !context.isStreaming) {
+      // Skip cache for streaming requests and agentic loops (tool_result present)
+      const skipCache = context.isStreaming || isAgenticRequest(context.parsedBody);
+
+      // Check cache first
+      if (cache && !skipCache) {
         const cached = cache.get(context.provider, context.model, context.body);
         if (cached) {
           log.info('Serving cached response', { requestId: context.id, model: context.model });
@@ -90,8 +115,14 @@ export function createTokenOptimizerPlugin(db: Database.Database, config: TokenO
     },
 
     async onResponseComplete(context: ResponseCompleteContext): Promise<void> {
-      // Cache successful non-streaming responses
-      if (cache && !context.isStreaming && context.statusCode === 200 && context.body) {
+      // Cache successful non-streaming, non-agentic responses
+      if (
+        cache &&
+        !context.isStreaming &&
+        context.statusCode === 200 &&
+        context.body &&
+        !isAgenticRequest(context.request.parsedBody)
+      ) {
         cache.set(
           context.request.provider,
           context.request.model,

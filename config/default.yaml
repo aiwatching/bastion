@@ -17,6 +17,7 @@ plugins:
   optimizer:
     enabled: true
     cache: true
+    cacheTtlSeconds: 300
     trimWhitespace: true
     reorderForCache: true
   audit:
