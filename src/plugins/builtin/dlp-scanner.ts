@@ -1,7 +1,12 @@
-import type { Plugin, RequestContext, PluginRequestResult } from '../types.js';
-import { scanText, getPatterns, type DlpPattern } from '../../dlp/engine.js';
+import type { Plugin, RequestContext, ResponseCompleteContext, PluginRequestResult } from '../types.js';
+import { scanText, type DlpPattern } from '../../dlp/engine.js';
 import type { DlpAction } from '../../dlp/actions.js';
 import { DlpEventsRepository } from '../../storage/repositories/dlp-events.js';
+import { DlpPatternsRepository } from '../../storage/repositories/dlp-patterns.js';
+import { AuditLogRepository } from '../../storage/repositories/audit-log.js';
+import { highConfidencePatterns } from '../../dlp/patterns/high-confidence.js';
+import { validatedPatterns } from '../../dlp/patterns/validated.js';
+import { contextAwarePatterns } from '../../dlp/patterns/context-aware.js';
 import { createLogger } from '../../utils/logger.js';
 import type Database from 'better-sqlite3';
 
@@ -31,13 +36,27 @@ function extractSnippet(text: string, match: string): string {
 
 export function createDlpScannerPlugin(db: Database.Database, config: DlpScannerConfig): Plugin {
   const dlpRepo = new DlpEventsRepository(db);
-  const patterns: DlpPattern[] = getPatterns(config.patterns);
+  const patternsRepo = new DlpPatternsRepository(db);
+  const auditRepo = new AuditLogRepository(db);
+
+  // Seed built-in patterns from the 3 pattern files
+  const allBuiltins: DlpPattern[] = [
+    ...highConfidencePatterns,
+    ...validatedPatterns,
+    ...contextAwarePatterns,
+  ];
+  patternsRepo.seedBuiltins(allBuiltins, config.patterns);
+
+  // Track pending audits: requestId → requestBody
+  const pendingAudits = new Map<string, string>();
 
   return {
     name: 'dlp-scanner',
     priority: 20,
 
     async onRequest(context: RequestContext): Promise<PluginRequestResult | void> {
+      // Load patterns from DB each request (12 rows, SQLite is fast)
+      const patterns = patternsRepo.getEnabled();
       const result = scanText(context.body, patterns, config.action);
 
       if (result.findings.length === 0) return;
@@ -71,19 +90,54 @@ export function createDlpScannerPlugin(db: Database.Database, config: DlpScanner
         findings: result.findings.map((f) => f.patternName),
       });
 
+      // Auto-audit on DLP hit
       if (result.action === 'block') {
+        // Blocked requests won't reach onResponseComplete, write audit immediately
+        const blockReason = `Request blocked: sensitive data detected (${result.findings.map((f) => f.patternName).join(', ')})`;
+        try {
+          auditRepo.insert({
+            id: crypto.randomUUID(),
+            request_id: context.id,
+            requestBody: context.body,
+            responseBody: JSON.stringify({ error: blockReason }),
+          });
+        } catch (err) {
+          log.warn('Failed to write DLP auto-audit for blocked request', { error: (err as Error).message });
+        }
+
         return {
-          blocked: {
-            reason: `Request blocked: sensitive data detected (${result.findings.map((f) => f.patternName).join(', ')})`,
-          },
+          blocked: { reason: blockReason },
         };
       }
+
+      // Non-block: stash request body for onResponseComplete
+      pendingAudits.set(context.id, context.body);
 
       if (result.action === 'redact' && result.redactedBody) {
         return { modifiedBody: result.redactedBody };
       }
 
       // 'warn' and 'pass' — continue without modification
+    },
+
+    async onResponseComplete(context: ResponseCompleteContext): Promise<void> {
+      const requestBody = pendingAudits.get(context.request.id);
+      if (!requestBody) return;
+      pendingAudits.delete(context.request.id);
+
+      try {
+        // Avoid duplicate if audit-logger plugin already stored it
+        if (auditRepo.hasEntry(context.request.id)) return;
+
+        auditRepo.insert({
+          id: crypto.randomUUID(),
+          request_id: context.request.id,
+          requestBody,
+          responseBody: context.body,
+        });
+      } catch (err) {
+        log.warn('Failed to write DLP auto-audit', { error: (err as Error).message });
+      }
     },
   };
 }

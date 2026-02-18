@@ -6,6 +6,7 @@ import { OptimizerEventsRepository } from '../storage/repositories/optimizer-eve
 import { AuditLogRepository } from '../storage/repositories/audit-log.js';
 import { CacheRepository } from '../storage/repositories/cache.js';
 import { SessionsRepository } from '../storage/repositories/sessions.js';
+import { DlpPatternsRepository } from '../storage/repositories/dlp-patterns.js';
 import type { ConfigManager } from '../config/manager.js';
 import type { PluginManager } from '../plugins/index.js';
 import { createLogger } from '../utils/logger.js';
@@ -41,6 +42,7 @@ export function createApiRouter(
   const auditRepo = new AuditLogRepository(db);
   const cacheRepo = new CacheRepository(db);
   const sessionsRepo = new SessionsRepository(db);
+  const dlpPatternsRepo = new DlpPatternsRepository(db);
 
   return (req: IncomingMessage, res: ServerResponse): boolean => {
     const url = parseUrl(req);
@@ -187,6 +189,107 @@ export function createApiRouter(
       }).catch((err) => {
         sendJson(res, { error: (err as Error).message }, 500);
       });
+      return true;
+    }
+
+    // GET /api/dlp/patterns — all patterns for UI listing
+    if (req.method === 'GET' && path === '/api/dlp/patterns') {
+      sendJson(res, dlpPatternsRepo.getAll());
+      return true;
+    }
+
+    // POST /api/dlp/patterns — add custom pattern
+    if (req.method === 'POST' && path === '/api/dlp/patterns') {
+      bufferBody(req).then((body) => {
+        try {
+          const data = JSON.parse(body);
+          if (!data.name || !data.regex_source) {
+            sendJson(res, { error: 'name and regex_source are required' }, 400);
+            return;
+          }
+          // Validate regex
+          try {
+            new RegExp(data.regex_source, data.regex_flags ?? 'g');
+          } catch {
+            sendJson(res, { error: 'Invalid regex' }, 400);
+            return;
+          }
+          const id = `custom-${crypto.randomUUID()}`;
+          dlpPatternsRepo.upsert({
+            id,
+            name: data.name,
+            category: data.category ?? 'custom',
+            regex_source: data.regex_source,
+            regex_flags: data.regex_flags ?? 'g',
+            description: data.description ?? null,
+            validator: data.validator ?? null,
+            require_context: data.require_context ?? null,
+            enabled: data.enabled !== false,
+          });
+          sendJson(res, { id }, 201);
+        } catch (err) {
+          sendJson(res, { error: (err as Error).message }, 400);
+        }
+      }).catch((err) => {
+        sendJson(res, { error: (err as Error).message }, 500);
+      });
+      return true;
+    }
+
+    // PUT /api/dlp/patterns/:id — update pattern (toggle enabled, edit fields)
+    if (req.method === 'PUT' && path.startsWith('/api/dlp/patterns/')) {
+      const id = decodeURIComponent(path.slice('/api/dlp/patterns/'.length));
+      if (!id) {
+        sendJson(res, { error: 'Missing pattern ID' }, 400);
+        return true;
+      }
+      bufferBody(req).then((body) => {
+        try {
+          const data = JSON.parse(body);
+          // If just toggling enabled
+          if (data.enabled !== undefined && Object.keys(data).length === 1) {
+            dlpPatternsRepo.toggle(id, Boolean(data.enabled));
+            sendJson(res, { ok: true });
+            return;
+          }
+          // Validate regex if provided
+          if (data.regex_source) {
+            try {
+              new RegExp(data.regex_source, data.regex_flags ?? 'g');
+            } catch {
+              sendJson(res, { error: 'Invalid regex' }, 400);
+              return;
+            }
+          }
+          // Full upsert for custom patterns
+          if (data.name && data.regex_source) {
+            dlpPatternsRepo.upsert({ id, ...data });
+          } else if (data.enabled !== undefined) {
+            dlpPatternsRepo.toggle(id, Boolean(data.enabled));
+          }
+          sendJson(res, { ok: true });
+        } catch (err) {
+          sendJson(res, { error: (err as Error).message }, 400);
+        }
+      }).catch((err) => {
+        sendJson(res, { error: (err as Error).message }, 500);
+      });
+      return true;
+    }
+
+    // DELETE /api/dlp/patterns/:id — delete custom pattern only
+    if (req.method === 'DELETE' && path.startsWith('/api/dlp/patterns/')) {
+      const id = decodeURIComponent(path.slice('/api/dlp/patterns/'.length));
+      if (!id) {
+        sendJson(res, { error: 'Missing pattern ID' }, 400);
+        return true;
+      }
+      try {
+        dlpPatternsRepo.remove(id);
+        sendJson(res, { ok: true });
+      } catch (err) {
+        sendJson(res, { error: (err as Error).message }, 400);
+      }
       return true;
     }
 

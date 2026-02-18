@@ -399,6 +399,14 @@ export class AuditLogRepository {
     });
   }
 
+  /** Check if an audit entry already exists for a given request ID */
+  hasEntry(requestId: string): boolean {
+    const row = this.db.prepare(
+      'SELECT 1 FROM audit_log WHERE request_id = ? LIMIT 1'
+    ).get(requestId);
+    return row !== undefined;
+  }
+
   getByRequestId(requestId: string): { request: string; response: string } | null {
     const row = this.db.prepare(
       'SELECT * FROM audit_log WHERE request_id = ? LIMIT 1'
