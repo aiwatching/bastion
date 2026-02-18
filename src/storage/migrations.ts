@@ -56,6 +56,42 @@ const MIGRATIONS: string[] = [
   CREATE INDEX IF NOT EXISTS idx_cache_last_hit ON cache(last_hit_at);
   CREATE INDEX IF NOT EXISTS idx_dlp_events_request ON dlp_events(request_id);
   `,
+
+  // Migration 2: Session tracking, audit log, optimizer events, DLP snippets
+  `
+  ALTER TABLE requests ADD COLUMN session_id TEXT;
+  ALTER TABLE requests ADD COLUMN api_key_hash TEXT;
+
+  CREATE TABLE IF NOT EXISTS audit_log (
+    id TEXT PRIMARY KEY,
+    request_id TEXT NOT NULL,
+    encrypted_content BLOB,
+    iv BLOB NOT NULL,
+    auth_tag BLOB NOT NULL,
+    request_length INTEGER DEFAULT 0,
+    response_length INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS optimizer_events (
+    id TEXT PRIMARY KEY,
+    request_id TEXT NOT NULL,
+    cache_hit INTEGER DEFAULT 0,
+    original_length INTEGER DEFAULT 0,
+    trimmed_length INTEGER DEFAULT 0,
+    chars_saved INTEGER DEFAULT 0,
+    tokens_saved_estimate INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  ALTER TABLE dlp_events ADD COLUMN original_snippet TEXT;
+  ALTER TABLE dlp_events ADD COLUMN redacted_snippet TEXT;
+
+  CREATE INDEX IF NOT EXISTS idx_requests_session ON requests(session_id);
+  CREATE INDEX IF NOT EXISTS idx_requests_api_key ON requests(api_key_hash);
+  CREATE INDEX IF NOT EXISTS idx_audit_request ON audit_log(request_id);
+  CREATE INDEX IF NOT EXISTS idx_optimizer_request ON optimizer_events(request_id);
+  `,
 ];
 
 export function runMigrations(db: Database.Database): void {

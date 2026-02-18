@@ -2,12 +2,13 @@ import { createServer, type Server } from 'node:http';
 import type Database from 'better-sqlite3';
 import type { BastionConfig } from '../config/schema.js';
 import type { PluginManager } from '../plugins/index.js';
+import type { ConfigManager } from '../config/manager.js';
 import { resolveRoute, sendError } from './router.js';
 import { forwardRequest } from './forwarder.js';
 import { passthroughRequest } from './passthrough.js';
 import { handleHealthCheck, setupGracefulShutdown } from './safety.js';
 import { serveDashboard } from '../dashboard/page.js';
-import { handleStatsApi } from '../dashboard/api.js';
+import { createApiRouter } from '../dashboard/api-routes.js';
 import { setupConnectHandler } from './connect.js';
 import { createLogger } from '../utils/logger.js';
 
@@ -18,21 +19,26 @@ export function createProxyServer(
   pluginManager: PluginManager,
   cleanup: () => void,
   db?: Database.Database,
+  configManager?: ConfigManager,
 ): Server {
+  // Set up API router if we have both db and configManager
+  const apiRouter = db && configManager
+    ? createApiRouter(db, configManager, pluginManager)
+    : null;
+
   const server = createServer(async (req, res) => {
     // Layer 1: Health check
     if (handleHealthCheck(req, res)) return;
 
-    // Dashboard + API (GET only)
-    if (req.method === 'GET') {
-      if (req.url === '/dashboard' || req.url === '/dashboard/') {
-        serveDashboard(res);
-        return;
-      }
-      if (req.url === '/api/stats' && db) {
-        handleStatsApi(res, db);
-        return;
-      }
+    // Dashboard
+    if (req.method === 'GET' && (req.url === '/dashboard' || req.url === '/dashboard/')) {
+      serveDashboard(res);
+      return;
+    }
+
+    // API routes (GET, PUT)
+    if (apiRouter && (req.url?.startsWith('/api/') ?? false)) {
+      if (apiRouter(req, res)) return;
     }
 
     // Only accept POST requests for provider endpoints
@@ -50,12 +56,16 @@ export function createProxyServer(
       return;
     }
 
+    // For direct HTTP mode, read session from X-Bastion-Session header
+    const sessionId = req.headers['x-bastion-session'] as string | undefined;
+
     try {
       await forwardRequest(req, res, {
         provider: route.provider,
         upstreamUrl: route.upstreamUrl,
         upstreamTimeout: config.timeouts.upstream,
         pluginManager,
+        sessionId,
       });
     } catch (err) {
       log.error('Request handling failed', { error: (err as Error).message });

@@ -6,6 +6,7 @@ const log = createLogger('plugins');
 
 export class PluginManager {
   private plugins: Plugin[] = [];
+  private disabledPlugins: Set<string> = new Set();
   private timeoutMs: number;
 
   constructor(timeoutMs: number = 50) {
@@ -22,11 +23,31 @@ export class PluginManager {
     return [...this.plugins];
   }
 
+  disable(name: string): boolean {
+    const plugin = this.plugins.find((p) => p.name === name);
+    if (!plugin) return false;
+    this.disabledPlugins.add(name);
+    log.info('Plugin disabled', { name });
+    return true;
+  }
+
+  enable(name: string): boolean {
+    const existed = this.disabledPlugins.delete(name);
+    if (existed) {
+      log.info('Plugin enabled', { name });
+    }
+    return existed;
+  }
+
+  isDisabled(name: string): boolean {
+    return this.disabledPlugins.has(name);
+  }
+
   async runOnRequest(context: RequestContext): Promise<PluginRequestResult> {
     const result: PluginRequestResult = {};
 
     for (const plugin of this.plugins) {
-      if (!plugin.onRequest) continue;
+      if (!plugin.onRequest || this.disabledPlugins.has(plugin.name)) continue;
 
       try {
         const pluginResult = await withTimeout(
@@ -67,7 +88,7 @@ export class PluginManager {
 
   async runOnResponseComplete(context: ResponseCompleteContext): Promise<void> {
     for (const plugin of this.plugins) {
-      if (!plugin.onResponseComplete) continue;
+      if (!plugin.onResponseComplete || this.disabledPlugins.has(plugin.name)) continue;
 
       try {
         await withTimeout(

@@ -9,6 +9,8 @@ export interface RequestContext {
   parsedBody: Record<string, unknown>;
   isStreaming: boolean;
   startTime: number;
+  sessionId?: string;
+  apiKeyHash?: string;
 }
 
 export interface ResponseCompleteContext {

@@ -1,5 +1,6 @@
 import type { Command } from 'commander';
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { loadConfig } from '../../config/index.js';
 import { getCACertPath } from '../../proxy/certs.js';
 import { getDaemonStatus } from '../daemon.js';
@@ -9,6 +10,7 @@ export function registerWrapCommand(program: Command): void {
     .command('wrap')
     .description('Run a command with AI traffic routed through Bastion')
     .option('--base-url', 'Use BASE_URL mode instead of HTTPS_PROXY (breaks OAuth)')
+    .option('--label <label>', 'Human-readable session label')
     .argument('<command...>', 'Command to run (e.g. "claude", "python app.py")')
     .passThroughOptions()
     .allowUnknownOption()
@@ -22,10 +24,12 @@ export function registerWrapCommand(program: Command): void {
       }
 
       const config = loadConfig();
+      const sessionId = randomUUID();
+      const [cmd, ...cmdArgs] = args;
+      const label = options.label ?? cmd;
+      console.log(`Bastion session: ${sessionId} (${label})`);
       const baseUrl = `http://${config.server.host}:${config.server.port}`;
       const caCertPath = getCACertPath();
-
-      const [cmd, ...cmdArgs] = args;
 
       // Build environment
       const env: Record<string, string | undefined> = { ...process.env };
@@ -38,7 +42,7 @@ export function registerWrapCommand(program: Command): void {
       } else {
         // HTTPS_PROXY mode (default, OAuth-compatible)
         // Only proxy HTTPS — do NOT set HTTP_PROXY to avoid interfering with OAuth callbacks
-        env.HTTPS_PROXY = baseUrl;
+        env.HTTPS_PROXY = `http://${sessionId}@${config.server.host}:${config.server.port}`;
         // Exclude proxy itself, auth/UI domains from proxying
         env.NO_PROXY = [
           config.server.host,

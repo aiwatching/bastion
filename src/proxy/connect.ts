@@ -18,6 +18,39 @@ const INTERCEPT_HOSTS = new Set([
   'generativelanguage.googleapis.com',
 ]);
 
+// Map socket → session ID for session tracking across CONNECT tunnels
+const socketSessionMap = new WeakMap<net.Socket, string>();
+
+export function getSessionForSocket(socket: net.Socket): string | undefined {
+  return socketSessionMap.get(socket);
+}
+
+/**
+ * Parse session ID from Proxy-Authorization header.
+ * When wrap.ts sets HTTPS_PROXY=http://<uuid>@host:port, Node.js sends
+ * a Proxy-Authorization: Basic <base64(uuid:)> header in the CONNECT request.
+ */
+function parseSessionFromProxy(req: IncomingMessage): string | undefined {
+  const authHeader = req.headers['proxy-authorization'];
+  if (!authHeader) return undefined;
+
+  const match = authHeader.match(/^Basic\s+(.+)$/i);
+  if (!match) return undefined;
+
+  try {
+    const decoded = Buffer.from(match[1], 'base64').toString('utf-8');
+    // Format is "username:password" — session UUID is the username
+    const username = decoded.split(':')[0];
+    // Validate it looks like a UUID
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(username)) {
+      return username;
+    }
+  } catch {
+    // Invalid base64
+  }
+  return undefined;
+}
+
 /**
  * Attach CONNECT handler to an existing HTTP server.
  * - API hosts: MITM decrypt → plugin pipeline → forward to real upstream
@@ -34,10 +67,17 @@ export function setupConnectHandler(
     const [hostname, portStr] = (req.url ?? '').split(':');
     const port = parseInt(portStr, 10) || 443;
 
-    log.info('CONNECT', { hostname, port, intercept: INTERCEPT_HOSTS.has(hostname) });
+    // Extract session ID from proxy auth header
+    const sessionId = parseSessionFromProxy(req);
+    if (sessionId) {
+      socketSessionMap.set(clientSocket, sessionId);
+      log.debug('Session mapped', { sessionId, hostname });
+    }
+
+    log.info('CONNECT', { hostname, port, intercept: INTERCEPT_HOSTS.has(hostname), sessionId });
 
     if (INTERCEPT_HOSTS.has(hostname)) {
-      handleMITM(hostname, port, clientSocket, head, ca, config, pluginManager);
+      handleMITM(hostname, port, clientSocket, head, ca, config, pluginManager, sessionId);
     } else {
       handleTunnel(hostname, port, clientSocket, head);
     }
@@ -90,6 +130,7 @@ function handleMITM(
   ca: { key: string; cert: string },
   config: BastionConfig,
   pluginManager: PluginManager,
+  sessionId?: string,
 ): void {
   const hostCert = getHostCert(hostname);
 
@@ -104,7 +145,7 @@ function handleMITM(
   });
 
   // Create a per-connection HTTP server to parse the decrypted request
-  const handler = createMITMRequestHandler(hostname, config, pluginManager);
+  const handler = createMITMRequestHandler(hostname, config, pluginManager, sessionId);
   const fakeServer = createHttpServer(handler);
 
   // Inject the TLS socket as a "connection" to the HTTP server
@@ -135,9 +176,10 @@ function createMITMRequestHandler(
   hostname: string,
   config: BastionConfig,
   pluginManager: PluginManager,
+  sessionId?: string,
 ) {
   return async (req: IncomingMessage, res: ServerResponse) => {
-    log.info('MITM request', { method: req.method, hostname, path: req.url });
+    log.info('MITM request', { method: req.method, hostname, path: req.url, sessionId });
 
     // Try to match a known provider route
     const route = resolveRoute(req);
@@ -150,6 +192,7 @@ function createMITMRequestHandler(
           upstreamUrl: route.upstreamUrl,
           upstreamTimeout: config.timeouts.upstream,
           pluginManager,
+          sessionId,
         });
       } catch (err) {
         log.error('MITM forward failed', { error: (err as Error).message });

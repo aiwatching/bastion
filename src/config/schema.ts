@@ -21,6 +21,10 @@ export interface BastionConfig {
       trimWhitespace: boolean;
       reorderForCache: boolean;
     };
+    audit: {
+      enabled: boolean;
+      retentionHours: number;
+    };
   };
   timeouts: {
     upstream: number;

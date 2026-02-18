@@ -7,6 +7,8 @@ export interface DlpEventRecord {
   pattern_category: string;
   action: string;
   match_count: number;
+  original_snippet: string | null;
+  redacted_snippet: string | null;
   created_at: string;
 }
 
@@ -17,8 +19,8 @@ export class DlpEventsRepository {
   constructor(db: Database.Database) {
     this.db = db;
     this.insertStmt = db.prepare(`
-      INSERT INTO dlp_events (id, request_id, pattern_name, pattern_category, action, match_count)
-      VALUES (@id, @request_id, @pattern_name, @pattern_category, @action, @match_count)
+      INSERT INTO dlp_events (id, request_id, pattern_name, pattern_category, action, match_count, original_snippet, redacted_snippet)
+      VALUES (@id, @request_id, @pattern_name, @pattern_category, @action, @match_count, @original_snippet, @redacted_snippet)
     `);
   }
 
@@ -28,6 +30,12 @@ export class DlpEventsRepository {
 
   getByRequestId(requestId: string): DlpEventRecord[] {
     return this.db.prepare('SELECT * FROM dlp_events WHERE request_id = ?').all(requestId) as DlpEventRecord[];
+  }
+
+  getRecent(limit: number = 20): DlpEventRecord[] {
+    return this.db.prepare(
+      'SELECT * FROM dlp_events ORDER BY created_at DESC LIMIT ?'
+    ).all(limit) as DlpEventRecord[];
   }
 
   getStats(): { total_events: number; by_action: Record<string, number>; by_pattern: Record<string, number> } {

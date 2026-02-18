@@ -32,6 +32,8 @@ export function createMetricsCollectorPlugin(db: Database.Database): Plugin {
         cached: 0,
         dlp_action: null,
         dlp_findings: 0,
+        session_id: context.request.sessionId ?? null,
+        api_key_hash: context.request.apiKeyHash ?? null,
       });
 
       log.debug('Recorded request metrics', {
