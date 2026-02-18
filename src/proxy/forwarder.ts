@@ -16,6 +16,7 @@ export interface ForwardOptions {
   upstreamTimeout: number;
   pluginManager: PluginManager;
   sessionId?: string;
+  sessionSource?: string;
 }
 
 function computeApiKeyHash(headers: Record<string, string>): string | undefined {
@@ -40,7 +41,7 @@ export async function forwardRequest(
   res: ServerResponse,
   options: ForwardOptions,
 ): Promise<RequestContext> {
-  const { provider, upstreamUrl, upstreamTimeout, pluginManager, sessionId } = options;
+  const { provider, upstreamUrl, upstreamTimeout, pluginManager, sessionId, sessionSource } = options;
   const startTime = Date.now();
   const requestId = crypto.randomUUID();
 
@@ -73,6 +74,7 @@ export async function forwardRequest(
     isStreaming,
     startTime,
     sessionId,
+    sessionSource,
     apiKeyHash,
   };
 

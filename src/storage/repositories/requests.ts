@@ -44,6 +44,9 @@ export interface SessionInfo {
   total_cost_usd: number;
   first_seen: string;
   last_seen: string;
+  label: string | null;
+  source: string | null;
+  project_path: string | null;
 }
 
 export class RequestsRepository {
@@ -139,14 +142,16 @@ export class RequestsRepository {
   getSessions(): SessionInfo[] {
     return this.db.prepare(`
       SELECT
-        session_id,
+        r.session_id,
         COUNT(*) as request_count,
-        COALESCE(SUM(cost_usd), 0) as total_cost_usd,
-        MIN(created_at) as first_seen,
-        MAX(created_at) as last_seen
-      FROM requests
-      WHERE session_id IS NOT NULL
-      GROUP BY session_id
+        COALESCE(SUM(r.cost_usd), 0) as total_cost_usd,
+        MIN(r.created_at) as first_seen,
+        MAX(r.created_at) as last_seen,
+        s.label, s.source, s.project_path
+      FROM requests r
+      LEFT JOIN sessions s ON s.id = r.session_id
+      WHERE r.session_id IS NOT NULL
+      GROUP BY r.session_id
       ORDER BY last_seen DESC
     `).all() as SessionInfo[];
   }

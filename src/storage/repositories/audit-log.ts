@@ -31,6 +31,9 @@ export interface AuditSession {
   first_at: string;
   last_at: string;
   models: string;
+  label: string | null;
+  source: string | null;
+  project_path: string | null;
 }
 
 // ---------- Parsed types for the API ----------
@@ -445,9 +448,11 @@ export class AuditLogRepository {
     return this.db.prepare(`
       SELECT r.session_id, COUNT(*) as request_count,
              MIN(a.created_at) as first_at, MAX(a.created_at) as last_at,
-             GROUP_CONCAT(DISTINCT r.model) as models
+             GROUP_CONCAT(DISTINCT r.model) as models,
+             s.label, s.source, s.project_path
       FROM audit_log a
       INNER JOIN requests r ON r.id = a.request_id
+      LEFT JOIN sessions s ON s.id = r.session_id
       WHERE r.session_id IS NOT NULL
       GROUP BY r.session_id
       ORDER BY last_at DESC

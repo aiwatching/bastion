@@ -133,7 +133,7 @@ tr:hover{background:#1c2128}
 <div class="tab-content" id="tab-audit">
   <div class="section">
     <h2>Sessions</h2>
-    <table><thead><tr><th>Time</th><th>Session</th><th>Models</th><th>Requests</th><th></th></tr></thead><tbody id="audit-sessions"></tbody></table>
+    <table><thead><tr><th>Time</th><th>Session</th><th>Project</th><th>Models</th><th>Requests</th><th></th></tr></thead><tbody id="audit-sessions"></tbody></table>
     <p class="empty" id="no-audit">No audit entries. Enable audit logging in Settings to start capturing request/response content.</p>
   </div>
   <div id="audit-timeline" style="display:none">
@@ -232,8 +232,9 @@ async function loadSessions(){
     const cur=sel.value;
     sel.innerHTML='<option value="">All sessions</option>';
     sessions.forEach(s=>{
-      const label=s.session_id.slice(0,8)+'... ('+s.request_count+' reqs, '+cost(s.total_cost_usd)+')';
-      sel.innerHTML+='<option value="'+s.session_id+'">'+label+'</option>';
+      const name=s.label||s.session_id.slice(0,8)+'...';
+      const label=name+' ('+s.request_count+' reqs, '+cost(s.total_cost_usd)+')';
+      sel.innerHTML+='<option value="'+s.session_id+'">'+esc(label)+'</option>';
     });
     sel.value=cur;
   }catch(e){}
@@ -281,7 +282,11 @@ async function refresh(){
       let flags='';
       if(r.cached)flags+='<span class="tag cached">cached</span> ';
       if(r.dlp_action&&r.dlp_action!=='pass')flags+=actionTag(r.dlp_action)+' ';
-      if(r.session_id)flags+='<span class="tag" style="background:#1a2a3d;color:#58a6ff" title="'+esc(r.session_id)+'">session</span> ';
+      if(r.session_id){
+        const sInfo=sessions.find(s=>s.session_id===r.session_id);
+        const sLabel=sInfo?.label||r.session_id.slice(0,6);
+        flags+='<span class="tag" style="background:#1a2a3d;color:#58a6ff" title="'+esc(r.session_id)+'">'+esc(sLabel)+'</span> ';
+      }
       return '<tr><td>'+ago(r.created_at)+'</td><td>'+providerTag(r.provider)+'</td>'+
         '<td class="mono">'+r.model+'</td><td>'+(r.status_code||'-')+'</td>'+
         '<td class="mono">'+fmt(r.input_tokens)+' / '+fmt(r.output_tokens)+'</td>'+
@@ -350,9 +355,15 @@ async function refreshAudit(){
     document.getElementById('no-audit').style.display=sessions.length?'none':'';
     document.getElementById('audit-sessions').innerHTML=sessions.map(s=>{
       const models=(s.models||'').split(',').map(m=>'<span class="tag" style="background:#1a2a3d;color:#58a6ff">'+esc(m.trim())+'</span>').join(' ');
+      const sourceTag=s.source==='wrap'?' <span class="tag" style="background:#0d2818;color:#3fb950;font-size:10px">wrap</span>':'';
+      const sessionId='<span class="mono" style="font-size:11px;color:#7d8590">'+esc(s.session_id.slice(0,8))+'</span>'+sourceTag;
+      const projectLabel=s.label
+        ?'<span style="color:#f0f3f6;font-weight:500" title="'+esc(s.project_path||'')+'">'+esc(s.label)+'</span>'
+        :'<span style="color:#484f58">-</span>';
       return '<tr style="cursor:pointer" data-sid="'+esc(s.session_id)+'">'+
         '<td>'+ago(s.last_at)+'</td>'+
-        '<td class="mono" style="font-size:11px">'+esc(s.session_id.slice(0,8))+'...</td>'+
+        '<td>'+sessionId+'</td>'+
+        '<td>'+projectLabel+'</td>'+
         '<td>'+models+'</td>'+
         '<td>'+s.request_count+'</td>'+
         '<td style="color:#58a6ff">View</td></tr>';
@@ -363,10 +374,11 @@ async function refreshAudit(){
     const noSession=recent.filter(e=>!e.session_id);
     if(noSession.length>0){
       document.getElementById('audit-sessions').innerHTML+=
-        '<tr><td colspan="5" style="color:#7d8590;font-size:11px;padding-top:12px">Requests without session:</td></tr>'+
+        '<tr><td colspan="6" style="color:#7d8590;font-size:11px;padding-top:12px">Requests without session:</td></tr>'+
         noSession.map(e=>
           '<tr style="cursor:pointer" data-rid="'+e.request_id+'"><td>'+ago(e.created_at)+'</td>'+
           '<td class="mono" style="font-size:11px">'+e.request_id.slice(0,12)+'...</td>'+
+          '<td>-</td>'+
           '<td>'+(e.model?'<span class="tag" style="background:#1a2a3d;color:#58a6ff">'+esc(e.model)+'</span>':'')+'</td>'+
           '<td class="mono">'+bytes(e.request_length)+'</td>'+
           '<td style="color:#58a6ff">View</td></tr>'
@@ -393,11 +405,19 @@ async function loadSessionTimeline(sessionId){
   auditCurrentSession=sessionId;
   try{
     const r=await fetch('/api/audit/session/'+sessionId);
-    const timeline=await r.json();
+    const data=await r.json();
+    const timeline=data.timeline||data;
+    const sessionMeta=data.session||null;
     document.querySelector('#tab-audit .section').style.display='none';
     document.getElementById('audit-timeline').style.display='block';
     document.getElementById('audit-detail').style.display='none';
-    document.getElementById('audit-session-label').textContent=sessionId.slice(0,12)+'... ('+timeline.length+' requests)';
+    const labelEl=document.getElementById('audit-session-label');
+    const projName=sessionMeta?.label||'';
+    const projPath=sessionMeta?.project_path||'';
+    const shortId=sessionId.slice(0,8);
+    labelEl.innerHTML=projName
+      ?esc(projName)+' <span style="color:#484f58;font-size:11px">'+esc(shortId)+'</span> \u2014 '+timeline.length+' requests'+(projPath?'<br><span style="font-size:11px;color:#484f58">'+esc(projPath)+'</span>':'')
+      :esc(shortId)+'... \u2014 '+timeline.length+' requests';
 
     let html='';
     timeline.forEach((entry,i)=>{

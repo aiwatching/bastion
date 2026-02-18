@@ -92,6 +92,20 @@ const MIGRATIONS: string[] = [
   CREATE INDEX IF NOT EXISTS idx_audit_request ON audit_log(request_id);
   CREATE INDEX IF NOT EXISTS idx_optimizer_request ON optimizer_events(request_id);
   `,
+
+  // Migration 3: Sessions table for session metadata and client identification
+  `
+  CREATE TABLE IF NOT EXISTS sessions (
+    id TEXT PRIMARY KEY,
+    label TEXT,
+    source TEXT DEFAULT 'auto',
+    project_path TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    last_seen_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_sessions_last_seen ON sessions(last_seen_at);
+  `,
 ];
 
 export function runMigrations(db: Database.Database): void {

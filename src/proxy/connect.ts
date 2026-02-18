@@ -67,17 +67,21 @@ export function setupConnectHandler(
     const [hostname, portStr] = (req.url ?? '').split(':');
     const port = parseInt(portStr, 10) || 443;
 
-    // Extract session ID from proxy auth header
-    const sessionId = parseSessionFromProxy(req);
+    // Extract session ID from proxy auth header, or auto-generate for intercepted hosts
+    let sessionId = parseSessionFromProxy(req);
+    const source = sessionId ? 'wrap' : 'auto';
+    if (!sessionId && INTERCEPT_HOSTS.has(hostname)) {
+      sessionId = crypto.randomUUID();
+    }
     if (sessionId) {
       socketSessionMap.set(clientSocket, sessionId);
-      log.debug('Session mapped', { sessionId, hostname });
+      log.debug('Session mapped', { sessionId, hostname, source });
     }
 
-    log.info('CONNECT', { hostname, port, intercept: INTERCEPT_HOSTS.has(hostname), sessionId });
+    log.info('CONNECT', { hostname, port, intercept: INTERCEPT_HOSTS.has(hostname), sessionId, source });
 
     if (INTERCEPT_HOSTS.has(hostname)) {
-      handleMITM(hostname, port, clientSocket, head, ca, config, pluginManager, sessionId);
+      handleMITM(hostname, port, clientSocket, head, ca, config, pluginManager, sessionId, source);
     } else {
       handleTunnel(hostname, port, clientSocket, head);
     }
@@ -131,6 +135,7 @@ function handleMITM(
   config: BastionConfig,
   pluginManager: PluginManager,
   sessionId?: string,
+  sessionSource?: string,
 ): void {
   const hostCert = getHostCert(hostname);
 
@@ -145,7 +150,7 @@ function handleMITM(
   });
 
   // Create a per-connection HTTP server to parse the decrypted request
-  const handler = createMITMRequestHandler(hostname, config, pluginManager, sessionId);
+  const handler = createMITMRequestHandler(hostname, config, pluginManager, sessionId, sessionSource);
   const fakeServer = createHttpServer(handler);
 
   // Inject the TLS socket as a "connection" to the HTTP server
@@ -177,6 +182,7 @@ function createMITMRequestHandler(
   config: BastionConfig,
   pluginManager: PluginManager,
   sessionId?: string,
+  sessionSource?: string,
 ) {
   return async (req: IncomingMessage, res: ServerResponse) => {
     log.info('MITM request', { method: req.method, hostname, path: req.url, sessionId });
@@ -193,6 +199,7 @@ function createMITMRequestHandler(
           upstreamTimeout: config.timeouts.upstream,
           pluginManager,
           sessionId,
+          sessionSource,
         });
       } catch (err) {
         log.error('MITM forward failed', { error: (err as Error).message });
