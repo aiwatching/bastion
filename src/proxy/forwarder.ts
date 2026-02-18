@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { ProviderConfig } from './providers/index.js';
 import type { PluginManager } from '../plugins/index.js';
-import type { RequestContext, ResponseCompleteContext } from '../plugins/types.js';
+import type { RequestContext, ResponseCompleteContext, ResponseInterceptContext } from '../plugins/types.js';
 import { SSEParser, parseSSEData } from './streaming.js';
 import { createLogger } from '../utils/logger.js';
 
@@ -134,13 +134,14 @@ export async function forwardRequest(
           if (value) responseHeaders[key] = Array.isArray(value) ? value.join(', ') : value;
         }
 
-        res.writeHead(statusCode, responseHeaders);
-
         if (isStreaming) {
+          // Streaming: send headers immediately, forward chunks in real-time
+          res.writeHead(statusCode, responseHeaders);
           handleStreamingResponse(upstreamRes, res, requestContext, pluginManager, provider, startTime)
             .then(() => resolve(requestContext));
         } else {
-          handleBufferedResponse(upstreamRes, res, requestContext, pluginManager, provider, startTime)
+          // Non-streaming: buffer response, run onResponse hook, then send
+          handleBufferedResponse(upstreamRes, res, statusCode, responseHeaders, requestContext, pluginManager, provider, startTime)
             .then(() => resolve(requestContext));
         }
       },
@@ -245,6 +246,8 @@ async function handleStreamingResponse(
 async function handleBufferedResponse(
   upstreamRes: IncomingMessage,
   clientRes: ServerResponse,
+  statusCode: number,
+  responseHeaders: Record<string, string>,
   context: RequestContext,
   pluginManager: PluginManager,
   provider: ProviderConfig,
@@ -259,17 +262,48 @@ async function handleBufferedResponse(
 
     upstreamRes.on('end', async () => {
       const body = Buffer.concat(chunks);
-      // Forward the raw response
-      clientRes.write(body);
-      clientRes.end();
-
+      let bodyStr = body.toString('utf-8');
       const latencyMs = Date.now() - startTime;
 
       let parsedBody: Record<string, unknown> | null = null;
       try {
-        parsedBody = JSON.parse(body.toString('utf-8'));
+        parsedBody = JSON.parse(bodyStr);
       } catch {
         // Not JSON
+      }
+
+      // Run onResponse hook (pre-send interception)
+      const interceptContext: ResponseInterceptContext = {
+        request: context,
+        statusCode,
+        headers: responseHeaders,
+        body: bodyStr,
+        parsedBody,
+        isStreaming: false,
+      };
+
+      const hookResult = await pluginManager.runOnResponse(interceptContext);
+
+      if (hookResult.blocked) {
+        // Block: send error to client instead of the LLM response
+        clientRes.writeHead(403, { 'content-type': 'application/json' });
+        clientRes.end(JSON.stringify({
+          error: {
+            message: hookResult.blocked.reason,
+            type: 'gateway_response_blocked',
+          },
+        }));
+      } else {
+        // Send response (original or modified)
+        if (hookResult.modifiedBody) {
+          bodyStr = hookResult.modifiedBody;
+        }
+        // We buffered the response, so set exact content-length and remove chunked encoding
+        delete responseHeaders['transfer-encoding'];
+        responseHeaders['content-length'] = Buffer.byteLength(bodyStr).toString();
+        clientRes.writeHead(statusCode, responseHeaders);
+        clientRes.write(bodyStr);
+        clientRes.end();
       }
 
       const usage = parsedBody
@@ -278,8 +312,8 @@ async function handleBufferedResponse(
 
       const completeContext: ResponseCompleteContext = {
         request: context,
-        statusCode: upstreamRes.statusCode ?? 200,
-        body: body.toString('utf-8'),
+        statusCode,
+        body: bodyStr,
         parsedBody,
         usage: {
           inputTokens: usage.inputTokens,

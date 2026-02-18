@@ -9,6 +9,7 @@ export interface DlpEventRecord {
   match_count: number;
   original_snippet: string | null;
   redacted_snippet: string | null;
+  direction: string;
   created_at: string;
 }
 
@@ -19,13 +20,13 @@ export class DlpEventsRepository {
   constructor(db: Database.Database) {
     this.db = db;
     this.insertStmt = db.prepare(`
-      INSERT INTO dlp_events (id, request_id, pattern_name, pattern_category, action, match_count, original_snippet, redacted_snippet)
-      VALUES (@id, @request_id, @pattern_name, @pattern_category, @action, @match_count, @original_snippet, @redacted_snippet)
+      INSERT INTO dlp_events (id, request_id, pattern_name, pattern_category, action, match_count, original_snippet, redacted_snippet, direction)
+      VALUES (@id, @request_id, @pattern_name, @pattern_category, @action, @match_count, @original_snippet, @redacted_snippet, @direction)
     `);
   }
 
-  insert(record: Omit<DlpEventRecord, 'created_at'>): void {
-    this.insertStmt.run(record);
+  insert(record: Omit<DlpEventRecord, 'created_at' | 'direction'> & { direction?: string }): void {
+    this.insertStmt.run({ ...record, direction: record.direction ?? 'request' });
   }
 
   getByRequestId(requestId: string): DlpEventRecord[] {

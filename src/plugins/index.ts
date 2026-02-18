@@ -1,4 +1,4 @@
-import type { Plugin, PluginRequestResult, RequestContext, ResponseCompleteContext } from './types.js';
+import type { Plugin, PluginRequestResult, PluginResponseResult, RequestContext, ResponseInterceptContext, ResponseCompleteContext } from './types.js';
 import { withTimeout, TimeoutError } from '../utils/timeout.js';
 import { createLogger } from '../utils/logger.js';
 
@@ -80,6 +80,40 @@ export class PluginManager {
           log.warn('Plugin error, skipping', { plugin: plugin.name, error: (err as Error).message });
         }
         // Fail-open: skip this plugin and continue
+      }
+    }
+
+    return result;
+  }
+
+  async runOnResponse(context: ResponseInterceptContext): Promise<PluginResponseResult> {
+    const result: PluginResponseResult = {};
+
+    for (const plugin of this.plugins) {
+      if (!plugin.onResponse || this.disabledPlugins.has(plugin.name)) continue;
+
+      try {
+        const pluginResult = await withTimeout(
+          plugin.onResponse(context),
+          this.timeoutMs * 100, // DLP + AI validation may need more time
+        );
+
+        if (pluginResult) {
+          if (pluginResult.blocked) {
+            log.info('Plugin blocked response', { plugin: plugin.name, reason: pluginResult.blocked.reason });
+            return pluginResult;
+          }
+          if (pluginResult.modifiedBody) {
+            result.modifiedBody = pluginResult.modifiedBody;
+            context.body = pluginResult.modifiedBody;
+          }
+        }
+      } catch (err) {
+        if (err instanceof TimeoutError) {
+          log.warn('Plugin onResponse timed out, skipping', { plugin: plugin.name });
+        } else {
+          log.warn('Plugin onResponse error, skipping', { plugin: plugin.name, error: (err as Error).message });
+        }
       }
     }
 

@@ -7,6 +7,8 @@ import { AuditLogRepository } from '../storage/repositories/audit-log.js';
 import { CacheRepository } from '../storage/repositories/cache.js';
 import { SessionsRepository } from '../storage/repositories/sessions.js';
 import { DlpPatternsRepository } from '../storage/repositories/dlp-patterns.js';
+import { scanText } from '../dlp/engine.js';
+import type { DlpAction } from '../dlp/actions.js';
 import type { ConfigManager } from '../config/manager.js';
 import type { PluginManager } from '../plugins/index.js';
 import { createLogger } from '../utils/logger.js';
@@ -81,6 +83,37 @@ export function createApiRouter(
     if (req.method === 'GET' && path === '/api/dlp/recent') {
       const limit = parseInt(url.searchParams.get('limit') ?? '50', 10);
       sendJson(res, dlpRepo.getRecent(limit));
+      return true;
+    }
+
+    // POST /api/dlp/scan — standalone DLP scan for testing and external integration
+    if (req.method === 'POST' && path === '/api/dlp/scan') {
+      bufferBody(req).then((body) => {
+        try {
+          const data = JSON.parse(body);
+          const text = data.text;
+          if (typeof text !== 'string' || text.length === 0) {
+            sendJson(res, { error: 'text field is required' }, 400);
+            return;
+          }
+          const action = (data.action ?? configManager.get().plugins.dlp.action ?? 'warn') as DlpAction;
+          const patterns = dlpPatternsRepo.getEnabled();
+          const result = scanText(text, patterns, action);
+          sendJson(res, {
+            action: result.action,
+            findings: result.findings.map((f) => ({
+              patternName: f.patternName,
+              patternCategory: f.patternCategory,
+              matchCount: f.matchCount,
+            })),
+            redactedText: result.redactedBody ?? null,
+          });
+        } catch (err) {
+          sendJson(res, { error: (err as Error).message }, 400);
+        }
+      }).catch((err) => {
+        sendJson(res, { error: (err as Error).message }, 500);
+      });
       return true;
     }
 

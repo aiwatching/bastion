@@ -114,7 +114,7 @@ tr:hover{background:#1c2128}
   <div class="grid" id="dlp-cards"></div>
   <div class="section">
     <h2>Recent DLP Findings</h2>
-    <table><thead><tr><th>Time</th><th>Pattern</th><th>Category</th><th>Action</th><th>Matches</th><th>Original Snippet</th><th>Redacted Snippet</th></tr></thead><tbody id="dlp-recent"></tbody></table>
+    <table><thead><tr><th>Time</th><th>Dir</th><th>Pattern</th><th>Category</th><th>Action</th><th>Matches</th><th>Original Snippet</th><th>Redacted Snippet</th></tr></thead><tbody id="dlp-recent"></tbody></table>
     <p class="empty" id="no-dlp">No DLP events yet.</p>
   </div>
   <div class="section">
@@ -343,12 +343,14 @@ async function refreshDlp(){
       card('Warned',fmt(ba.warn||0));
 
     document.getElementById('no-dlp').style.display=recent.length?'none':'';
-    document.getElementById('dlp-recent').innerHTML=recent.map(e=>
-      '<tr><td>'+ago(e.created_at)+'</td><td class="mono">'+esc(e.pattern_name)+'</td><td>'+esc(e.pattern_category)+'</td>'+
-      '<td>'+actionTag(e.action)+'</td><td>'+e.match_count+'</td>'+
-      '<td><div class="snippet">'+esc(e.original_snippet||'-')+'</div></td>'+
-      '<td><div class="snippet">'+esc(e.redacted_snippet||'-')+'</div></td></tr>'
-    ).join('');
+    document.getElementById('dlp-recent').innerHTML=recent.map(e=>{
+      const dir=e.direction||'request';
+      const dirTag=dir==='response'?'<span class="tag warn">resp</span>':'<span class="tag" style="background:#1a2a3d;color:#58a6ff">req</span>';
+      return '<tr><td>'+ago(e.created_at)+'</td><td>'+dirTag+'</td><td class="mono">'+esc(e.pattern_name)+'</td><td>'+esc(e.pattern_category)+'</td>'+
+        '<td>'+actionTag(e.action)+'</td><td>'+e.match_count+'</td>'+
+        '<td><div class="snippet">'+esc(e.original_snippet||'-')+'</div></td>'+
+        '<td><div class="snippet">'+esc(e.redacted_snippet||'-')+'</div></td></tr>';
+    }).join('');
     refreshPatterns();
   }catch(e){}
 }
