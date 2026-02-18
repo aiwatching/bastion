@@ -46,4 +46,69 @@ export const highConfidencePatterns: DlpPattern[] = [
     regex: /-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----/g,
     description: 'Private Key Header',
   },
+
+  // ── LLM Provider API Keys ──
+
+  {
+    name: 'openai-api-key',
+    category: 'high-confidence',
+    regex: /sk-(?!ant-)[A-Za-z0-9_-]{40,}/g,
+    description: 'OpenAI API Key (also matches DeepSeek, Moonshot, Tongyi, and other sk- prefixed keys)',
+  },
+  {
+    name: 'anthropic-api-key',
+    category: 'high-confidence',
+    regex: /sk-ant-[A-Za-z0-9_-]{36,}/g,
+    description: 'Anthropic API Key',
+  },
+  {
+    name: 'google-ai-api-key',
+    category: 'high-confidence',
+    regex: /AIzaSy[A-Za-z0-9_-]{33}/g,
+    description: 'Google AI / Gemini API Key',
+  },
+  {
+    name: 'huggingface-token',
+    category: 'high-confidence',
+    regex: /hf_[A-Za-z0-9]{20,}/g,
+    description: 'Hugging Face Access Token',
+  },
+  {
+    name: 'replicate-api-token',
+    category: 'high-confidence',
+    regex: /r8_[A-Za-z0-9]{37,}/g,
+    description: 'Replicate API Token',
+  },
+  {
+    name: 'groq-api-key',
+    category: 'high-confidence',
+    regex: /gsk_[A-Za-z0-9]{48,}/g,
+    description: 'Groq API Key',
+  },
+  {
+    name: 'perplexity-api-key',
+    category: 'high-confidence',
+    regex: /pplx-[A-Za-z0-9]{48,}/g,
+    description: 'Perplexity API Key',
+  },
+  {
+    name: 'xai-api-key',
+    category: 'high-confidence',
+    regex: /xai-[A-Za-z0-9]{48,}/g,
+    description: 'xAI (Grok) API Key',
+  },
+  {
+    name: 'cohere-api-key',
+    category: 'high-confidence',
+    regex: /\b[A-Za-z0-9]{40}\b/g,
+    description: 'Cohere / Mistral / Together AI API Key (40-char token)',
+    requireContext: ['cohere', 'CO_API_KEY', 'mistral', 'MISTRAL_API_KEY', 'together', 'TOGETHER_API_KEY'],
+  },
+  {
+    name: 'azure-openai-api-key',
+    category: 'high-confidence',
+    regex: /\b[a-f0-9]{32}\b/g,
+    description: 'Azure OpenAI API Key (32-char hex)',
+    requireContext: ['azure', 'AZURE_OPENAI', 'openai.azure.com'],
+  },
 ];
