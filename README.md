@@ -4,12 +4,19 @@ Local-first proxy for LLM providers (Anthropic, OpenAI, Gemini). Provides DLP sc
 
 ## Install
 
+One-liner:
+
 ```bash
-git clone <repo-url> && cd bastion
-npm install
-npm run build
-npm link        # Makes 'bastion' available globally
+curl -fsSL https://raw.githubusercontent.com/your-org/bastion/main/install.sh | bash
 ```
+
+Or from local source:
+
+```bash
+cd bastion && bash install.sh
+```
+
+Requires Node.js 18+. Installs to `~/.bastion/app/`, links `bastion` command to `/usr/local/bin/`.
 
 ## Quick Start
 
