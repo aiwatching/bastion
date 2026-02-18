@@ -117,6 +117,29 @@ tr:hover{background:#1c2128}
     <table><thead><tr><th>Time</th><th>Pattern</th><th>Category</th><th>Action</th><th>Matches</th><th>Original Snippet</th><th>Redacted Snippet</th></tr></thead><tbody id="dlp-recent"></tbody></table>
     <p class="empty" id="no-dlp">No DLP events yet.</p>
   </div>
+  <div class="section">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <h2>DLP Patterns</h2>
+      <button id="dlp-add-btn" style="padding:4px 12px;font-size:12px;cursor:pointer;color:#3fb950;background:none;border:1px solid #3fb950;border-radius:6px">+ Add Pattern</button>
+    </div>
+    <div id="dlp-add-form" style="display:none;margin-bottom:12px;padding:12px 16px;background:#161b22;border:1px solid #30363d;border-radius:8px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+        <input id="dlp-new-name" placeholder="Name" style="background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 10px;border-radius:4px;font-size:12px">
+        <input id="dlp-new-regex" placeholder="Regex (e.g. \\bSECRET_\\w+)" style="background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 10px;border-radius:4px;font-size:12px;font-family:monospace">
+      </div>
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:8px;margin-bottom:8px">
+        <input id="dlp-new-desc" placeholder="Description" style="background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 10px;border-radius:4px;font-size:12px">
+        <input id="dlp-new-context" placeholder="Context words (comma-sep, optional)" style="background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 10px;border-radius:4px;font-size:12px">
+      </div>
+      <div style="display:flex;gap:8px">
+        <button id="dlp-save-btn" style="padding:4px 16px;font-size:12px;cursor:pointer;color:#fff;background:#238636;border:1px solid #2ea043;border-radius:6px">Save</button>
+        <button id="dlp-cancel-btn" style="padding:4px 12px;font-size:12px;cursor:pointer;color:#7d8590;background:none;border:1px solid #30363d;border-radius:6px">Cancel</button>
+        <span id="dlp-form-error" style="color:#f85149;font-size:12px;align-self:center"></span>
+      </div>
+    </div>
+    <table><thead><tr><th style="width:60px">Enabled</th><th>Name</th><th>Category</th><th>Regex</th><th>Description</th><th style="width:60px">Actions</th></tr></thead><tbody id="dlp-patterns"></tbody></table>
+    <p class="empty" id="no-patterns">No patterns configured.</p>
+  </div>
 </div>
 
 <!-- OPTIMIZER TAB -->
@@ -319,8 +342,74 @@ async function refreshDlp(){
       '<td><div class="snippet">'+esc(e.original_snippet||'-')+'</div></td>'+
       '<td><div class="snippet">'+esc(e.redacted_snippet||'-')+'</div></td></tr>'
     ).join('');
+    refreshPatterns();
   }catch(e){}
 }
+
+// DLP Patterns management
+async function refreshPatterns(){
+  try{
+    const r=await fetch('/api/dlp/patterns');
+    const patterns=await r.json();
+    document.getElementById('no-patterns').style.display=patterns.length?'none':'';
+    document.getElementById('dlp-patterns').innerHTML=patterns.map(p=>{
+      const catClass=p.category==='high-confidence'?'cached':p.category==='validated'?'blue':p.category==='context-aware'?'warn':'redact';
+      const regexDisp=esc(p.regex_source.length>40?p.regex_source.slice(0,40)+'...':p.regex_source);
+      const delBtn=p.is_builtin?'':'<button class="dlp-del-btn" data-id="'+esc(p.id)+'" style="cursor:pointer;color:#f85149;background:none;border:1px solid #3d1a1a;border-radius:4px;padding:2px 8px;font-size:11px">Del</button>';
+      return '<tr><td><label class="switch" style="margin:0"><input type="checkbox" data-pid="'+esc(p.id)+'"'+(p.enabled?' checked':'')+'><span class="slider"></span></label></td>'+
+        '<td class="mono" style="font-size:12px">'+esc(p.name)+'</td>'+
+        '<td><span class="tag '+catClass+'">'+esc(p.category)+'</span></td>'+
+        '<td class="mono" style="font-size:11px" title="'+esc(p.regex_source)+'">'+regexDisp+'</td>'+
+        '<td style="font-size:12px;color:#7d8590">'+esc(p.description||'-')+'</td>'+
+        '<td>'+delBtn+'</td></tr>';
+    }).join('');
+    // Bind toggle switches
+    document.querySelectorAll('#dlp-patterns input[type=checkbox]').forEach(cb=>{
+      cb.addEventListener('change',async()=>{
+        await fetch('/api/dlp/patterns/'+encodeURIComponent(cb.dataset.pid),{
+          method:'PUT',headers:{'content-type':'application/json'},
+          body:JSON.stringify({enabled:cb.checked})
+        });
+      });
+    });
+    // Bind delete buttons
+    document.querySelectorAll('.dlp-del-btn').forEach(btn=>{
+      btn.addEventListener('click',async()=>{
+        if(!confirm('Delete this custom pattern?'))return;
+        await fetch('/api/dlp/patterns/'+encodeURIComponent(btn.dataset.id),{method:'DELETE'});
+        refreshPatterns();
+      });
+    });
+  }catch(e){console.error('Pattern refresh error',e)}
+}
+
+// Add pattern form
+document.getElementById('dlp-add-btn').addEventListener('click',()=>{
+  document.getElementById('dlp-add-form').style.display='';
+  document.getElementById('dlp-form-error').textContent='';
+});
+document.getElementById('dlp-cancel-btn').addEventListener('click',()=>{
+  document.getElementById('dlp-add-form').style.display='none';
+});
+document.getElementById('dlp-save-btn').addEventListener('click',async()=>{
+  const name=document.getElementById('dlp-new-name').value.trim();
+  const regex=document.getElementById('dlp-new-regex').value.trim();
+  const desc=document.getElementById('dlp-new-desc').value.trim();
+  const ctx=document.getElementById('dlp-new-context').value.trim();
+  const errEl=document.getElementById('dlp-form-error');
+  if(!name||!regex){errEl.textContent='Name and Regex are required';return}
+  try{new RegExp(regex)}catch(e){errEl.textContent='Invalid regex: '+e.message;return}
+  const payload={name,regex_source:regex,description:desc||null,require_context:ctx?JSON.stringify(ctx.split(',').map(s=>s.trim()).filter(Boolean)):null};
+  const r=await fetch('/api/dlp/patterns',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+  const data=await r.json();
+  if(!r.ok){errEl.textContent=data.error||'Failed to save';return}
+  document.getElementById('dlp-add-form').style.display='none';
+  document.getElementById('dlp-new-name').value='';
+  document.getElementById('dlp-new-regex').value='';
+  document.getElementById('dlp-new-desc').value='';
+  document.getElementById('dlp-new-context').value='';
+  refreshPatterns();
+});
 
 // Optimizer tab
 async function refreshOptimizer(){

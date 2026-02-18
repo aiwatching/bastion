@@ -106,6 +106,23 @@ const MIGRATIONS: string[] = [
 
   CREATE INDEX IF NOT EXISTS idx_sessions_last_seen ON sessions(last_seen_at);
   `,
+
+  // Migration 4: DLP patterns table for DB-backed, UI-configurable patterns
+  `
+  CREATE TABLE IF NOT EXISTS dlp_patterns (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    category TEXT NOT NULL DEFAULT 'custom',
+    regex_source TEXT NOT NULL,
+    regex_flags TEXT DEFAULT 'g',
+    description TEXT,
+    validator TEXT,
+    require_context TEXT,
+    enabled INTEGER DEFAULT 1,
+    is_builtin INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  `,
 ];
 
 export function runMigrations(db: Database.Database): void {
