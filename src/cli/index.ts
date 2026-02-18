@@ -9,6 +9,7 @@ import { registerConfigCommand } from './commands/config.js';
 import { registerEnvCommand } from './commands/env.js';
 import { registerWrapCommand } from './commands/wrap.js';
 import { registerTrustCaCommand } from './commands/trust-ca.js';
+import { registerProxyCommand } from './commands/proxy.js';
 
 const program = new Command();
 
@@ -26,5 +27,6 @@ registerConfigCommand(program);
 registerEnvCommand(program);
 registerWrapCommand(program);
 registerTrustCaCommand(program);
+registerProxyCommand(program);
 
 program.parse();
