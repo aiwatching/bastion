@@ -14,6 +14,14 @@ export interface BastionConfig {
       enabled: boolean;
       action: 'pass' | 'warn' | 'redact' | 'block';
       patterns: ('high-confidence' | 'validated' | 'context-aware')[];
+      aiValidation: {
+        enabled: boolean;
+        provider: 'anthropic' | 'openai';
+        model: string;
+        apiKey: string;
+        timeoutMs: number;
+        cacheSize: number;
+      };
     };
     optimizer: {
       enabled: boolean;

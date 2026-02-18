@@ -4,6 +4,7 @@ import type { DlpAction } from '../../dlp/actions.js';
 import { DlpEventsRepository } from '../../storage/repositories/dlp-events.js';
 import { DlpPatternsRepository } from '../../storage/repositories/dlp-patterns.js';
 import { AuditLogRepository } from '../../storage/repositories/audit-log.js';
+import { AiValidator, type AiValidatorConfig } from '../../dlp/ai-validator.js';
 import { highConfidencePatterns } from '../../dlp/patterns/high-confidence.js';
 import { validatedPatterns } from '../../dlp/patterns/validated.js';
 import { contextAwarePatterns } from '../../dlp/patterns/context-aware.js';
@@ -17,6 +18,7 @@ const SNIPPET_CONTEXT = 25; // chars of context on each side of match
 export interface DlpScannerConfig {
   action: DlpAction;
   patterns: string[];
+  aiValidation?: AiValidatorConfig;
 }
 
 /**
@@ -39,6 +41,11 @@ export function createDlpScannerPlugin(db: Database.Database, config: DlpScanner
   const patternsRepo = new DlpPatternsRepository(db);
   const auditRepo = new AuditLogRepository(db);
 
+  // AI validation — optional, default off
+  const aiValidator = config.aiValidation
+    ? new AiValidator(config.aiValidation)
+    : null;
+
   // Seed built-in patterns from the 3 pattern files
   const allBuiltins: DlpPattern[] = [
     ...highConfidencePatterns,
@@ -60,6 +67,12 @@ export function createDlpScannerPlugin(db: Database.Database, config: DlpScanner
       const result = scanText(context.body, patterns, config.action);
 
       if (result.findings.length === 0) return;
+
+      // AI validation: filter out false positives
+      if (aiValidator?.ready) {
+        result.findings = await aiValidator.validate(result.findings, context.body);
+        if (result.findings.length === 0) return;
+      }
 
       // Record DLP events with snippets
       for (const finding of result.findings) {

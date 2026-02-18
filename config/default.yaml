@@ -14,6 +14,13 @@ plugins:
     patterns:
       - "high-confidence"
       - "validated"
+    aiValidation:
+      enabled: false
+      provider: "anthropic"
+      model: "claude-haiku-4-5-20241022"
+      apiKey: ""
+      timeoutMs: 5000
+      cacheSize: 500
   optimizer:
     enabled: true
     cache: true
