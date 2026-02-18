@@ -1,0 +1,50 @@
+import type Database from 'better-sqlite3';
+
+export interface DlpEventRecord {
+  id: string;
+  request_id: string;
+  pattern_name: string;
+  pattern_category: string;
+  action: string;
+  match_count: number;
+  created_at: string;
+}
+
+export class DlpEventsRepository {
+  private db: Database.Database;
+  private insertStmt: Database.Statement;
+
+  constructor(db: Database.Database) {
+    this.db = db;
+    this.insertStmt = db.prepare(`
+      INSERT INTO dlp_events (id, request_id, pattern_name, pattern_category, action, match_count)
+      VALUES (@id, @request_id, @pattern_name, @pattern_category, @action, @match_count)
+    `);
+  }
+
+  insert(record: Omit<DlpEventRecord, 'created_at'>): void {
+    this.insertStmt.run(record);
+  }
+
+  getByRequestId(requestId: string): DlpEventRecord[] {
+    return this.db.prepare('SELECT * FROM dlp_events WHERE request_id = ?').all(requestId) as DlpEventRecord[];
+  }
+
+  getStats(): { total_events: number; by_action: Record<string, number>; by_pattern: Record<string, number> } {
+    const total = this.db.prepare('SELECT COUNT(*) as count FROM dlp_events').get() as { count: number };
+    const actionRows = this.db.prepare(
+      'SELECT action, COUNT(*) as count FROM dlp_events GROUP BY action'
+    ).all() as { action: string; count: number }[];
+    const patternRows = this.db.prepare(
+      'SELECT pattern_name, COUNT(*) as count FROM dlp_events GROUP BY pattern_name'
+    ).all() as { pattern_name: string; count: number }[];
+
+    const by_action: Record<string, number> = {};
+    for (const row of actionRows) by_action[row.action] = row.count;
+
+    const by_pattern: Record<string, number> = {};
+    for (const row of patternRows) by_pattern[row.pattern_name] = row.count;
+
+    return { total_events: total.count, by_action, by_pattern };
+  }
+}

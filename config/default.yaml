@@ -1,0 +1,25 @@
+server:
+  host: "127.0.0.1"
+  port: 8420
+
+logging:
+  level: "info"
+
+plugins:
+  metrics:
+    enabled: true
+  dlp:
+    enabled: true
+    action: "warn"
+    patterns:
+      - "high-confidence"
+      - "validated"
+  optimizer:
+    enabled: true
+    cache: true
+    trimWhitespace: true
+    reorderForCache: true
+
+timeouts:
+  upstream: 120000
+  plugin: 50
