@@ -1,0 +1,62 @@
+import type { Plugin, RequestContext, PluginRequestResult, ResponseCompleteContext } from '../types.js';
+import { AuditLogRepository } from '../../storage/repositories/audit-log.js';
+import { createLogger } from '../../utils/logger.js';
+import type Database from 'better-sqlite3';
+
+const log = createLogger('audit-plugin');
+
+export interface AuditLoggerConfig {
+  retentionHours: number;
+}
+
+export function createAuditLoggerPlugin(db: Database.Database, config: AuditLoggerConfig): Plugin {
+  const auditRepo = new AuditLogRepository(db);
+
+  // Store request bodies temporarily until response is complete
+  const pendingRequests = new Map<string, string>();
+
+  // Periodic purge of old audit entries
+  const purgeInterval = setInterval(() => {
+    try {
+      const purged = auditRepo.purgeOlderThan(config.retentionHours);
+      if (purged > 0) {
+        log.debug('Purged old audit entries', { purged });
+      }
+    } catch {
+      // Ignore purge errors
+    }
+  }, 60 * 60 * 1000); // Every hour
+
+  // Prevent the interval from keeping the process alive
+  purgeInterval.unref();
+
+  return {
+    name: 'audit-logger',
+    priority: 5,
+
+    async onRequest(context: RequestContext): Promise<PluginRequestResult | void> {
+      // Capture request body for later storage
+      pendingRequests.set(context.id, context.body);
+    },
+
+    async onResponseComplete(context: ResponseCompleteContext): Promise<void> {
+      const requestBody = pendingRequests.get(context.request.id) ?? '';
+      pendingRequests.delete(context.request.id);
+
+      // Store asynchronously to avoid blocking
+      setImmediate(() => {
+        try {
+          auditRepo.insert({
+            id: crypto.randomUUID(),
+            request_id: context.request.id,
+            requestBody,
+            responseBody: context.body,
+          });
+          log.debug('Audit entry stored', { requestId: context.request.id });
+        } catch (err) {
+          log.warn('Failed to store audit entry', { error: (err as Error).message });
+        }
+      });
+    },
+  };
+}

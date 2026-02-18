@@ -1,5 +1,6 @@
 import { request as httpsRequest } from 'node:https';
 import { request as httpRequest } from 'node:http';
+import { createHash } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { ProviderConfig } from './providers/index.js';
 import type { PluginManager } from '../plugins/index.js';
@@ -14,6 +15,15 @@ export interface ForwardOptions {
   upstreamUrl: string;
   upstreamTimeout: number;
   pluginManager: PluginManager;
+  sessionId?: string;
+}
+
+function computeApiKeyHash(headers: Record<string, string>): string | undefined {
+  // Check common auth headers
+  const authHeader = headers['authorization'] || headers['x-api-key'];
+  if (!authHeader) return undefined;
+  const key = authHeader.replace(/^Bearer\s+/i, '');
+  return createHash('sha256').update(key).digest('hex').slice(0, 16);
 }
 
 function bufferBody(req: IncomingMessage): Promise<Buffer> {
@@ -30,7 +40,7 @@ export async function forwardRequest(
   res: ServerResponse,
   options: ForwardOptions,
 ): Promise<RequestContext> {
-  const { provider, upstreamUrl, upstreamTimeout, pluginManager } = options;
+  const { provider, upstreamUrl, upstreamTimeout, pluginManager, sessionId } = options;
   const startTime = Date.now();
   const requestId = crypto.randomUUID();
 
@@ -47,6 +57,9 @@ export async function forwardRequest(
   const model = provider.extractModel(parsedBody);
   const isStreaming = Boolean(parsedBody.stream);
 
+  const reqHeaders = req.headers as Record<string, string>;
+  const apiKeyHash = computeApiKeyHash(reqHeaders);
+
   // Build request context
   const requestContext: RequestContext = {
     id: requestId,
@@ -54,11 +67,13 @@ export async function forwardRequest(
     model,
     method: req.method ?? 'POST',
     path: req.url ?? '/',
-    headers: req.headers as Record<string, string>,
+    headers: reqHeaders,
     body: bodyStr,
     parsedBody,
     isStreaming,
     startTime,
+    sessionId,
+    apiKeyHash,
   };
 
   // Run onRequest plugins

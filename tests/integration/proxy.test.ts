@@ -14,6 +14,7 @@ import { readFileSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type Database from 'better-sqlite3';
 import type { BastionConfig } from '../../src/config/schema.js';
+import { ConfigManager } from '../../src/config/manager.js';
 
 const FIXTURES_DIR = resolve(__dirname, '..', 'fixtures');
 
@@ -150,11 +151,13 @@ describe('Integration: Proxy Pipeline', () => {
         metrics: { enabled: true },
         dlp: { enabled: true, action: 'block', patterns: ['high-confidence', 'validated'] },
         optimizer: { enabled: true, cache: true, trimWhitespace: true, reorderForCache: false },
+        audit: { enabled: false, retentionHours: 168 },
       },
       timeouts: { upstream: 10000, plugin: 5000 },
     };
 
-    gateway = createProxyServer(config, pluginManager, () => {}, db);
+    const configManager = new ConfigManager(config);
+    gateway = createProxyServer(config, pluginManager, () => {}, db, configManager);
 
     // Start on random port
     await new Promise<void>((resolve) => {

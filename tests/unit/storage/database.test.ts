@@ -44,6 +44,8 @@ describe('Storage Layer', () => {
         cached: 0,
         dlp_action: null,
         dlp_findings: 0,
+        session_id: null,
+        api_key_hash: null,
       });
 
       const recent = repo.getRecent(1);
@@ -60,12 +62,14 @@ describe('Storage Layer', () => {
         method: 'POST', path: '/v1/messages', status_code: 200,
         input_tokens: 100, output_tokens: 50, cache_creation_tokens: 0, cache_read_tokens: 0,
         cost_usd: 0.001, latency_ms: 500, cached: 0, dlp_action: null, dlp_findings: 0,
+        session_id: null, api_key_hash: null,
       });
       repo.insert({
         id: 'req-2', provider: 'openai', model: 'gpt-4o',
         method: 'POST', path: '/v1/chat/completions', status_code: 200,
         input_tokens: 200, output_tokens: 100, cache_creation_tokens: 0, cache_read_tokens: 0,
         cost_usd: 0.005, latency_ms: 800, cached: 1, dlp_action: null, dlp_findings: 0,
+        session_id: null, api_key_hash: null,
       });
 
       const stats = repo.getStats();
@@ -132,6 +136,7 @@ describe('Storage Layer', () => {
         method: 'POST', path: '/v1/messages', status_code: 200,
         input_tokens: 100, output_tokens: 50, cache_creation_tokens: 0, cache_read_tokens: 0,
         cost_usd: 0.001, latency_ms: 500, cached: 0, dlp_action: 'warn', dlp_findings: 1,
+        session_id: null, api_key_hash: null,
       });
 
       dlpRepo.insert({
@@ -141,6 +146,8 @@ describe('Storage Layer', () => {
         pattern_category: 'high-confidence',
         action: 'warn',
         match_count: 1,
+        original_snippet: null,
+        redacted_snippet: null,
       });
 
       const events = dlpRepo.getByRequestId('req-1');

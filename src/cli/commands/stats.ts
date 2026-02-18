@@ -15,8 +15,8 @@ export function registerStatsCommand(program: Command): void {
         const requestsRepo = new RequestsRepository(db);
         const cacheRepo = new CacheRepository(db);
 
-        const hours = options.hours ? parseInt(options.hours, 10) : undefined;
-        const stats = requestsRepo.getStats(hours);
+        const sinceHours = options.hours ? parseInt(options.hours, 10) : undefined;
+        const stats = requestsRepo.getStats({ sinceHours });
         const cacheStats = cacheRepo.getStats();
 
         console.log(renderDashboard(stats, cacheStats));

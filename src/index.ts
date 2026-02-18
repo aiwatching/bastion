@@ -1,4 +1,5 @@
 import { loadConfig } from './config/index.js';
+import { ConfigManager } from './config/manager.js';
 import { setLogLevel } from './utils/logger.js';
 import { createLogger } from './utils/logger.js';
 import { getDatabase, closeDatabase } from './storage/database.js';
@@ -6,6 +7,7 @@ import { PluginManager } from './plugins/index.js';
 import { createMetricsCollectorPlugin } from './plugins/builtin/metrics-collector.js';
 import { createDlpScannerPlugin } from './plugins/builtin/dlp-scanner.js';
 import { createTokenOptimizerPlugin } from './plugins/builtin/token-optimizer.js';
+import { createAuditLoggerPlugin } from './plugins/builtin/audit-logger.js';
 import { registerAnthropicProvider } from './proxy/providers/anthropic.js';
 import { registerOpenAIProvider } from './proxy/providers/openai.js';
 import { registerGeminiProvider } from './proxy/providers/gemini.js';
@@ -21,6 +23,9 @@ export async function startGateway(): Promise<void> {
   setLogLevel(config.logging.level);
 
   log.info('Starting Bastion AI Gateway');
+
+  // Initialize config manager for runtime updates
+  const configManager = new ConfigManager(config);
 
   // Initialize database
   const db = getDatabase();
@@ -52,10 +57,16 @@ export async function startGateway(): Promise<void> {
     }));
   }
 
+  if (config.plugins.audit?.enabled) {
+    pluginManager.register(createAuditLoggerPlugin(db, {
+      retentionHours: config.plugins.audit.retentionHours,
+    }));
+  }
+
   // Create and start server
   const server = createProxyServer(config, pluginManager, () => {
     closeDatabase();
-  }, db);
+  }, db, configManager);
 
   await startServer(server, config);
 

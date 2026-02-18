@@ -19,6 +19,9 @@ plugins:
     cache: true
     trimWhitespace: true
     reorderForCache: true
+  audit:
+    enabled: false
+    retentionHours: 168
 
 timeouts:
   upstream: 120000
