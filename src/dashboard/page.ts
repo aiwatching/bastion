@@ -71,6 +71,8 @@ tr:hover{background:#1c2128}
 .audit-kv{display:flex;gap:6px;align-items:baseline;margin-bottom:2px;font-size:12px}
 .audit-kv .k{color:#7d8590;min-width:80px}
 .audit-kv .v{color:#e1e4e8;font-family:"SF Mono",Monaco,monospace}
+.timeline-card{margin-bottom:8px;cursor:pointer;transition:border-color .15s}
+.timeline-card:hover{border-color:#58a6ff}
 </style>
 </head>
 <body>
@@ -130,29 +132,37 @@ tr:hover{background:#1c2128}
 <!-- AUDIT TAB -->
 <div class="tab-content" id="tab-audit">
   <div class="section">
-    <h2>Recent Audit Entries</h2>
-    <table><thead><tr><th>Time</th><th>Request ID</th><th>Request Size</th><th>Response Size</th><th></th></tr></thead><tbody id="audit-recent"></tbody></table>
+    <h2>Sessions</h2>
+    <table><thead><tr><th>Time</th><th>Session</th><th>Models</th><th>Requests</th><th></th></tr></thead><tbody id="audit-sessions"></tbody></table>
     <p class="empty" id="no-audit">No audit entries. Enable audit logging in Settings to start capturing request/response content.</p>
+  </div>
+  <div id="audit-timeline" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h2 style="margin:0">Session Timeline <span id="audit-session-label" class="mono" style="font-size:12px;color:#7d8590"></span></h2>
+      <button id="audit-back" style="padding:4px 12px;font-size:12px;cursor:pointer;color:#58a6ff;background:none;border:1px solid #30363d;border-radius:6px">Back to sessions</button>
+    </div>
+    <div id="audit-timeline-content"></div>
   </div>
   <div id="audit-detail" style="display:none">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <h2 style="margin:0">Content Viewer</h2>
+      <h2 style="margin:0">Request Detail</h2>
       <div style="display:flex;gap:6px">
+        <button id="audit-back-timeline" style="padding:4px 12px;font-size:12px;cursor:pointer;color:#58a6ff;background:none;border:1px solid #30363d;border-radius:6px">Back to timeline</button>
         <button class="audit-view-tab active" data-view="parsed" style="padding:4px 12px;font-size:12px;cursor:pointer;color:#58a6ff;background:none;border:1px solid #30363d;border-radius:6px">Parsed</button>
-        <button class="audit-view-tab" data-view="raw" style="padding:4px 12px;font-size:12px;cursor:pointer;color:#7d8590;background:none;border:1px solid #30363d;border-radius:6px">Raw JSON</button>
+        <button class="audit-view-tab" data-view="raw" style="padding:4px 12px;font-size:12px;cursor:pointer;color:#7d8590;background:none;border:1px solid #30363d;border-radius:6px">Raw</button>
       </div>
     </div>
     <div id="audit-parsed">
       <div class="grid" id="audit-meta-cards" style="margin-bottom:12px"></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div class="card"><div class="label">Messages (Input)</div><div id="audit-messages" style="max-height:400px;overflow:auto;font-size:12px"></div></div>
-        <div class="card"><div class="label">Response Content</div><div id="audit-output" style="max-height:400px;overflow:auto;font-size:12px"></div></div>
+        <div class="card"><div class="label">Messages (Input)</div><div id="audit-messages" style="max-height:500px;overflow:auto;font-size:12px"></div></div>
+        <div class="card"><div class="label">Response Content</div><div id="audit-output" style="max-height:500px;overflow:auto;font-size:12px"></div></div>
       </div>
     </div>
     <div id="audit-raw" style="display:none">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div class="card"><div class="label">Request</div><pre class="snippet" id="audit-req" style="max-height:400px;overflow:auto"></pre></div>
-        <div class="card"><div class="label">Response</div><pre class="snippet" id="audit-res" style="max-height:400px;overflow:auto"></pre></div>
+        <div class="card"><div class="label">Request</div><pre class="snippet" id="audit-req" style="max-height:500px;overflow:auto"></pre></div>
+        <div class="card"><div class="label">Response</div><pre class="snippet" id="audit-res" style="max-height:500px;overflow:auto"></pre></div>
       </div>
     </div>
   </div>
@@ -330,35 +340,154 @@ async function refreshOptimizer(){
   }catch(e){}
 }
 
-// Audit tab
+// Audit tab — session-grouped view
+let auditCurrentSession=null;
+
 async function refreshAudit(){
   try{
-    const r=await fetch('/api/audit/recent');
-    const recent=await r.json();
-    document.getElementById('no-audit').style.display=recent.length?'none':'';
-    document.getElementById('audit-recent').innerHTML=recent.map(e=>
-      '<tr style="cursor:pointer" data-rid="'+e.request_id+'"><td>'+ago(e.created_at)+'</td>'+
-      '<td class="mono" style="font-size:11px">'+e.request_id.slice(0,12)+'...</td>'+
-      '<td class="mono">'+bytes(e.request_length)+'</td><td class="mono">'+bytes(e.response_length)+'</td>'+
-      '<td style="color:#58a6ff">View</td></tr>'
-    ).join('');
-    document.querySelectorAll('#audit-recent tr[data-rid]').forEach(row=>{
-      row.addEventListener('click',async()=>{
-        const rid=row.dataset.rid;
-        try{
-          const r=await fetch('/api/audit/'+rid);
-          const data=await r.json();
-          document.getElementById('audit-detail').style.display='block';
-          // Raw view
-          document.getElementById('audit-req').textContent=tryPrettyJson(data.request);
-          document.getElementById('audit-res').textContent=tryPrettyJson(data.response);
-          // Parsed view
-          renderParsedAudit(data.request,data.response);
-        }catch(e){}
-      });
-    });
-  }catch(e){}
+    const r=await fetch('/api/audit/sessions');
+    const sessions=await r.json();
+    document.getElementById('no-audit').style.display=sessions.length?'none':'';
+    document.getElementById('audit-sessions').innerHTML=sessions.map(s=>{
+      const models=(s.models||'').split(',').map(m=>'<span class="tag" style="background:#1a2a3d;color:#58a6ff">'+esc(m.trim())+'</span>').join(' ');
+      return '<tr style="cursor:pointer" data-sid="'+esc(s.session_id)+'">'+
+        '<td>'+ago(s.last_at)+'</td>'+
+        '<td class="mono" style="font-size:11px">'+esc(s.session_id.slice(0,8))+'...</td>'+
+        '<td>'+models+'</td>'+
+        '<td>'+s.request_count+'</td>'+
+        '<td style="color:#58a6ff">View</td></tr>';
+    }).join('');
+    // Also show non-session entries
+    const recentR=await fetch('/api/audit/recent');
+    const recent=await recentR.json();
+    const noSession=recent.filter(e=>!e.session_id);
+    if(noSession.length>0){
+      document.getElementById('audit-sessions').innerHTML+=
+        '<tr><td colspan="5" style="color:#7d8590;font-size:11px;padding-top:12px">Requests without session:</td></tr>'+
+        noSession.map(e=>
+          '<tr style="cursor:pointer" data-rid="'+e.request_id+'"><td>'+ago(e.created_at)+'</td>'+
+          '<td class="mono" style="font-size:11px">'+e.request_id.slice(0,12)+'...</td>'+
+          '<td>'+(e.model?'<span class="tag" style="background:#1a2a3d;color:#58a6ff">'+esc(e.model)+'</span>':'')+'</td>'+
+          '<td class="mono">'+bytes(e.request_length)+'</td>'+
+          '<td style="color:#58a6ff">View</td></tr>'
+        ).join('');
+    }
+    bindAuditSessionClicks();
+    bindAuditSingleClicks();
+  }catch(e){ console.error('Audit refresh error',e) }
 }
+
+function bindAuditSessionClicks(){
+  document.querySelectorAll('#audit-sessions tr[data-sid]').forEach(row=>{
+    row.addEventListener('click',()=>loadSessionTimeline(row.dataset.sid));
+  });
+}
+
+function bindAuditSingleClicks(){
+  document.querySelectorAll('#audit-sessions tr[data-rid]').forEach(row=>{
+    row.addEventListener('click',()=>loadSingleAudit(row.dataset.rid));
+  });
+}
+
+async function loadSessionTimeline(sessionId){
+  auditCurrentSession=sessionId;
+  try{
+    const r=await fetch('/api/audit/session/'+sessionId);
+    const timeline=await r.json();
+    document.querySelector('#tab-audit .section').style.display='none';
+    document.getElementById('audit-timeline').style.display='block';
+    document.getElementById('audit-detail').style.display='none';
+    document.getElementById('audit-session-label').textContent=sessionId.slice(0,12)+'... ('+timeline.length+' requests)';
+
+    let html='';
+    timeline.forEach((entry,i)=>{
+      const m=entry.meta;
+      const p=entry.parsed;
+      const model=p.request.model||p.response.model||m.model||'?';
+      const stopReason=p.response.stopReason||'';
+      const stopTag=stopReason==='end_turn'?'<span class="tag cached">end_turn</span>':
+        stopReason==='tool_use'?'<span class="tag" style="background:#2a2a1a;color:#ffd43b">tool_use</span>':
+        stopReason?'<span class="tag">'+esc(stopReason)+'</span>':'';
+
+      // Summary of response
+      let responseSummary='';
+      for(const c of (p.response.content||[])){
+        if(c.type==='text'&&c.text){
+          responseSummary+=esc(c.text.slice(0,120))+(c.text.length>120?'...':'');
+        }
+        if(c.type==='tool_use'){
+          responseSummary+='<span style="color:#ffd43b">[tool: '+esc(c.toolName||'?')+']</span> ';
+        }
+      }
+
+      // Summary of last user message
+      let userSummary='';
+      const msgs=p.request.messages||[];
+      const lastUser=msgs.filter(x=>x.role==='user').pop();
+      if(lastUser){
+        for(const c of (lastUser.content||[])){
+          if(c.type==='text'&&c.text){userSummary=esc(c.text.slice(0,100))+(c.text.length>100?'...':'');break}
+          if(c.type==='tool_result'){userSummary='<span style="color:#58a6ff">[tool_result]</span> '+esc((c.text||'').slice(0,80));break}
+        }
+      }
+
+      const usage=p.response.usage||{};
+      const tokens=(usage.input_tokens||0)+(usage.output_tokens||0);
+
+      html+='<div class="card timeline-card" data-rid="'+esc(m.request_id)+'">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
+          '<div style="display:flex;gap:8px;align-items:center">'+
+            '<span style="color:#484f58;font-size:11px;font-weight:600">#'+(i+1)+'</span>'+
+            '<span class="mono" style="font-size:11px;color:#7d8590">'+esc(model)+'</span>'+
+            stopTag+
+            (tokens?'<span style="font-size:11px;color:#7d8590">'+fmt(tokens)+' tok</span>':'')+
+          '</div>'+
+          '<span style="font-size:11px;color:#484f58">'+ago(m.created_at)+(m.latency_ms?' · '+m.latency_ms+'ms':'')+'</span>'+
+        '</div>'+
+        (userSummary?'<div style="font-size:12px;color:#58a6ff;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">User: '+userSummary+'</div>':'')+
+        (responseSummary?'<div style="font-size:12px;color:#8b949e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Response: '+responseSummary+'</div>':'')+
+      '</div>';
+    });
+
+    document.getElementById('audit-timeline-content').innerHTML=html;
+
+    // Bind clicks on timeline cards
+    document.querySelectorAll('#audit-timeline-content .card[data-rid]').forEach(card=>{
+      card.addEventListener('click',()=>loadSingleAudit(card.dataset.rid));
+    });
+  }catch(e){ console.error('Session load error',e) }
+}
+
+async function loadSingleAudit(requestId){
+  try{
+    const r=await fetch('/api/audit/'+requestId);
+    const data=await r.json();
+    document.querySelector('#tab-audit .section').style.display='none';
+    document.getElementById('audit-timeline').style.display=auditCurrentSession?'none':'none';
+    document.getElementById('audit-detail').style.display='block';
+    // Raw view
+    document.getElementById('audit-req').textContent=tryPrettyJson(data.raw.request);
+    document.getElementById('audit-res').textContent=tryPrettyJson(data.raw.response);
+    // Parsed view
+    renderParsedAudit(data);
+  }catch(e){ console.error('Audit load error',e) }
+}
+
+// Back buttons
+document.getElementById('audit-back').addEventListener('click',()=>{
+  auditCurrentSession=null;
+  document.getElementById('audit-timeline').style.display='none';
+  document.getElementById('audit-detail').style.display='none';
+  document.querySelector('#tab-audit .section').style.display='';
+});
+document.getElementById('audit-back-timeline').addEventListener('click',()=>{
+  document.getElementById('audit-detail').style.display='none';
+  if(auditCurrentSession){
+    document.getElementById('audit-timeline').style.display='block';
+  }else{
+    document.querySelector('#tab-audit .section').style.display='';
+  }
+});
 
 // Audit parsed/raw tab toggle
 document.querySelectorAll('.audit-view-tab').forEach(t=>{
@@ -374,169 +503,80 @@ function tryPrettyJson(s){
   try{return JSON.stringify(JSON.parse(s),null,2)}catch(e){return s}
 }
 
-function extractMsgText(content){
-  if(typeof content==='string')return content;
-  if(Array.isArray(content))return content.map(b=>{
-    if(typeof b==='string')return b;
-    if(b.type==='text')return b.text||'';
-    if(b.type==='image'||b.type==='image_url')return '[image]';
-    if(b.type==='tool_use')return '[tool: '+(b.name||'?')+']\\n'+(typeof b.input==='string'?b.input:JSON.stringify(b.input||{}));
-    if(b.type==='tool_result')return '[tool_result: '+(b.tool_use_id||'')+']\\n'+(typeof b.content==='string'?b.content:JSON.stringify(b.content||''));
-    return JSON.stringify(b);
-  }).join('\\n');
-  return JSON.stringify(content);
+// Render a single content block (pre-parsed by backend)
+function renderBlock(b){
+  if(b.type==='text')return '<div class="msg-text">'+esc(b.text||'')+'</div>';
+  if(b.type==='image')return '<div class="msg-text" style="color:#7d8590">[image]</div>';
+  if(b.type==='tool_use'){
+    return '<div style="margin:4px 0;padding:6px 8px;background:#2a2a1a;border:1px solid #4d4d26;border-radius:6px;font-size:11px">'+
+      '<div style="color:#ffd43b;font-size:10px;font-weight:600;margin-bottom:3px">TOOL_USE: '+esc(b.toolName||'?')+'</div>'+
+      '<pre style="color:#e1e4e8;white-space:pre-wrap;word-break:break-word;margin:0;font-family:inherit">'+esc(b.toolInput||'')+'</pre></div>';
+  }
+  if(b.type==='tool_result'){
+    const errStyle=b.isError?' color:#f85149;':'';
+    return '<div style="margin:4px 0;padding:6px 8px;background:#1a2a2a;border:1px solid #264d4d;border-radius:6px;font-size:11px">'+
+      '<div style="color:#58a6ff;font-size:10px;font-weight:600;margin-bottom:3px">TOOL_RESULT'+(b.isError?' (error)':'')+'</div>'+
+      '<pre style="white-space:pre-wrap;word-break:break-word;margin:0;font-family:inherit;'+errStyle+'">'+esc(b.text||'')+'</pre></div>';
+  }
+  return '<div class="msg-text" style="color:#7d8590">'+esc(b.text||JSON.stringify(b))+'</div>';
 }
 
-// Parse SSE stream text into structured data (for streaming responses)
-function parseSSEResponse(text){
-  const events=[];
-  const lines=text.split('\\n');
-  let curEvent=null,curData=[];
-  for(const line of lines){
-    if(line.startsWith('event: ')){curEvent=line.slice(7).trim()}
-    else if(line.startsWith('data: ')){curData.push(line.slice(6))}
-    else if(line.trim()===''&&curData.length>0){
-      const raw=curData.join('\\n');
-      if(raw!=='[DONE]'){try{events.push({event:curEvent,data:JSON.parse(raw)})}catch(e){}}
-      curEvent=null;curData=[];
-    }
-  }
-  if(curData.length>0){
-    const raw=curData.join('\\n');
-    if(raw!=='[DONE]'){try{events.push({event:curEvent,data:JSON.parse(raw)})}catch(e){}}
-  }
-  return events;
-}
-
-// Reconstruct a readable response from SSE events
-function reconstructSSE(events){
-  const result={model:null,stopReason:null,usage:{},textBlocks:[],toolUseBlocks:[]};
-  let curText='',curToolName='',curToolInput='';
-  for(const ev of events){
-    const d=ev.data;if(!d)continue;
-    // Anthropic SSE
-    if(d.type==='message_start'&&d.message){
-      result.model=d.message.model;
-      if(d.message.usage)Object.assign(result.usage,d.message.usage);
-    }
-    if(d.type==='content_block_start'&&d.content_block){
-      if(d.content_block.type==='tool_use')curToolName=d.content_block.name||'';
-    }
-    if(d.type==='content_block_delta'&&d.delta){
-      if(d.delta.type==='text_delta')curText+=d.delta.text||'';
-      if(d.delta.type==='input_json_delta')curToolInput+=d.delta.partial_json||'';
-    }
-    if(d.type==='content_block_stop'){
-      if(curText){result.textBlocks.push(curText);curText=''}
-      if(curToolName){result.toolUseBlocks.push({name:curToolName,input:curToolInput});curToolName='';curToolInput=''}
-    }
-    if(d.type==='message_delta'){
-      if(d.delta&&d.delta.stop_reason)result.stopReason=d.delta.stop_reason;
-      if(d.usage)Object.assign(result.usage,d.usage);
-    }
-    // OpenAI SSE
-    if(d.choices&&Array.isArray(d.choices)){
-      for(const c of d.choices){
-        if(c.delta&&c.delta.content)curText+=c.delta.content;
-        if(c.finish_reason)result.stopReason=c.finish_reason;
-      }
-    }
-    if(d.model)result.model=result.model||d.model;
-    if(d.usage)Object.assign(result.usage,d.usage);
-  }
-  if(curText)result.textBlocks.push(curText);
-  return result;
-}
-
-function truncEsc(txt,max){
-  if(!txt)return'';
-  const display=txt.length>max?txt.slice(0,max)+'\\n... truncated ('+fmt(txt.length)+' chars total)':txt;
-  return esc(display);
-}
-
-function renderParsedAudit(reqStr,resStr){
-  let req=null;
-  try{req=JSON.parse(reqStr)}catch(e){}
-
-  // Try JSON response first, then SSE
-  let res=null,sseResult=null,isSSE=false;
-  try{res=JSON.parse(resStr)}catch(e){}
-  if(!res&&resStr.includes('data: ')){
-    isSSE=true;
-    const events=parseSSEResponse(resStr);
-    if(events.length>0)sseResult=reconstructSSE(events);
-  }
+function renderParsedAudit(data){
+  const req=data.request;
+  const res=data.response;
 
   // --- Meta cards ---
   const cards=[];
-  const model=(req&&req.model)||(res&&res.model)||(sseResult&&sseResult.model);
+  const model=req.model||res.model;
   if(model)cards.push(card('Model',esc(model)));
-  if(req&&req.max_tokens)cards.push(card('Max Tokens',fmt(req.max_tokens)));
-  if(req&&req.temperature!=null)cards.push(card('Temperature',String(req.temperature)));
-  cards.push(card('Stream',(req&&req.stream)?'Yes':'No'));
+  if(req.maxTokens)cards.push(card('Max Tokens',fmt(req.maxTokens)));
+  if(req.temperature!=null)cards.push(card('Temperature',String(req.temperature)));
+  cards.push(card('Stream',req.stream?'Yes':'No'));
 
-  // Usage from JSON response or SSE
-  const usage=res&&res.usage?res.usage:(sseResult?sseResult.usage:{});
+  const usage=res.usage||{};
   if(usage.input_tokens)cards.push(card('Input Tokens',fmt(usage.input_tokens),'blue'));
   if(usage.output_tokens)cards.push(card('Output Tokens',fmt(usage.output_tokens),'blue'));
   if(usage.cache_creation_input_tokens)cards.push(card('Cache Create',fmt(usage.cache_creation_input_tokens)));
   if(usage.cache_read_input_tokens)cards.push(card('Cache Read',fmt(usage.cache_read_input_tokens),'cost'));
-
-  const stopReason=res&&res.stop_reason?res.stop_reason:(sseResult?sseResult.stopReason:null);
-  if(stopReason)cards.push(card('Stop Reason',esc(stopReason)));
+  if(res.stopReason)cards.push(card('Stop Reason',esc(res.stopReason)));
 
   document.getElementById('audit-meta-cards').innerHTML=cards.join('');
 
-  // --- Request messages ---
+  // --- Request side ---
   const msgEl=document.getElementById('audit-messages');
-  if(req&&req.messages&&Array.isArray(req.messages)){
-    let sysHtml='';
-    if(req.system){
-      const sysTxt=typeof req.system==='string'?req.system:extractMsgText(req.system);
-      sysHtml='<div class="msg-bubble system"><div class="msg-role">system</div><div class="msg-text">'+truncEsc(sysTxt,500)+'</div></div>';
-    }
-    msgEl.innerHTML=sysHtml+req.messages.map(m=>{
-      const role=m.role||'unknown';
-      const cls=role==='user'?'user':role==='assistant'?'assistant':'system';
-      const txt=extractMsgText(m.content);
-      return '<div class="msg-bubble '+cls+'"><div class="msg-role">'+esc(role)+'</div><div class="msg-text">'+truncEsc(txt,800)+'</div></div>';
-    }).join('');
-  }else{
-    msgEl.innerHTML='<pre class="snippet" style="max-height:400px;overflow:auto">'+esc(tryPrettyJson(reqStr).slice(0,2000))+'</pre>';
+  let html='';
+
+  if(req.system){
+    html+='<div class="msg-bubble system"><div class="msg-role">system</div><div class="msg-text">'+esc(req.system)+'</div></div>';
   }
 
-  // --- Response content ---
-  const outEl=document.getElementById('audit-output');
-  if(sseResult){
-    // Reconstructed from SSE stream
-    let html='';
-    for(const txt of sseResult.textBlocks){
-      html+='<div class="msg-bubble assistant"><div class="msg-role">assistant</div><div class="msg-text">'+truncEsc(txt,3000)+'</div></div>';
-    }
-    for(const tool of sseResult.toolUseBlocks){
-      let inp=tool.input;
-      try{inp=JSON.stringify(JSON.parse(tool.input),null,2)}catch(e){}
-      html+='<div class="msg-bubble system"><div class="msg-role">tool_use: '+esc(tool.name)+'</div><div class="msg-text">'+truncEsc(inp,1500)+'</div></div>';
-    }
-    outEl.innerHTML=html||'<div class="empty">No content blocks in response</div>';
-  }else if(res&&res.content&&Array.isArray(res.content)){
-    // Anthropic non-streaming JSON
-    outEl.innerHTML=res.content.map(b=>{
-      if(b.type==='text')return '<div class="msg-bubble assistant"><div class="msg-role">text</div><div class="msg-text">'+truncEsc(b.text||'',3000)+'</div></div>';
-      if(b.type==='tool_use'){
-        const inp=typeof b.input==='string'?b.input:JSON.stringify(b.input||{},null,2);
-        return '<div class="msg-bubble system"><div class="msg-role">tool_use: '+esc(b.name||'')+'</div><div class="msg-text">'+truncEsc(inp,1500)+'</div></div>';
-      }
-      return '<div class="msg-bubble system"><div class="msg-role">'+esc(b.type||'block')+'</div><div class="msg-text">'+truncEsc(JSON.stringify(b),500)+'</div></div>';
+  if(req.tools&&req.tools.length>0){
+    html+='<div style="margin:6px 0;padding:6px 10px;background:#1c2128;border:1px solid #30363d;border-radius:6px;font-size:11px">'+
+      '<span style="color:#7d8590;font-weight:600">TOOLS ('+req.tools.length+'):</span> '+
+      '<span class="mono" style="color:#b388ff">'+req.tools.map(n=>esc(n)).join(', ')+'</span></div>';
+  }
+
+  if(req.messages&&req.messages.length>0){
+    html+=req.messages.map(m=>{
+      const role=m.role||'unknown';
+      const cls=role==='user'?'user':role==='assistant'?'assistant':'system';
+      const blocks=(m.content||[]).map(renderBlock).join('');
+      return '<div class="msg-bubble '+cls+'"><div class="msg-role">'+esc(role)+'</div>'+blocks+'</div>';
     }).join('');
-  }else if(res&&res.choices&&Array.isArray(res.choices)){
-    // OpenAI non-streaming JSON
-    outEl.innerHTML=res.choices.map(c=>{
-      const m=c.message||{};
-      return '<div class="msg-bubble assistant"><div class="msg-role">'+esc(m.role||'assistant')+'</div><div class="msg-text">'+truncEsc(m.content||'',3000)+'</div></div>';
+  }
+
+  msgEl.innerHTML=html||'<div class="empty">No request data</div>';
+
+  // --- Response side ---
+  const outEl=document.getElementById('audit-output');
+  if(res.content&&res.content.length>0){
+    outEl.innerHTML=res.content.map(b=>{
+      if(b.type==='text')return '<div class="msg-bubble assistant"><div class="msg-role">assistant</div><div class="msg-text">'+esc(b.text||'')+'</div></div>';
+      if(b.type==='tool_use')return '<div class="msg-bubble system"><div class="msg-role">tool_use: '+esc(b.toolName||'')+'</div><div class="msg-text">'+esc(b.toolInput||'')+'</div></div>';
+      return renderBlock(b);
     }).join('');
   }else{
-    outEl.innerHTML='<pre class="snippet" style="max-height:400px;overflow:auto">'+esc(resStr.slice(0,3000))+'</pre>';
+    outEl.innerHTML='<div class="empty">No response content</div>';
   }
 }
 

@@ -8,9 +8,11 @@ const log = createLogger('cache');
 
 export class ResponseCache {
   private repo: CacheRepository;
+  private ttlSeconds: number;
 
-  constructor(db: Database.Database) {
+  constructor(db: Database.Database, ttlSeconds: number = 300) {
     this.repo = new CacheRepository(db);
+    this.ttlSeconds = ttlSeconds;
   }
 
   getCacheKey(provider: string, model: string, body: string): string {
@@ -19,7 +21,7 @@ export class ResponseCache {
 
   get(provider: string, model: string, body: string): string | null {
     const key = this.getCacheKey(provider, model, body);
-    const record = this.repo.get(key);
+    const record = this.repo.get(key, this.ttlSeconds);
     if (!record) return null;
 
     try {

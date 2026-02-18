@@ -21,9 +21,17 @@ export class CacheRepository {
     this.db = db;
   }
 
-  get(key: string): CacheRecord | undefined {
-    this.db.prepare('UPDATE cache SET hit_count = hit_count + 1, last_hit_at = datetime(\'now\') WHERE key = ?').run(key);
-    return this.db.prepare('SELECT * FROM cache WHERE key = ?').get(key) as CacheRecord | undefined;
+  get(key: string, ttlSeconds?: number): CacheRecord | undefined {
+    let query = 'SELECT * FROM cache WHERE key = ?';
+    if (ttlSeconds && ttlSeconds > 0) {
+      query += ` AND created_at > datetime('now', '-${Math.floor(ttlSeconds)} seconds')`;
+    }
+    const record = this.db.prepare(query).get(key) as CacheRecord | undefined;
+    if (!record) return undefined;
+    this.db.prepare("UPDATE cache SET hit_count = hit_count + 1, last_hit_at = datetime('now') WHERE key = ?").run(key);
+    // Return with updated hit_count
+    record.hit_count += 1;
+    return record;
   }
 
   set(record: Omit<CacheRecord, 'created_at' | 'last_hit_at' | 'hit_count'>): void {

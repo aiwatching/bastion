@@ -49,6 +49,7 @@ export async function startGateway(): Promise<void> {
 
   pluginManager.register(createTokenOptimizerPlugin(db, {
     cache: config.plugins.optimizer.cache,
+    cacheTtlSeconds: config.plugins.optimizer.cacheTtlSeconds ?? 300,
     trimWhitespace: config.plugins.optimizer.trimWhitespace,
     reorderForCache: config.plugins.optimizer.reorderForCache,
   }));
