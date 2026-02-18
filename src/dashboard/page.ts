@@ -208,6 +208,13 @@ tr:hover{background:#1c2128}
         <option value="block">Block</option>
       </select>
     </div>
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">AI Validation <span id="ai-val-status" style="font-size:11px;margin-left:6px"></span></div>
+        <div class="toggle-desc">Use LLM to verify DLP matches and filter false positives (consumes tokens, default off). Requires API key in config file.</div>
+      </div>
+      <label class="switch"><input type="checkbox" id="ai-val-toggle"><span class="slider"></span></label>
+    </div>
   </div>
 </div>
 
@@ -720,6 +727,26 @@ async function refreshSettings(){
     dlpAction.onchange=async()=>{
       await fetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},
         body:JSON.stringify({plugins:{dlp:{action:dlpAction.value}}})});
+    };
+
+    // AI validation toggle
+    const aiVal=config.plugins?.dlp?.aiValidation||{};
+    const aiToggle=document.getElementById('ai-val-toggle');
+    const aiStatus=document.getElementById('ai-val-status');
+    aiToggle.checked=!!aiVal.enabled;
+    if(!aiVal.apiKey){
+      aiStatus.innerHTML='<span style="color:#d29922">No API key configured</span>';
+      aiToggle.disabled=true;
+    }else{
+      aiStatus.innerHTML=aiVal.enabled
+        ?'<span style="color:#3fb950">Active \u2014 '+esc(aiVal.model||'?')+'</span>'
+        :'<span style="color:#7d8590">Off</span>';
+      aiToggle.disabled=false;
+    }
+    aiToggle.onchange=async()=>{
+      await fetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},
+        body:JSON.stringify({plugins:{dlp:{aiValidation:{enabled:aiToggle.checked}}}})});
+      refreshSettings();
     };
   }catch(e){}
 }
