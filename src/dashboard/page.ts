@@ -62,6 +62,15 @@ tr:hover{background:#1c2128}
 .switch input:checked+.slider{background:#3fb950}
 .switch input:checked+.slider:before{transform:translateX(18px)}
 .config-select{background:#161b22;border:1px solid #30363d;color:#e1e4e8;padding:4px 8px;border-radius:4px;font-size:12px}
+.msg-bubble{padding:8px 12px;border-radius:8px;margin-bottom:6px;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+.msg-bubble.user{background:#1a2a3d;border:1px solid #264166}
+.msg-bubble.assistant{background:#1a2d1a;border:1px solid #264d26}
+.msg-bubble.system{background:#2a2a1a;border:1px solid #4d4d26}
+.msg-role{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#7d8590;margin-bottom:4px;font-weight:600}
+.msg-text{color:#e1e4e8}
+.audit-kv{display:flex;gap:6px;align-items:baseline;margin-bottom:2px;font-size:12px}
+.audit-kv .k{color:#7d8590;min-width:80px}
+.audit-kv .v{color:#e1e4e8;font-family:"SF Mono",Monaco,monospace}
 </style>
 </head>
 <body>
@@ -126,10 +135,25 @@ tr:hover{background:#1c2128}
     <p class="empty" id="no-audit">No audit entries. Enable audit logging in Settings to start capturing request/response content.</p>
   </div>
   <div id="audit-detail" style="display:none">
-    <h2>Content Viewer</h2>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <div class="card"><div class="label">Request</div><pre class="snippet" id="audit-req" style="max-height:400px;overflow:auto"></pre></div>
-      <div class="card"><div class="label">Response</div><pre class="snippet" id="audit-res" style="max-height:400px;overflow:auto"></pre></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <h2 style="margin:0">Content Viewer</h2>
+      <div style="display:flex;gap:6px">
+        <button class="audit-view-tab active" data-view="parsed" style="padding:4px 12px;font-size:12px;cursor:pointer;color:#58a6ff;background:none;border:1px solid #30363d;border-radius:6px">Parsed</button>
+        <button class="audit-view-tab" data-view="raw" style="padding:4px 12px;font-size:12px;cursor:pointer;color:#7d8590;background:none;border:1px solid #30363d;border-radius:6px">Raw JSON</button>
+      </div>
+    </div>
+    <div id="audit-parsed">
+      <div class="grid" id="audit-meta-cards" style="margin-bottom:12px"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="card"><div class="label">Messages (Input)</div><div id="audit-messages" style="max-height:400px;overflow:auto;font-size:12px"></div></div>
+        <div class="card"><div class="label">Response Content</div><div id="audit-output" style="max-height:400px;overflow:auto;font-size:12px"></div></div>
+      </div>
+    </div>
+    <div id="audit-raw" style="display:none">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="card"><div class="label">Request</div><pre class="snippet" id="audit-req" style="max-height:400px;overflow:auto"></pre></div>
+        <div class="card"><div class="label">Response</div><pre class="snippet" id="audit-res" style="max-height:400px;overflow:auto"></pre></div>
+      </div>
     </div>
   </div>
 </div>
@@ -325,16 +349,195 @@ async function refreshAudit(){
           const r=await fetch('/api/audit/'+rid);
           const data=await r.json();
           document.getElementById('audit-detail').style.display='block';
+          // Raw view
           document.getElementById('audit-req').textContent=tryPrettyJson(data.request);
           document.getElementById('audit-res').textContent=tryPrettyJson(data.response);
+          // Parsed view
+          renderParsedAudit(data.request,data.response);
         }catch(e){}
       });
     });
   }catch(e){}
 }
 
+// Audit parsed/raw tab toggle
+document.querySelectorAll('.audit-view-tab').forEach(t=>{
+  t.addEventListener('click',()=>{
+    document.querySelectorAll('.audit-view-tab').forEach(x=>{x.style.color='#7d8590'});
+    t.style.color='#58a6ff';
+    document.getElementById('audit-parsed').style.display=t.dataset.view==='parsed'?'':'none';
+    document.getElementById('audit-raw').style.display=t.dataset.view==='raw'?'':'none';
+  });
+});
+
 function tryPrettyJson(s){
   try{return JSON.stringify(JSON.parse(s),null,2)}catch(e){return s}
+}
+
+function extractMsgText(content){
+  if(typeof content==='string')return content;
+  if(Array.isArray(content))return content.map(b=>{
+    if(typeof b==='string')return b;
+    if(b.type==='text')return b.text||'';
+    if(b.type==='image'||b.type==='image_url')return '[image]';
+    if(b.type==='tool_use')return '[tool: '+(b.name||'?')+']\\n'+(typeof b.input==='string'?b.input:JSON.stringify(b.input||{}));
+    if(b.type==='tool_result')return '[tool_result: '+(b.tool_use_id||'')+']\\n'+(typeof b.content==='string'?b.content:JSON.stringify(b.content||''));
+    return JSON.stringify(b);
+  }).join('\\n');
+  return JSON.stringify(content);
+}
+
+// Parse SSE stream text into structured data (for streaming responses)
+function parseSSEResponse(text){
+  const events=[];
+  const lines=text.split('\\n');
+  let curEvent=null,curData=[];
+  for(const line of lines){
+    if(line.startsWith('event: ')){curEvent=line.slice(7).trim()}
+    else if(line.startsWith('data: ')){curData.push(line.slice(6))}
+    else if(line.trim()===''&&curData.length>0){
+      const raw=curData.join('\\n');
+      if(raw!=='[DONE]'){try{events.push({event:curEvent,data:JSON.parse(raw)})}catch(e){}}
+      curEvent=null;curData=[];
+    }
+  }
+  if(curData.length>0){
+    const raw=curData.join('\\n');
+    if(raw!=='[DONE]'){try{events.push({event:curEvent,data:JSON.parse(raw)})}catch(e){}}
+  }
+  return events;
+}
+
+// Reconstruct a readable response from SSE events
+function reconstructSSE(events){
+  const result={model:null,stopReason:null,usage:{},textBlocks:[],toolUseBlocks:[]};
+  let curText='',curToolName='',curToolInput='';
+  for(const ev of events){
+    const d=ev.data;if(!d)continue;
+    // Anthropic SSE
+    if(d.type==='message_start'&&d.message){
+      result.model=d.message.model;
+      if(d.message.usage)Object.assign(result.usage,d.message.usage);
+    }
+    if(d.type==='content_block_start'&&d.content_block){
+      if(d.content_block.type==='tool_use')curToolName=d.content_block.name||'';
+    }
+    if(d.type==='content_block_delta'&&d.delta){
+      if(d.delta.type==='text_delta')curText+=d.delta.text||'';
+      if(d.delta.type==='input_json_delta')curToolInput+=d.delta.partial_json||'';
+    }
+    if(d.type==='content_block_stop'){
+      if(curText){result.textBlocks.push(curText);curText=''}
+      if(curToolName){result.toolUseBlocks.push({name:curToolName,input:curToolInput});curToolName='';curToolInput=''}
+    }
+    if(d.type==='message_delta'){
+      if(d.delta&&d.delta.stop_reason)result.stopReason=d.delta.stop_reason;
+      if(d.usage)Object.assign(result.usage,d.usage);
+    }
+    // OpenAI SSE
+    if(d.choices&&Array.isArray(d.choices)){
+      for(const c of d.choices){
+        if(c.delta&&c.delta.content)curText+=c.delta.content;
+        if(c.finish_reason)result.stopReason=c.finish_reason;
+      }
+    }
+    if(d.model)result.model=result.model||d.model;
+    if(d.usage)Object.assign(result.usage,d.usage);
+  }
+  if(curText)result.textBlocks.push(curText);
+  return result;
+}
+
+function truncEsc(txt,max){
+  if(!txt)return'';
+  const display=txt.length>max?txt.slice(0,max)+'\\n... truncated ('+fmt(txt.length)+' chars total)':txt;
+  return esc(display);
+}
+
+function renderParsedAudit(reqStr,resStr){
+  let req=null;
+  try{req=JSON.parse(reqStr)}catch(e){}
+
+  // Try JSON response first, then SSE
+  let res=null,sseResult=null,isSSE=false;
+  try{res=JSON.parse(resStr)}catch(e){}
+  if(!res&&resStr.includes('data: ')){
+    isSSE=true;
+    const events=parseSSEResponse(resStr);
+    if(events.length>0)sseResult=reconstructSSE(events);
+  }
+
+  // --- Meta cards ---
+  const cards=[];
+  const model=(req&&req.model)||(res&&res.model)||(sseResult&&sseResult.model);
+  if(model)cards.push(card('Model',esc(model)));
+  if(req&&req.max_tokens)cards.push(card('Max Tokens',fmt(req.max_tokens)));
+  if(req&&req.temperature!=null)cards.push(card('Temperature',String(req.temperature)));
+  cards.push(card('Stream',(req&&req.stream)?'Yes':'No'));
+
+  // Usage from JSON response or SSE
+  const usage=res&&res.usage?res.usage:(sseResult?sseResult.usage:{});
+  if(usage.input_tokens)cards.push(card('Input Tokens',fmt(usage.input_tokens),'blue'));
+  if(usage.output_tokens)cards.push(card('Output Tokens',fmt(usage.output_tokens),'blue'));
+  if(usage.cache_creation_input_tokens)cards.push(card('Cache Create',fmt(usage.cache_creation_input_tokens)));
+  if(usage.cache_read_input_tokens)cards.push(card('Cache Read',fmt(usage.cache_read_input_tokens),'cost'));
+
+  const stopReason=res&&res.stop_reason?res.stop_reason:(sseResult?sseResult.stopReason:null);
+  if(stopReason)cards.push(card('Stop Reason',esc(stopReason)));
+
+  document.getElementById('audit-meta-cards').innerHTML=cards.join('');
+
+  // --- Request messages ---
+  const msgEl=document.getElementById('audit-messages');
+  if(req&&req.messages&&Array.isArray(req.messages)){
+    let sysHtml='';
+    if(req.system){
+      const sysTxt=typeof req.system==='string'?req.system:extractMsgText(req.system);
+      sysHtml='<div class="msg-bubble system"><div class="msg-role">system</div><div class="msg-text">'+truncEsc(sysTxt,500)+'</div></div>';
+    }
+    msgEl.innerHTML=sysHtml+req.messages.map(m=>{
+      const role=m.role||'unknown';
+      const cls=role==='user'?'user':role==='assistant'?'assistant':'system';
+      const txt=extractMsgText(m.content);
+      return '<div class="msg-bubble '+cls+'"><div class="msg-role">'+esc(role)+'</div><div class="msg-text">'+truncEsc(txt,800)+'</div></div>';
+    }).join('');
+  }else{
+    msgEl.innerHTML='<pre class="snippet" style="max-height:400px;overflow:auto">'+esc(tryPrettyJson(reqStr).slice(0,2000))+'</pre>';
+  }
+
+  // --- Response content ---
+  const outEl=document.getElementById('audit-output');
+  if(sseResult){
+    // Reconstructed from SSE stream
+    let html='';
+    for(const txt of sseResult.textBlocks){
+      html+='<div class="msg-bubble assistant"><div class="msg-role">assistant</div><div class="msg-text">'+truncEsc(txt,3000)+'</div></div>';
+    }
+    for(const tool of sseResult.toolUseBlocks){
+      let inp=tool.input;
+      try{inp=JSON.stringify(JSON.parse(tool.input),null,2)}catch(e){}
+      html+='<div class="msg-bubble system"><div class="msg-role">tool_use: '+esc(tool.name)+'</div><div class="msg-text">'+truncEsc(inp,1500)+'</div></div>';
+    }
+    outEl.innerHTML=html||'<div class="empty">No content blocks in response</div>';
+  }else if(res&&res.content&&Array.isArray(res.content)){
+    // Anthropic non-streaming JSON
+    outEl.innerHTML=res.content.map(b=>{
+      if(b.type==='text')return '<div class="msg-bubble assistant"><div class="msg-role">text</div><div class="msg-text">'+truncEsc(b.text||'',3000)+'</div></div>';
+      if(b.type==='tool_use'){
+        const inp=typeof b.input==='string'?b.input:JSON.stringify(b.input||{},null,2);
+        return '<div class="msg-bubble system"><div class="msg-role">tool_use: '+esc(b.name||'')+'</div><div class="msg-text">'+truncEsc(inp,1500)+'</div></div>';
+      }
+      return '<div class="msg-bubble system"><div class="msg-role">'+esc(b.type||'block')+'</div><div class="msg-text">'+truncEsc(JSON.stringify(b),500)+'</div></div>';
+    }).join('');
+  }else if(res&&res.choices&&Array.isArray(res.choices)){
+    // OpenAI non-streaming JSON
+    outEl.innerHTML=res.choices.map(c=>{
+      const m=c.message||{};
+      return '<div class="msg-bubble assistant"><div class="msg-role">'+esc(m.role||'assistant')+'</div><div class="msg-text">'+truncEsc(m.content||'',3000)+'</div></div>';
+    }).join('');
+  }else{
+    outEl.innerHTML='<pre class="snippet" style="max-height:400px;overflow:auto">'+esc(resStr.slice(0,3000))+'</pre>';
+  }
 }
 
 // Settings tab
