@@ -35,33 +35,29 @@ export async function startGateway(): Promise<void> {
   registerOpenAIProvider();
   registerGeminiProvider();
 
-  // Initialize plugin manager
+  // Initialize plugin manager — register all plugins, disable those not enabled
   const pluginManager = new PluginManager(config.timeouts.plugin);
 
-  if (config.plugins.metrics.enabled) {
-    pluginManager.register(createMetricsCollectorPlugin(db));
-  }
+  pluginManager.register(createMetricsCollectorPlugin(db));
+  if (!config.plugins.metrics.enabled) pluginManager.disable('metrics-collector');
 
-  if (config.plugins.dlp.enabled) {
-    pluginManager.register(createDlpScannerPlugin(db, {
-      action: config.plugins.dlp.action,
-      patterns: config.plugins.dlp.patterns,
-    }));
-  }
+  pluginManager.register(createDlpScannerPlugin(db, {
+    action: config.plugins.dlp.action,
+    patterns: config.plugins.dlp.patterns,
+  }));
+  if (!config.plugins.dlp.enabled) pluginManager.disable('dlp-scanner');
 
-  if (config.plugins.optimizer.enabled) {
-    pluginManager.register(createTokenOptimizerPlugin(db, {
-      cache: config.plugins.optimizer.cache,
-      trimWhitespace: config.plugins.optimizer.trimWhitespace,
-      reorderForCache: config.plugins.optimizer.reorderForCache,
-    }));
-  }
+  pluginManager.register(createTokenOptimizerPlugin(db, {
+    cache: config.plugins.optimizer.cache,
+    trimWhitespace: config.plugins.optimizer.trimWhitespace,
+    reorderForCache: config.plugins.optimizer.reorderForCache,
+  }));
+  if (!config.plugins.optimizer.enabled) pluginManager.disable('token-optimizer');
 
-  if (config.plugins.audit?.enabled) {
-    pluginManager.register(createAuditLoggerPlugin(db, {
-      retentionHours: config.plugins.audit.retentionHours,
-    }));
-  }
+  pluginManager.register(createAuditLoggerPlugin(db, {
+    retentionHours: config.plugins.audit?.retentionHours ?? 168,
+  }));
+  if (!config.plugins.audit?.enabled) pluginManager.disable('audit-logger');
 
   // Create and start server
   const server = createProxyServer(config, pluginManager, () => {
