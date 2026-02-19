@@ -133,7 +133,12 @@ bastion trust-ca
 
 Open `http://127.0.0.1:8420/dashboard` in a browser while the gateway is running.
 
-5 tabs: **Overview** (metrics, per-session/per-key stats), **DLP** (findings with before/after snippets), **Optimizer** (cache hit rate, tokens saved), **Audit** (request/response content viewer), **Settings** (toggle plugins at runtime without restart).
+5 tabs:
+- **Overview** — Request metrics, cost, tokens, per-provider/per-model/per-session breakdown
+- **DLP** — Findings with direction (req/resp), clickable request links to drill into full audit detail, original/redacted snippets, pattern management (toggle, add custom, delete)
+- **Optimizer** — Cache hit rate, tokens saved
+- **Audit** — Session-based request/response viewer with timeline, formatted JSON views
+- **Settings** — Toggle plugins, configure AI validation, runtime changes without restart
 
 ## How It Works
 
@@ -150,7 +155,29 @@ A local CA certificate (`~/.bastion/ca.crt`) is generated automatically. Node.js
 Records every API request: provider, model, tokens, cost, latency. Data stored in SQLite (`~/.bastion/bastion.db`).
 
 ### DLP Scanner
-Scans outgoing requests for sensitive data (AWS keys, GitHub tokens, credit cards, SSNs, etc.).
+Bidirectional scanning — inspects both **outgoing requests** and **incoming responses** for sensitive data. Non-streaming responses are intercepted pre-send (can block/redact before reaching the client). Streaming responses are scanned post-send (detection + audit only).
+
+Any DLP hit automatically creates an audit log entry with the full request/response content, regardless of whether the Audit Logger plugin is enabled.
+
+**Built-in patterns (19):**
+
+| Category | Patterns |
+|----------|----------|
+| `high-confidence` | AWS Access Key, AWS Secret Key, GitHub PAT, GitHub Fine-grained PAT, Slack Token, Stripe Secret Key, Private Key, OpenAI API Key, Anthropic API Key, Google AI / Gemini API Key, Hugging Face Token, Replicate API Token, Groq API Key, Perplexity API Key, xAI (Grok) API Key, Cohere / Mistral / Together AI API Key (context-aware), Azure OpenAI API Key (context-aware) |
+| `validated` | Credit Card (Luhn check), US SSN (structural validation) |
+| `context-aware` | Email Address, Phone Number, IPv4 Address |
+
+Patterns are stored in SQLite and can be managed from the dashboard (enable/disable, add custom patterns) without restarting. Built-in patterns are seeded on first start.
+
+**AI Validation (optional, off by default):**
+Uses an LLM to filter false positives. Enable in config with an API key — results are cached (LRU) to minimize token usage.
+
+**Standalone scan API:**
+```bash
+curl -X POST http://127.0.0.1:8420/api/dlp/scan \
+  -H "Content-Type: application/json" \
+  -d '{"text": "my key is sk-ant-abc123...", "action": "warn"}'
+```
 
 Configure in `~/.bastion/config.yaml`:
 ```yaml
@@ -160,6 +187,12 @@ plugins:
     patterns:
       - "high-confidence"
       - "validated"
+      - "context-aware"
+    aiValidation:
+      enabled: false          # set to true to enable LLM-based false positive filtering
+      provider: "anthropic"   # anthropic | openai
+      model: "claude-haiku-4-5-20241022"
+      apiKey: ""              # required if enabled
 ```
 
 ### Token Optimizer
@@ -167,7 +200,7 @@ plugins:
 - **Whitespace trimming** — Collapses excessive whitespace to save tokens
 
 ### Audit Logger
-Stores request/response content (encrypted at rest) for review in the dashboard. Configurable retention period with automatic purge.
+Stores request/response content (encrypted at rest) for review in the dashboard. Configurable retention period with automatic purge. Note: DLP hits are auto-audited even if this plugin is disabled.
 
 ## Configuration
 
@@ -186,15 +219,24 @@ plugins:
     enabled: true
   dlp:
     enabled: true
-    action: "block"    # block sensitive data instead of just warning
+    action: "block"    # pass | warn | redact | block
     patterns:
       - "high-confidence"
       - "validated"
       - "context-aware"
+    aiValidation:
+      enabled: false
+      provider: "anthropic"   # anthropic | openai
+      model: "claude-haiku-4-5-20241022"
+      apiKey: ""
+      timeoutMs: 5000
+      cacheSize: 500
   optimizer:
     enabled: true
     cache: true
+    cacheTtlSeconds: 300
     trimWhitespace: true
+    reorderForCache: true
   audit:
     enabled: true
     retentionHours: 168  # 7 days
@@ -210,6 +252,29 @@ BASTION_PORT=9000 bastion start
 BASTION_HOST=0.0.0.0 bastion start
 BASTION_LOG_LEVEL=debug bastion start
 ```
+
+## API
+
+All endpoints are available at `http://127.0.0.1:8420` while the gateway is running.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/stats` | Usage statistics (requests, tokens, cost). Query params: `session_id`, `api_key_hash`, `hours` |
+| `GET` | `/api/sessions` | List tracked sessions |
+| `GET` | `/api/dlp/recent?limit=50` | Recent DLP findings (joined with request metadata) |
+| `POST` | `/api/dlp/scan` | Standalone DLP scan (body: `{"text": "...", "action": "warn"}`) |
+| `GET` | `/api/dlp/patterns` | List all DLP patterns |
+| `POST` | `/api/dlp/patterns` | Add custom pattern |
+| `PUT` | `/api/dlp/patterns/:id` | Update pattern (toggle enabled, edit fields) |
+| `DELETE` | `/api/dlp/patterns/:id` | Delete custom pattern (built-ins cannot be deleted) |
+| `GET` | `/api/audit/recent?limit=50` | Recent audit entries |
+| `GET` | `/api/audit/sessions` | Audit sessions list |
+| `GET` | `/api/audit/session/:id` | Parsed timeline for a session |
+| `GET` | `/api/audit/:requestId` | Single request detail (parsed request + response) |
+| `GET` | `/api/optimizer/stats` | Cache hit rate and tokens saved |
+| `GET` | `/api/optimizer/recent?limit=50` | Recent optimizer events |
+| `GET` | `/api/config` | Current configuration + plugin status |
+| `PUT` | `/api/config` | Update configuration at runtime |
 
 ## Data Storage
 

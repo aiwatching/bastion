@@ -162,8 +162,6 @@ export function registerProxyCommand(program: Command): void {
       const noProxy = [
         config.server.host,
         'localhost',
-        'a.claude.ai',
-        'claude.ai',
         'console.anthropic.com',
         'platform.claude.com',
         'auth.anthropic.com',
