@@ -23,4 +23,18 @@ export const contextAwarePatterns: DlpPattern[] = [
     description: 'IPv4 Address',
     requireContext: ['ip', 'server', 'host', 'address', 'connect', 'network'],
   },
+  {
+    name: 'drivers-license',
+    category: 'context-aware',
+    regex: /\b[A-Z][0-9]{7,12}\b/g,
+    description: 'Driver License Number (letter prefix + 7-12 digits)',
+    requireContext: ['driver', 'license', 'licence', 'DL', 'driving'],
+  },
+  {
+    name: 'passport-number',
+    category: 'context-aware',
+    regex: /\b[A-Z]{1,2}[0-9]{5,9}\b/g,
+    description: 'Passport Number',
+    requireContext: ['passport'],
+  },
 ];

@@ -26,6 +26,8 @@ export interface DlpScannerConfig {
   action: DlpAction;
   patterns: string[];
   aiValidation?: AiValidatorConfig;
+  /** Live getter for action — when provided, overrides static `action` field */
+  getAction?: () => DlpAction;
 }
 
 /**
@@ -47,6 +49,7 @@ export function createDlpScannerPlugin(db: Database.Database, config: DlpScanner
   const dlpRepo = new DlpEventsRepository(db);
   const patternsRepo = new DlpPatternsRepository(db);
   const auditRepo = new AuditLogRepository(db);
+  const getAction = (): DlpAction => config.getAction ? config.getAction() : config.action;
 
   // AI validation — optional, default off
   const aiValidator = config.aiValidation
@@ -71,7 +74,7 @@ export function createDlpScannerPlugin(db: Database.Database, config: DlpScanner
     // ── Request-side: scan outgoing requests to LLM ──
     async onRequest(context: RequestContext): Promise<PluginRequestResult | void> {
       const patterns = patternsRepo.getEnabled();
-      const result = scanText(context.body, patterns, config.action);
+      const result = scanText(context.body, patterns, getAction());
 
       if (result.findings.length === 0) return;
 
@@ -140,7 +143,7 @@ export function createDlpScannerPlugin(db: Database.Database, config: DlpScanner
       if (context.isStreaming) return; // streaming handled in onResponseComplete (post-send)
 
       const patterns = patternsRepo.getEnabled();
-      const result = scanText(context.body, patterns, config.action);
+      const result = scanText(context.body, patterns, getAction());
 
       if (result.findings.length === 0) return;
 
