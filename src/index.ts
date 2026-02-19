@@ -62,6 +62,9 @@ export async function startGateway(): Promise<void> {
 
   pluginManager.register(createAuditLoggerPlugin(db, {
     retentionHours: config.plugins.audit?.retentionHours ?? 168,
+    rawData: config.plugins.audit?.rawData ?? true,
+    rawMaxBytes: config.plugins.audit?.rawMaxBytes ?? 524288,
+    summaryMaxBytes: config.plugins.audit?.summaryMaxBytes ?? 1024,
   }));
   if (!config.plugins.audit?.enabled) pluginManager.disable('audit-logger');
 

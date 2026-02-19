@@ -9,6 +9,8 @@ export interface AuditLogRecord {
   auth_tag: Buffer;
   request_length: number;
   response_length: number;
+  dlp_hit: number;
+  summary: string | null;
   created_at: string;
 }
 
@@ -17,6 +19,8 @@ export interface AuditLogMeta {
   request_id: string;
   request_length: number;
   response_length: number;
+  dlp_hit: number;
+  summary: string | null;
   created_at: string;
   session_id?: string | null;
   model?: string | null;
@@ -405,6 +409,61 @@ function truncateJsonBody(body: string, maxBytes: number): string {
   }
 }
 
+// ---------- Summary generation ----------
+
+function generateSummary(requestBody: string, responseBody: string, maxBytes: number): string {
+  const parts: string[] = [];
+
+  // Extract model and last user message from request
+  try {
+    const req = JSON.parse(requestBody);
+    if (req.model) parts.push(`[${req.model}]`);
+
+    // Last user message
+    if (Array.isArray(req.messages)) {
+      const lastUser = [...req.messages].reverse().find((m: Record<string, unknown>) => m.role === 'user');
+      if (lastUser) {
+        const text = extractTextFromContent(lastUser.content);
+        if (text) parts.push(`User: ${text.slice(0, maxBytes / 2)}`);
+      }
+    }
+  } catch { /* ignore */ }
+
+  // Extract response summary
+  try {
+    const res = JSON.parse(responseBody);
+    // Anthropic format
+    if (Array.isArray(res.content)) {
+      const text = extractTextFromContent(res.content);
+      if (text) parts.push(`Response: ${text.slice(0, maxBytes / 3)}`);
+    } else if (Array.isArray(res.choices)) {
+      // OpenAI format
+      const msg = res.choices[0]?.message ?? res.choices[0]?.delta;
+      if (msg?.content) parts.push(`Response: ${String(msg.content).slice(0, maxBytes / 3)}`);
+    }
+  } catch {
+    // SSE or raw — extract first meaningful text
+    if (responseBody.includes('data: ')) {
+      const events = parseSSEEvents(responseBody);
+      const textParts: string[] = [];
+      for (const evt of events) {
+        const delta = evt.delta as Record<string, unknown> | undefined;
+        if (delta?.type === 'text_delta' && typeof delta.text === 'string') textParts.push(delta.text);
+        const choices = evt.choices as Array<Record<string, unknown>> | undefined;
+        if (Array.isArray(choices)) {
+          const cDelta = choices[0]?.delta as Record<string, unknown> | undefined;
+          if (cDelta?.content) textParts.push(cDelta.content as string);
+        }
+      }
+      if (textParts.length) parts.push(`Response: ${textParts.join('').slice(0, maxBytes / 3)}`);
+    }
+  }
+
+  const summary = parts.join(' | ');
+  if (summary.length > maxBytes) return summary.slice(0, maxBytes);
+  return summary;
+}
+
 // ---------- Repository ----------
 
 export class AuditLogRepository {
@@ -414,8 +473,8 @@ export class AuditLogRepository {
   constructor(db: Database.Database) {
     this.db = db;
     this.insertStmt = db.prepare(`
-      INSERT INTO audit_log (id, request_id, encrypted_content, iv, auth_tag, request_length, response_length)
-      VALUES (@id, @request_id, @encrypted_content, @iv, @auth_tag, @request_length, @response_length)
+      INSERT INTO audit_log (id, request_id, encrypted_content, iv, auth_tag, request_length, response_length, dlp_hit, summary)
+      VALUES (@id, @request_id, @encrypted_content, @iv, @auth_tag, @request_length, @response_length, @dlp_hit, @summary)
     `);
   }
 
@@ -424,24 +483,48 @@ export class AuditLogRepository {
     request_id: string;
     requestBody: string;
     responseBody: string;
+    dlpHit?: boolean;
+    rawData?: boolean;
+    rawMaxBytes?: number;
+    summaryMaxBytes?: number;
   }): void {
-    const MAX_TOTAL = 512 * 1024;
-    const reqBody = truncateJsonBody(record.requestBody, MAX_TOTAL / 2);
-    const resBody = record.responseBody.length > MAX_TOTAL / 2
-      ? record.responseBody.slice(0, MAX_TOTAL / 2)
-      : record.responseBody;
+    const storeRaw = record.rawData !== false;
+    const rawMax = record.rawMaxBytes ?? 512 * 1024;
+    const summaryMax = record.summaryMaxBytes ?? 1024;
 
-    const content = JSON.stringify({ request: reqBody, response: resBody });
-    const { encrypted, iv, authTag } = encrypt(content);
+    const summary = generateSummary(record.requestBody, record.responseBody, summaryMax);
+
+    let encryptedContent: Buffer | null = null;
+    let iv: Buffer;
+    let authTag: Buffer;
+
+    if (storeRaw) {
+      const reqBody = truncateJsonBody(record.requestBody, rawMax / 2);
+      const resBody = record.responseBody.length > rawMax / 2
+        ? record.responseBody.slice(0, rawMax / 2)
+        : record.responseBody;
+
+      const content = JSON.stringify({ request: reqBody, response: resBody });
+      const enc = encrypt(content);
+      encryptedContent = enc.encrypted;
+      iv = enc.iv;
+      authTag = enc.authTag;
+    } else {
+      // Fill with zeros to satisfy NOT NULL constraints
+      iv = Buffer.alloc(12);
+      authTag = Buffer.alloc(16);
+    }
 
     this.insertStmt.run({
       id: record.id,
       request_id: record.request_id,
-      encrypted_content: encrypted,
+      encrypted_content: encryptedContent,
       iv,
       auth_tag: authTag,
       request_length: record.requestBody.length,
       response_length: record.responseBody.length,
+      dlp_hit: record.dlpHit ? 1 : 0,
+      summary,
     });
   }
 
@@ -451,6 +534,13 @@ export class AuditLogRepository {
       'SELECT 1 FROM audit_log WHERE request_id = ? LIMIT 1'
     ).get(requestId);
     return row !== undefined;
+  }
+
+  /** Mark an existing audit entry as DLP-hit (used when audit-logger inserted first) */
+  markDlpHit(requestId: string): void {
+    this.db.prepare(
+      'UPDATE audit_log SET dlp_hit = 1 WHERE request_id = ? AND dlp_hit = 0'
+    ).run(requestId);
   }
 
   getByRequestId(requestId: string): { request: string; response: string } | null {
@@ -475,9 +565,21 @@ export class AuditLogRepository {
     return parseAuditContent(raw.request, raw.response);
   }
 
+  /** Get meta for a single request (used as fallback when rawData is off) */
+  getMetaByRequestId(requestId: string): AuditLogMeta | null {
+    const row = this.db.prepare(`
+      SELECT a.id, a.request_id, a.request_length, a.response_length, a.dlp_hit, a.summary, a.created_at,
+             r.session_id, r.model, r.status_code, r.latency_ms
+      FROM audit_log a
+      LEFT JOIN requests r ON r.id = a.request_id
+      WHERE a.request_id = ? LIMIT 1
+    `).get(requestId) as AuditLogMeta | undefined;
+    return row ?? null;
+  }
+
   getRecent(limit: number = 20): AuditLogMeta[] {
     return this.db.prepare(`
-      SELECT a.id, a.request_id, a.request_length, a.response_length, a.created_at,
+      SELECT a.id, a.request_id, a.request_length, a.response_length, a.dlp_hit, a.summary, a.created_at,
              r.session_id, r.model, r.status_code, r.latency_ms
       FROM audit_log a
       LEFT JOIN requests r ON r.id = a.request_id
@@ -488,7 +590,7 @@ export class AuditLogRepository {
   /** Get all audit entries for a session, in chronological order */
   getBySessionId(sessionId: string): AuditLogMeta[] {
     return this.db.prepare(`
-      SELECT a.id, a.request_id, a.request_length, a.response_length, a.created_at,
+      SELECT a.id, a.request_id, a.request_length, a.response_length, a.dlp_hit, a.summary, a.created_at,
              r.session_id, r.model, r.status_code, r.latency_ms
       FROM audit_log a
       INNER JOIN requests r ON r.id = a.request_id
