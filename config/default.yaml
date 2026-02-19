@@ -22,6 +22,9 @@ plugins:
       apiKey: ""
       timeoutMs: 5000
       cacheSize: 500
+    semantics:
+      sensitivePatterns: []
+      nonSensitiveNames: []
   optimizer:
     enabled: true
     cache: true

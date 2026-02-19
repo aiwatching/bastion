@@ -83,6 +83,7 @@ tr:hover{background:#1c2128}
 <div class="tabs">
   <button class="tab active" data-tab="overview">Overview</button>
   <button class="tab" data-tab="dlp">DLP</button>
+  <button class="tab" data-tab="findings">Findings</button>
   <button class="tab" data-tab="optimizer">Optimizer</button>
   <button class="tab" data-tab="audit">Audit</button>
   <button class="tab" data-tab="settings">Settings</button>
@@ -113,11 +114,68 @@ tr:hover{background:#1c2128}
 <!-- DLP TAB -->
 <div class="tab-content" id="tab-dlp">
   <div class="grid" id="dlp-cards"></div>
+
+  <!-- Unified DLP Configuration -->
   <div class="section">
-    <h2>Recent DLP Findings</h2>
-    <table><thead><tr><th>Time</th><th>Dir</th><th>Request</th><th>Pattern</th><th>Category</th><th>Action</th><th>Matches</th><th>Original Snippet</th><th>Redacted Snippet</th></tr></thead><tbody id="dlp-recent"></tbody></table>
-    <p class="empty" id="no-dlp">No DLP events yet.</p>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h2>Configuration</h2>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span id="dlp-dirty" style="display:none;color:#d29922;font-size:12px;font-weight:500">\u25cf Unsaved changes</span>
+        <button id="dlp-revert-btn" style="display:none;padding:4px 12px;font-size:12px;cursor:pointer;color:#7d8590;background:none;border:1px solid #30363d;border-radius:6px">Revert</button>
+        <button id="dlp-apply-btn" style="display:none;padding:4px 16px;font-size:12px;cursor:pointer;color:#fff;background:#238636;border:1px solid #2ea043;border-radius:6px">Apply</button>
+      </div>
+    </div>
+    <div class="toggle-row">
+      <div><div class="toggle-label">DLP Engine</div><div class="toggle-desc">Enable or disable DLP scanning</div></div>
+      <label class="switch"><input type="checkbox" id="dlp-cfg-enabled"><span class="slider"></span></label>
+    </div>
+    <div class="toggle-row">
+      <div><div class="toggle-label">Action Mode</div><div class="toggle-desc">What to do when sensitive data is detected</div></div>
+      <select class="config-select" id="dlp-cfg-action">
+        <option value="pass">Pass (log only)</option>
+        <option value="warn">Warn</option>
+        <option value="redact">Redact</option>
+        <option value="block">Block</option>
+      </select>
+    </div>
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">AI Validation <span id="dlp-ai-status" style="font-size:11px;margin-left:6px"></span></div>
+        <div class="toggle-desc">Use LLM to verify DLP matches and filter false positives</div>
+      </div>
+      <label class="switch"><input type="checkbox" id="dlp-cfg-ai"><span class="slider"></span></label>
+    </div>
+    <div style="margin-top:8px;padding:12px 16px;background:#161b22;border:1px solid #30363d;border-radius:8px">
+      <div class="toggle-label" style="margin-bottom:8px">Semantic Detection (Layer 3)</div>
+      <div style="margin-bottom:8px">
+        <div style="font-size:11px;color:#7d8590;margin-bottom:4px">Built-in Sensitive Patterns <span style="color:#484f58">(read-only)</span></div>
+        <div id="dlp-builtin-sensitive" style="display:flex;flex-wrap:wrap;gap:4px"></div>
+      </div>
+      <div style="margin-bottom:8px">
+        <div style="font-size:11px;color:#7d8590;margin-bottom:4px">Extra Sensitive Patterns <span style="color:#484f58">(regex, one per line)</span></div>
+        <textarea id="dlp-cfg-sensitive" rows="2" style="width:100%;background:#0f1117;color:#e6edf3;border:1px solid #30363d;border-radius:4px;padding:6px;font-family:monospace;font-size:11px;resize:vertical" placeholder="e.g. \\bcert\\b"></textarea>
+      </div>
+      <div style="margin-bottom:8px">
+        <div style="font-size:11px;color:#7d8590;margin-bottom:4px">Built-in Non-sensitive Names <span style="color:#484f58">(read-only)</span></div>
+        <div id="dlp-builtin-nonsensitive" style="display:flex;flex-wrap:wrap;gap:4px"></div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:#7d8590;margin-bottom:4px">Extra Non-sensitive Names <span style="color:#484f58">(one per line)</span></div>
+        <textarea id="dlp-cfg-nonsensitive" rows="2" style="width:100%;background:#0f1117;color:#e6edf3;border:1px solid #30363d;border-radius:4px;padding:6px;font-family:monospace;font-size:11px;resize:vertical" placeholder="e.g. my_safe_field"></textarea>
+      </div>
+    </div>
   </div>
+
+  <!-- Change History -->
+  <div class="section">
+    <h2 style="cursor:pointer;user-select:none" id="dlp-history-toggle">Change History <span id="dlp-history-count" style="font-size:11px;color:#484f58"></span> \u25BE</h2>
+    <div id="dlp-history-list" style="display:none">
+      <table><thead><tr><th>Time</th><th>Action</th><th>AI</th><th>Extra Sensitive</th><th>Extra Non-sensitive</th><th></th></tr></thead><tbody id="dlp-history-body"></tbody></table>
+      <p class="empty" id="no-history">No changes recorded yet.</p>
+    </div>
+  </div>
+
+  <!-- DLP Patterns -->
   <div class="section">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
       <h2>DLP Patterns</h2>
@@ -140,6 +198,32 @@ tr:hover{background:#1c2128}
     </div>
     <table><thead><tr><th style="width:60px">Enabled</th><th>Name</th><th>Category</th><th>Regex</th><th>Description</th><th style="width:60px">Actions</th></tr></thead><tbody id="dlp-patterns"></tbody></table>
     <p class="empty" id="no-patterns">No patterns configured.</p>
+  </div>
+
+</div>
+
+<!-- FINDINGS TAB -->
+<div class="tab-content" id="tab-findings">
+  <div class="grid" id="findings-cards"></div>
+  <div class="section">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <h2>DLP Findings</h2>
+      <div class="filter-bar" style="margin:0">
+        <select id="findings-action-filter" style="background:#161b22;border:1px solid #30363d;color:#e1e4e8;padding:4px 8px;border-radius:4px;font-size:12px">
+          <option value="">All actions</option>
+          <option value="block">Block</option>
+          <option value="redact">Redact</option>
+          <option value="warn">Warn</option>
+        </select>
+        <select id="findings-dir-filter" style="background:#161b22;border:1px solid #30363d;color:#e1e4e8;padding:4px 8px;border-radius:4px;font-size:12px">
+          <option value="">All directions</option>
+          <option value="request">Request</option>
+          <option value="response">Response</option>
+        </select>
+      </div>
+    </div>
+    <table><thead><tr><th>Time</th><th>Dir</th><th>Request</th><th>Pattern</th><th>Category</th><th>Action</th><th>Matches</th><th>Original Snippet</th><th>Redacted Snippet</th></tr></thead><tbody id="findings-list"></tbody></table>
+    <p class="empty" id="no-findings">No DLP findings yet.</p>
   </div>
 </div>
 
@@ -198,25 +282,6 @@ tr:hover{background:#1c2128}
     <h2>Plugin Controls</h2>
     <div id="plugin-toggles"></div>
   </div>
-  <div class="section">
-    <h2>DLP Configuration</h2>
-    <div class="toggle-row">
-      <div><div class="toggle-label">DLP Action Mode</div><div class="toggle-desc">What to do when sensitive data is detected</div></div>
-      <select class="config-select" id="dlp-action">
-        <option value="pass">Pass (log only)</option>
-        <option value="warn">Warn</option>
-        <option value="redact">Redact</option>
-        <option value="block">Block</option>
-      </select>
-    </div>
-    <div class="toggle-row">
-      <div>
-        <div class="toggle-label">AI Validation <span id="ai-val-status" style="font-size:11px;margin-left:6px"></span></div>
-        <div class="toggle-desc">Use LLM to verify DLP matches and filter false positives (consumes tokens, default off). Requires API key in config file.</div>
-      </div>
-      <label class="switch"><input type="checkbox" id="ai-val-toggle"><span class="slider"></span></label>
-    </div>
-  </div>
 </div>
 
 <p class="footer">Bastion v0.1.0 &mdash; <span id="uptime"></span> uptime &mdash; <span id="mem"></span> MB memory</p>
@@ -247,6 +312,7 @@ document.querySelectorAll('.tab').forEach(t=>{
     t.classList.add('active');
     document.getElementById('tab-'+t.dataset.tab).classList.add('active');
     if(t.dataset.tab==='dlp')refreshDlp();
+    if(t.dataset.tab==='findings')refreshFindings();
     if(t.dataset.tab==='optimizer')refreshOptimizer();
     if(t.dataset.tab==='audit')refreshAudit();
     if(t.dataset.tab==='settings')refreshSettings();
@@ -329,49 +395,201 @@ async function refresh(){
   }catch(e){}
 }
 
-// DLP tab
+// ── DLP Config: local state management ──
+let dlpServerState=null; // {config, enabled} from server
+let dlpBuiltinsLoaded=false;
+
+function readDlpForm(){
+  return {
+    enabled:document.getElementById('dlp-cfg-enabled').checked,
+    action:document.getElementById('dlp-cfg-action').value,
+    aiEnabled:document.getElementById('dlp-cfg-ai').checked,
+    sensitive:document.getElementById('dlp-cfg-sensitive').value,
+    nonsensitive:document.getElementById('dlp-cfg-nonsensitive').value,
+  };
+}
+function dlpFormSnapshot(){return JSON.stringify(readDlpForm())}
+let dlpCleanSnapshot='';
+
+function updateDirtyUI(){
+  const dirty=dlpCleanSnapshot!==dlpFormSnapshot();
+  document.getElementById('dlp-dirty').style.display=dirty?'':'none';
+  document.getElementById('dlp-apply-btn').style.display=dirty?'':'none';
+  document.getElementById('dlp-revert-btn').style.display=dirty?'':'none';
+}
+
+function populateDlpForm(config,enabled){
+  document.getElementById('dlp-cfg-enabled').checked=!!enabled;
+  document.getElementById('dlp-cfg-action').value=config.action||'warn';
+  const aiVal=config.aiValidation||{};
+  document.getElementById('dlp-cfg-ai').checked=!!aiVal.enabled;
+  const aiSt=document.getElementById('dlp-ai-status');
+  if(!aiVal.apiKey){
+    aiSt.innerHTML='<span style="color:#d29922">No API key</span>';
+    document.getElementById('dlp-cfg-ai').disabled=true;
+  }else{
+    aiSt.innerHTML=aiVal.enabled?'<span style="color:#3fb950">Active</span>':'<span style="color:#7d8590">Off</span>';
+    document.getElementById('dlp-cfg-ai').disabled=false;
+  }
+  const sem=config.semantics||{};
+  document.getElementById('dlp-cfg-sensitive').value=(sem.sensitivePatterns||[]).join('\\n');
+  document.getElementById('dlp-cfg-nonsensitive').value=(sem.nonSensitiveNames||[]).join('\\n');
+  dlpCleanSnapshot=dlpFormSnapshot();
+  updateDirtyUI();
+}
+
+async function loadDlpConfig(){
+  const r=await fetch('/api/config');
+  const data=await r.json();
+  const config=data.config?.plugins?.dlp||{};
+  const enabled=data.pluginStatus?.['dlp-scanner']!==false;
+  dlpServerState={config,enabled};
+  populateDlpForm(config,enabled);
+  // Load builtins once
+  if(!dlpBuiltinsLoaded){
+    try{
+      const bRes=await fetch('/api/dlp/semantics/builtins');
+      const b=await bRes.json();
+      document.getElementById('dlp-builtin-sensitive').innerHTML=
+        b.sensitivePatterns.map(p=>'<code style="background:#21262d;padding:2px 6px;border-radius:4px;font-size:11px;color:#7d8590">'+esc(p)+'</code>').join('');
+      document.getElementById('dlp-builtin-nonsensitive').innerHTML=
+        b.nonSensitiveNames.map(n=>'<code style="background:#21262d;padding:2px 6px;border-radius:4px;font-size:11px;color:#7d8590">'+esc(n)+'</code>').join('');
+      dlpBuiltinsLoaded=true;
+    }catch(e){}
+  }
+}
+
+// Apply button
+document.getElementById('dlp-apply-btn').addEventListener('click',async()=>{
+  const f=readDlpForm();
+  const payload={
+    enabled:f.enabled,
+    action:f.action,
+    aiValidation:{enabled:f.aiEnabled},
+    semantics:{
+      sensitivePatterns:f.sensitive.split('\\n').map(s=>s.trim()).filter(Boolean),
+      nonSensitiveNames:f.nonsensitive.split('\\n').map(s=>s.trim()).filter(Boolean),
+    }
+  };
+  await fetch('/api/dlp/config/apply',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+  await loadDlpConfig();
+  loadDlpHistory();
+});
+
+// Revert button
+document.getElementById('dlp-revert-btn').addEventListener('click',()=>{
+  if(dlpServerState) populateDlpForm(dlpServerState.config,dlpServerState.enabled);
+});
+
+// Dirty detection on form changes
+['dlp-cfg-enabled','dlp-cfg-action','dlp-cfg-ai'].forEach(id=>{
+  document.getElementById(id).addEventListener('change',updateDirtyUI);
+});
+['dlp-cfg-sensitive','dlp-cfg-nonsensitive'].forEach(id=>{
+  document.getElementById(id).addEventListener('input',updateDirtyUI);
+});
+
+// History toggle
+document.getElementById('dlp-history-toggle').addEventListener('click',()=>{
+  const list=document.getElementById('dlp-history-list');
+  list.style.display=list.style.display==='none'?'':'none';
+  if(list.style.display!=='none') loadDlpHistory();
+});
+
+async function loadDlpHistory(){
+  try{
+    const r=await fetch('/api/dlp/config/history');
+    const entries=await r.json();
+    document.getElementById('dlp-history-count').textContent='('+entries.length+')';
+    document.getElementById('no-history').style.display=entries.length?'none':'';
+    document.getElementById('dlp-history-body').innerHTML=entries.map(e=>{
+      let c={};try{c=JSON.parse(e.config_json)}catch(x){}
+      const sem=c.semantics||{};
+      const sp=(sem.sensitivePatterns||[]).length;
+      const ns=(sem.nonSensitiveNames||[]).length;
+      return '<tr><td>'+ago(e.created_at)+'</td>'+
+        '<td>'+esc(c.action||'-')+'</td>'+
+        '<td>'+(c.aiValidation?.enabled?'On':'Off')+'</td>'+
+        '<td>'+sp+'</td><td>'+ns+'</td>'+
+        '<td><button class="dlp-restore-btn" data-hid="'+e.id+'" style="padding:2px 8px;font-size:11px;cursor:pointer;color:#58a6ff;background:none;border:1px solid #30363d;border-radius:4px">Restore</button></td></tr>';
+    }).join('');
+    document.querySelectorAll('.dlp-restore-btn').forEach(btn=>{
+      btn.addEventListener('click',async()=>{
+        if(!confirm('Restore this configuration?'))return;
+        await fetch('/api/dlp/config/restore/'+btn.dataset.hid,{method:'POST'});
+        await loadDlpConfig();
+        loadDlpHistory();
+      });
+    });
+  }catch(e){}
+}
+
+// DLP tab — config + patterns only
 async function refreshDlp(){
   try{
-    const [statsR,recentR]=await Promise.all([fetch('/api/stats'),fetch('/api/dlp/recent')]);
+    const statsR=await fetch('/api/stats');
     const stats=(await statsR.json()).dlp;
-    const recent=await recentR.json();
-
     const ba=stats.by_action||{};
     document.getElementById('dlp-cards').innerHTML=
       card('Total Scans',fmt(stats.total_events))+
       card('Blocked',fmt(ba.block||0),'warn')+
       card('Redacted',fmt(ba.redact||0),'blue')+
       card('Warned',fmt(ba.warn||0));
-
-    document.getElementById('no-dlp').style.display=recent.length?'none':'';
-    document.getElementById('dlp-recent').innerHTML=recent.map(e=>{
-      const dir=e.direction||'request';
-      const dirTag=dir==='response'?'<span class="tag warn">resp</span>':'<span class="tag" style="background:#1a2a3d;color:#58a6ff">req</span>';
-      const rid=e.request_id||'';
-      const modelTag=e.model?'<span class="mono" style="font-size:10px;color:#7d8590">'+esc(e.model)+'</span>':'';
-      const reqCell='<span class="dlp-view-req" data-rid="'+esc(rid)+'" style="cursor:pointer;color:#58a6ff;font-size:11px" title="'+esc(rid)+'">'+esc(rid.slice(0,8))+'...</span>'+(modelTag?' '+modelTag:'');
-      return '<tr><td>'+ago(e.created_at)+'</td><td>'+dirTag+'</td><td>'+reqCell+'</td><td class="mono">'+esc(e.pattern_name)+'</td><td>'+esc(e.pattern_category)+'</td>'+
-        '<td>'+actionTag(e.action)+'</td><td>'+e.match_count+'</td>'+
-        '<td><div class="snippet">'+esc(e.original_snippet||'-')+'</div></td>'+
-        '<td><div class="snippet">'+esc(e.redacted_snippet||'-')+'</div></td></tr>';
-    }).join('');
-    // Bind click on request IDs to navigate to audit detail
-    document.querySelectorAll('.dlp-view-req').forEach(el=>{
-      el.addEventListener('click',()=>{
-        const rid=el.dataset.rid;
-        if(!rid)return;
-        // Switch to audit tab and show the request detail
-        document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(x=>x.classList.remove('active'));
-        document.querySelector('[data-tab="audit"]').classList.add('active');
-        document.getElementById('tab-audit').classList.add('active');
-        auditCurrentSession=null;
-        loadSingleAudit(rid);
-      });
-    });
+    await loadDlpConfig();
     refreshPatterns();
   }catch(e){}
 }
+
+// Findings tab
+let findingsAll=[];
+async function refreshFindings(){
+  try{
+    const [statsR,recentR]=await Promise.all([fetch('/api/stats'),fetch('/api/dlp/recent?limit=200')]);
+    const stats=(await statsR.json()).dlp;
+    const ba=stats.by_action||{};
+    document.getElementById('findings-cards').innerHTML=
+      card('Total Findings',fmt(stats.total_events))+
+      card('Blocked',fmt(ba.block||0),'warn')+
+      card('Redacted',fmt(ba.redact||0),'blue')+
+      card('Warned',fmt(ba.warn||0));
+    findingsAll=await recentR.json();
+    renderFindings();
+  }catch(e){}
+}
+
+function renderFindings(){
+  const af=document.getElementById('findings-action-filter').value;
+  const df=document.getElementById('findings-dir-filter').value;
+  let list=findingsAll;
+  if(af) list=list.filter(e=>e.action===af);
+  if(df) list=list.filter(e=>(e.direction||'request')===df);
+  document.getElementById('no-findings').style.display=list.length?'none':'';
+  document.getElementById('findings-list').innerHTML=list.map(e=>{
+    const dir=e.direction||'request';
+    const dirTag=dir==='response'?'<span class="tag warn">resp</span>':'<span class="tag" style="background:#1a2a3d;color:#58a6ff">req</span>';
+    const rid=e.request_id||'';
+    const modelTag=e.model?'<span class="mono" style="font-size:10px;color:#7d8590">'+esc(e.model)+'</span>':'';
+    const reqCell='<span class="findings-view-req" data-rid="'+esc(rid)+'" style="cursor:pointer;color:#58a6ff;font-size:11px" title="'+esc(rid)+'">'+esc(rid.slice(0,8))+'...</span>'+(modelTag?' '+modelTag:'');
+    return '<tr><td>'+ago(e.created_at)+'</td><td>'+dirTag+'</td><td>'+reqCell+'</td><td class="mono">'+esc(e.pattern_name)+'</td><td>'+esc(e.pattern_category)+'</td>'+
+      '<td>'+actionTag(e.action)+'</td><td>'+e.match_count+'</td>'+
+      '<td><div class="snippet">'+esc(e.original_snippet||'-')+'</div></td>'+
+      '<td><div class="snippet">'+esc(e.redacted_snippet||'-')+'</div></td></tr>';
+  }).join('');
+  document.querySelectorAll('.findings-view-req').forEach(el=>{
+    el.addEventListener('click',()=>{
+      const rid=el.dataset.rid;
+      if(!rid)return;
+      document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(x=>x.classList.remove('active'));
+      document.querySelector('[data-tab="audit"]').classList.add('active');
+      document.getElementById('tab-audit').classList.add('active');
+      auditCurrentSession=null;
+      loadSingleAudit(rid);
+    });
+  });
+}
+document.getElementById('findings-action-filter').addEventListener('change',renderFindings);
+document.getElementById('findings-dir-filter').addEventListener('change',renderFindings);
 
 // DLP Patterns management
 async function refreshPatterns(){
@@ -751,7 +969,6 @@ async function refreshSettings(){
     const r=await fetch('/api/config');
     const data=await r.json();
     const ps=data.pluginStatus||{};
-    const config=data.config||{};
 
     let html='';
     for(const [name,enabled] of Object.entries(ps)){
@@ -761,7 +978,6 @@ async function refreshSettings(){
     }
     document.getElementById('plugin-toggles').innerHTML=html;
 
-    // Bind toggle events
     document.querySelectorAll('#plugin-toggles input[type=checkbox]').forEach(cb=>{
       cb.addEventListener('change',async()=>{
         const payload={pluginStatus:{}};
@@ -769,34 +985,6 @@ async function refreshSettings(){
         await fetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
       });
     });
-
-    // DLP action selector
-    const dlpAction=document.getElementById('dlp-action');
-    dlpAction.value=config.plugins?.dlp?.action||'warn';
-    dlpAction.onchange=async()=>{
-      await fetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},
-        body:JSON.stringify({plugins:{dlp:{action:dlpAction.value}}})});
-    };
-
-    // AI validation toggle
-    const aiVal=config.plugins?.dlp?.aiValidation||{};
-    const aiToggle=document.getElementById('ai-val-toggle');
-    const aiStatus=document.getElementById('ai-val-status');
-    aiToggle.checked=!!aiVal.enabled;
-    if(!aiVal.apiKey){
-      aiStatus.innerHTML='<span style="color:#d29922">No API key configured</span>';
-      aiToggle.disabled=true;
-    }else{
-      aiStatus.innerHTML=aiVal.enabled
-        ?'<span style="color:#3fb950">Active \u2014 '+esc(aiVal.model||'?')+'</span>'
-        :'<span style="color:#7d8590">Off</span>';
-      aiToggle.disabled=false;
-    }
-    aiToggle.onchange=async()=>{
-      await fetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},
-        body:JSON.stringify({plugins:{dlp:{aiValidation:{enabled:aiToggle.checked}}}})});
-      refreshSettings();
-    };
   }catch(e){}
 }
 
