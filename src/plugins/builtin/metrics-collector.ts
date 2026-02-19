@@ -84,7 +84,13 @@ export function createMetricsCollectorPlugin(db: Database.Database): Plugin {
       if (sessionId) {
         try {
           const projectPath = extractProjectPath(context.request.parsedBody);
-          const label = projectPath ? basename(projectPath) : null;
+          let label = projectPath ? basename(projectPath) : null;
+          // Fallback label: use provider:model so sessions are identifiable
+          if (!label) {
+            const provider = context.request.provider;
+            const model = context.request.model;
+            label = model && model !== provider ? `${provider}:${model}` : provider;
+          }
           const source = context.request.sessionSource ?? 'auto';
           sessionsRepo.upsert(sessionId, { label: label ?? undefined, source, projectPath: projectPath ?? undefined });
         } catch (err) {
