@@ -47,20 +47,20 @@ export function createAuditLoggerPlugin(db: Database.Database, config: AuditLogg
       // Skip high-frequency polling requests (e.g., Telegram getUpdates)
       if (isPollingRequest(context.request.provider, context.request.path)) return;
 
-      // Store asynchronously to avoid blocking
-      setImmediate(() => {
-        try {
-          auditRepo.insert({
-            id: crypto.randomUUID(),
-            request_id: context.request.id,
-            requestBody,
-            responseBody: context.body,
-          });
-          log.debug('Audit entry stored', { requestId: context.request.id });
-        } catch (err) {
-          log.warn('Failed to store audit entry', { error: (err as Error).message });
-        }
-      });
+      try {
+        // Avoid duplicates — DLP auto-audit may have already stored this request
+        if (auditRepo.hasEntry(context.request.id)) return;
+
+        auditRepo.insert({
+          id: crypto.randomUUID(),
+          request_id: context.request.id,
+          requestBody,
+          responseBody: context.body,
+        });
+        log.debug('Audit entry stored', { requestId: context.request.id });
+      } catch (err) {
+        log.warn('Failed to store audit entry', { error: (err as Error).message });
+      }
     },
   };
 }
