@@ -22,6 +22,10 @@ export interface BastionConfig {
         timeoutMs: number;
         cacheSize: number;
       };
+      semantics: {
+        sensitivePatterns: string[];
+        nonSensitiveNames: string[];
+      };
     };
     optimizer: {
       enabled: boolean;

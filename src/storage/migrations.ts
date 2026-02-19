@@ -135,6 +135,15 @@ const MIGRATIONS: string[] = [
   ALTER TABLE audit_log ADD COLUMN summary TEXT;
   CREATE INDEX IF NOT EXISTS idx_audit_dlp_hit ON audit_log(dlp_hit);
   `,
+
+  // Migration 7: DLP config change history
+  `
+  CREATE TABLE IF NOT EXISTS dlp_config_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    config_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  `,
 ];
 
 export function runMigrations(db: Database.Database): void {

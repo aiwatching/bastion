@@ -3,6 +3,9 @@ import type { DlpAction, DlpFinding, DlpResult } from './actions.js';
 import { highConfidencePatterns } from './patterns/high-confidence.js';
 import { validatedPatterns } from './patterns/validated.js';
 import { contextAwarePatterns } from './patterns/context-aware.js';
+import { extractStructuredFields } from './structure.js';
+import { isHighEntropy, MAX_SECRET_LENGTH, MIN_ENTROPY_LENGTH } from './entropy.js';
+import { isSensitiveFieldName } from './semantics.js';
 
 export interface DlpPattern {
   name: string;
@@ -111,6 +114,39 @@ export function scanText(text: string, patterns: DlpPattern[], action: DlpAction
     if (action === 'redact') {
       for (const m of validatedMatches) {
         redactedBody = redactedBody.replaceAll(m, `[${pattern.name.toUpperCase()}_REDACTED]`);
+      }
+    }
+  }
+
+  // ── Layer 0 + 1 + 3: Structure → Entropy → Semantic detection ──
+  // Detect generic secrets: high-entropy values in sensitive field names
+  // that were NOT already caught by a specific regex pattern above.
+  const fields = extractStructuredFields(text);
+
+  for (const field of fields) {
+    if (field.value.length < MIN_ENTROPY_LENGTH || field.value.length > MAX_SECRET_LENGTH) continue;
+    if (!isSensitiveFieldName(field.key)) continue;
+    if (!isHighEntropy(field.value)) continue;
+
+    // Check if this value is already covered by a regex finding
+    const alreadyCovered = findings.some((f) =>
+      f.matches.some((m) => field.value.includes(m) || m.includes(field.value)),
+    );
+    if (alreadyCovered) continue;
+
+    findings.push({
+      patternName: 'generic-secret',
+      patternCategory: 'entropy',
+      matchCount: 1,
+      matches: [field.value],
+    });
+
+    if (action === 'redact') {
+      redactedBody = redactedBody.replaceAll(field.value, '[GENERIC-SECRET_REDACTED]');
+      // Also handle JSON-encoded version (escapes like \" or \\n)
+      const encoded = JSON.stringify(field.value).slice(1, -1);
+      if (encoded !== field.value) {
+        redactedBody = redactedBody.replaceAll(encoded, '[GENERIC-SECRET_REDACTED]');
       }
     }
   }

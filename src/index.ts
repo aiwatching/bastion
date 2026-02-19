@@ -16,6 +16,7 @@ import { registerMessagingProviders } from './proxy/providers/messaging.js';
 import { createProxyServer, startServer } from './proxy/server.js';
 import { writePidFile } from './cli/daemon.js';
 import { getCACertPath } from './proxy/certs.js';
+import { updateSemanticConfig } from './dlp/semantics.js';
 
 const log = createLogger('main');
 
@@ -28,6 +29,14 @@ export async function startGateway(): Promise<void> {
 
   // Initialize config manager for runtime updates
   const configManager = new ConfigManager(config);
+
+  // Apply initial semantic config + listen for changes
+  if (config.plugins.dlp.semantics) {
+    updateSemanticConfig(config.plugins.dlp.semantics);
+  }
+  configManager.onChange((c) => {
+    if (c.plugins.dlp.semantics) updateSemanticConfig(c.plugins.dlp.semantics);
+  });
 
   // Initialize database
   const db = getDatabase();

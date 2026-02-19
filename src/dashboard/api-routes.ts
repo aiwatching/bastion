@@ -7,8 +7,10 @@ import { AuditLogRepository } from '../storage/repositories/audit-log.js';
 import { CacheRepository } from '../storage/repositories/cache.js';
 import { SessionsRepository } from '../storage/repositories/sessions.js';
 import { DlpPatternsRepository } from '../storage/repositories/dlp-patterns.js';
+import { DlpConfigHistoryRepository } from '../storage/repositories/dlp-config-history.js';
 import { scanText } from '../dlp/engine.js';
 import type { DlpAction } from '../dlp/actions.js';
+import { getBuiltinSensitivePatterns, getBuiltinNonSensitiveNames } from '../dlp/semantics.js';
 import type { ConfigManager } from '../config/manager.js';
 import type { PluginManager } from '../plugins/index.js';
 import { createLogger } from '../utils/logger.js';
@@ -45,6 +47,7 @@ export function createApiRouter(
   const cacheRepo = new CacheRepository(db);
   const sessionsRepo = new SessionsRepository(db);
   const dlpPatternsRepo = new DlpPatternsRepository(db);
+  const dlpConfigHistory = new DlpConfigHistoryRepository(db);
 
   return (req: IncomingMessage, res: ServerResponse): boolean => {
     const url = parseUrl(req);
@@ -227,6 +230,91 @@ export function createApiRouter(
         }
       }).catch((err) => {
         sendJson(res, { error: (err as Error).message }, 500);
+      });
+      return true;
+    }
+
+    // POST /api/dlp/config/apply — batch-apply DLP config and record history
+    if (req.method === 'POST' && path === '/api/dlp/config/apply') {
+      bufferBody(req).then((body) => {
+        try {
+          const dlpUpdate = JSON.parse(body);
+
+          // Handle plugin enable/disable
+          if (dlpUpdate.enabled !== undefined) {
+            if (dlpUpdate.enabled) pluginManager.enable('dlp-scanner');
+            else pluginManager.disable('dlp-scanner');
+            delete dlpUpdate.enabled;
+          }
+
+          // Apply config changes
+          if (Object.keys(dlpUpdate).length > 0) {
+            configManager.update({ plugins: { dlp: dlpUpdate } });
+          }
+
+          // Record snapshot to history
+          const snap = configManager.get().plugins.dlp;
+          const dlpEnabled = !pluginManager.isDisabled('dlp-scanner');
+          dlpConfigHistory.insert({ ...snap, enabled: dlpEnabled });
+
+          sendJson(res, { ok: true, config: snap, enabled: dlpEnabled });
+        } catch (err) {
+          sendJson(res, { error: (err as Error).message }, 400);
+        }
+      }).catch((err) => sendJson(res, { error: (err as Error).message }, 500));
+      return true;
+    }
+
+    // GET /api/dlp/config/history — last 10 config changes
+    if (req.method === 'GET' && path === '/api/dlp/config/history') {
+      sendJson(res, dlpConfigHistory.getRecent());
+      return true;
+    }
+
+    // POST /api/dlp/config/restore/:id — restore a config snapshot
+    if (req.method === 'POST' && path.startsWith('/api/dlp/config/restore/')) {
+      const id = parseInt(path.slice('/api/dlp/config/restore/'.length), 10);
+      if (isNaN(id)) {
+        sendJson(res, { error: 'Invalid history ID' }, 400);
+        return true;
+      }
+      const entry = dlpConfigHistory.getById(id);
+      if (!entry) {
+        sendJson(res, { error: 'History entry not found' }, 404);
+        return true;
+      }
+      try {
+        const snapshot = JSON.parse(entry.config_json);
+
+        // Restore plugin enabled state
+        if (snapshot.enabled !== undefined) {
+          if (snapshot.enabled) pluginManager.enable('dlp-scanner');
+          else pluginManager.disable('dlp-scanner');
+        }
+
+        // Restore config (exclude non-config fields)
+        const { enabled: _, ...configPart } = snapshot;
+        if (Object.keys(configPart).length > 0) {
+          configManager.update({ plugins: { dlp: configPart } });
+        }
+
+        // Record this restore as a new history entry
+        const snap = configManager.get().plugins.dlp;
+        const dlpEnabled = !pluginManager.isDisabled('dlp-scanner');
+        dlpConfigHistory.insert({ ...snap, enabled: dlpEnabled });
+
+        sendJson(res, { ok: true, config: snap, enabled: dlpEnabled });
+      } catch (err) {
+        sendJson(res, { error: (err as Error).message }, 400);
+      }
+      return true;
+    }
+
+    // GET /api/dlp/semantics/builtins — read-only built-in defaults
+    if (req.method === 'GET' && path === '/api/dlp/semantics/builtins') {
+      sendJson(res, {
+        sensitivePatterns: getBuiltinSensitivePatterns(),
+        nonSensitiveNames: getBuiltinNonSensitiveNames(),
       });
       return true;
     }
