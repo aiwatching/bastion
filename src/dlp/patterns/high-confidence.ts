@@ -11,7 +11,7 @@ export const highConfidencePatterns: DlpPattern[] = [
   {
     name: 'aws-secret-key',
     category: 'high-confidence',
-    regex: /(?<![A-Za-z0-9/+=])[A-Za-z0-9/+=]{40}(?![A-Za-z0-9/+=])/g,
+    regex: /(?<![A-Za-z0-9/+=_-])[A-Za-z0-9/+=]{40}(?![A-Za-z0-9/+=_-])/g,
     description: 'AWS Secret Access Key (40-char base64)',
     // This is broad — only used when near "aws" or "secret" context
     requireContext: ['aws', 'secret', 'AWS_SECRET'],
@@ -100,14 +100,14 @@ export const highConfidencePatterns: DlpPattern[] = [
   {
     name: 'cohere-api-key',
     category: 'high-confidence',
-    regex: /\b[A-Za-z0-9]{40}\b/g,
+    regex: /(?<![A-Za-z0-9_-])[A-Za-z0-9]{40}(?![A-Za-z0-9_-])/g,
     description: 'Cohere / Mistral / Together AI API Key (40-char token)',
     requireContext: ['cohere', 'CO_API_KEY', 'mistral', 'MISTRAL_API_KEY', 'together', 'TOGETHER_API_KEY'],
   },
   {
     name: 'azure-openai-api-key',
     category: 'high-confidence',
-    regex: /\b[a-f0-9]{32}\b/g,
+    regex: /(?<![A-Za-z0-9_-])[a-f0-9]{32}(?![A-Za-z0-9_-])/g,
     description: 'Azure OpenAI API Key (32-char hex)',
     requireContext: ['azure', 'AZURE_OPENAI', 'openai.azure.com'],
   },

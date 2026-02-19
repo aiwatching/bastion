@@ -15,6 +15,19 @@ export interface DlpPattern {
 
 const PATTERN_TIMEOUT_MS = 10;
 
+function runRegexWithPositions(regex: RegExp, text: string, timeoutMs: number): { match: string; index: number }[] {
+  const results: { match: string; index: number }[] = [];
+  const start = Date.now();
+  const cloned = new RegExp(regex.source, regex.flags);
+  let match: RegExpExecArray | null;
+  while ((match = cloned.exec(text)) !== null) {
+    results.push({ match: match[0], index: match.index });
+    if (Date.now() - start > timeoutMs) break;
+    if (match.index === cloned.lastIndex) cloned.lastIndex++;
+  }
+  return results;
+}
+
 function runRegexWithTimeout(regex: RegExp, text: string, timeoutMs: number): string[] {
   const matches: string[] = [];
   const start = Date.now();
@@ -33,9 +46,19 @@ function runRegexWithTimeout(regex: RegExp, text: string, timeoutMs: number): st
   return matches;
 }
 
+const CONTEXT_RADIUS = 200; // chars around match to look for context words
+
 function hasContext(text: string, contextWords: string[]): boolean {
   const lower = text.toLowerCase();
   return contextWords.some((word) => lower.includes(word.toLowerCase()));
+}
+
+/** Check if any context word appears within CONTEXT_RADIUS chars of the match position */
+function hasNearbyContext(text: string, matchIndex: number, matchLength: number, contextWords: string[]): boolean {
+  const start = Math.max(0, matchIndex - CONTEXT_RADIUS);
+  const end = Math.min(text.length, matchIndex + matchLength + CONTEXT_RADIUS);
+  const nearby = text.slice(start, end).toLowerCase();
+  return contextWords.some((word) => nearby.includes(word.toLowerCase()));
 }
 
 export function getPatterns(categories: string[]): DlpPattern[] {
@@ -52,12 +75,22 @@ export function scanText(text: string, patterns: DlpPattern[], action: DlpAction
   let redactedBody = text;
 
   for (const pattern of patterns) {
-    // Check context requirement
+    // Quick pre-check: if context words don't appear anywhere, skip entirely
     if (pattern.requireContext && !hasContext(text, pattern.requireContext)) {
       continue;
     }
 
-    const matches = runRegexWithTimeout(pattern.regex, text, PATTERN_TIMEOUT_MS);
+    let matches: string[];
+
+    if (pattern.requireContext) {
+      // For context-dependent patterns, filter matches by nearby context
+      matches = runRegexWithPositions(pattern.regex, text, PATTERN_TIMEOUT_MS)
+        .filter((m) => hasNearbyContext(text, m.index, m.match.length, pattern.requireContext!))
+        .map((m) => m.match);
+    } else {
+      matches = runRegexWithTimeout(pattern.regex, text, PATTERN_TIMEOUT_MS);
+    }
+
     if (matches.length === 0) continue;
 
     // Run validator if one is specified
