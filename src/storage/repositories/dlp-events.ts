@@ -33,10 +33,13 @@ export class DlpEventsRepository {
     return this.db.prepare('SELECT * FROM dlp_events WHERE request_id = ?').all(requestId) as DlpEventRecord[];
   }
 
-  getRecent(limit: number = 20): DlpEventRecord[] {
-    return this.db.prepare(
-      'SELECT * FROM dlp_events ORDER BY created_at DESC LIMIT ?'
-    ).all(limit) as DlpEventRecord[];
+  getRecent(limit: number = 20): (DlpEventRecord & { provider?: string; model?: string; session_id?: string })[] {
+    return this.db.prepare(`
+      SELECT d.*, r.provider, r.model, r.session_id
+      FROM dlp_events d
+      LEFT JOIN requests r ON r.id = d.request_id
+      ORDER BY d.created_at DESC LIMIT ?
+    `).all(limit) as (DlpEventRecord & { provider?: string; model?: string; session_id?: string })[];
   }
 
   getStats(): { total_events: number; by_action: Record<string, number>; by_pattern: Record<string, number> } {
