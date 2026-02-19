@@ -128,6 +128,13 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE dlp_events ADD COLUMN direction TEXT DEFAULT 'request';
   `,
+
+  // Migration 6: Audit log DLP hit flag and summary column
+  `
+  ALTER TABLE audit_log ADD COLUMN dlp_hit INTEGER DEFAULT 0;
+  ALTER TABLE audit_log ADD COLUMN summary TEXT;
+  CREATE INDEX IF NOT EXISTS idx_audit_dlp_hit ON audit_log(dlp_hit);
+  `,
 ];
 
 export function runMigrations(db: Database.Database): void {

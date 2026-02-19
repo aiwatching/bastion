@@ -30,6 +30,9 @@ plugins:
   audit:
     enabled: true
     retentionHours: 168
+    rawData: true
+    rawMaxBytes: 524288
+    summaryMaxBytes: 1024
 
 timeouts:
   upstream: 120000

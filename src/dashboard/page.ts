@@ -36,6 +36,7 @@ tr:hover{background:#1c2128}
 .tag.gemini{background:#2a2a1a;color:#ffd43b}
 .tag.cached{background:#0d2818;color:#3fb950}
 .tag.blocked{background:#3d1a1a;color:#f85149}
+.tag.dlp{background:#3d1a3d;color:#f0a0f0}
 .tag.warn{background:#3d2e1a;color:#d29922}
 .tag.redact{background:#2a1f3d;color:#b388ff}
 .mono{font-family:"SF Mono",Monaco,monospace;font-size:12px}
@@ -490,14 +491,16 @@ async function refreshAudit(){
     if(noSession.length>0){
       document.getElementById('audit-sessions').innerHTML+=
         '<tr><td colspan="6" style="color:#7d8590;font-size:11px;padding-top:12px">Requests without session:</td></tr>'+
-        noSession.map(e=>
-          '<tr style="cursor:pointer" data-rid="'+e.request_id+'"><td>'+ago(e.created_at)+'</td>'+
+        noSession.map(e=>{
+          const dlpTag=e.dlp_hit?'<span class="tag dlp">DLP</span> ':'';
+          const summaryText=e.summary?'<div style="font-size:11px;color:#7d8590;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px" title="'+esc(e.summary)+'">'+esc(e.summary.slice(0,80))+'</div>':'';
+          return '<tr style="cursor:pointer" data-rid="'+e.request_id+'"><td>'+ago(e.created_at)+'</td>'+
           '<td class="mono" style="font-size:11px">'+e.request_id.slice(0,12)+'...</td>'+
-          '<td>-</td>'+
-          '<td>'+(e.model?'<span class="tag" style="background:#1a2a3d;color:#58a6ff">'+esc(e.model)+'</span>':'')+'</td>'+
+          '<td>'+summaryText+'</td>'+
+          '<td>'+dlpTag+(e.model?'<span class="tag" style="background:#1a2a3d;color:#58a6ff">'+esc(e.model)+'</span>':'')+'</td>'+
           '<td class="mono">'+bytes(e.request_length)+'</td>'+
-          '<td style="color:#58a6ff">View</td></tr>'
-        ).join('');
+          '<td style="color:#58a6ff">View</td></tr>';
+        }).join('');
     }
     bindAuditSessionClicks();
     bindAuditSingleClicks();
@@ -569,12 +572,13 @@ async function loadSessionTimeline(sessionId){
       const usage=p.response.usage||{};
       const tokens=(usage.input_tokens||0)+(usage.output_tokens||0);
 
+      const dlpTag=m.dlp_hit?'<span class="tag dlp">DLP</span>':'';
       html+='<div class="card timeline-card" data-rid="'+esc(m.request_id)+'">'+
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
           '<div style="display:flex;gap:8px;align-items:center">'+
             '<span style="color:#484f58;font-size:11px;font-weight:600">#'+(i+1)+'</span>'+
             '<span class="mono" style="font-size:11px;color:#7d8590">'+esc(model)+'</span>'+
-            stopTag+
+            stopTag+dlpTag+
             (tokens?'<span style="font-size:11px;color:#7d8590">'+fmt(tokens)+' tok</span>':'')+
           '</div>'+
           '<span style="font-size:11px;color:#484f58">'+ago(m.created_at)+(m.latency_ms?' · '+m.latency_ms+'ms':'')+'</span>'+
@@ -600,6 +604,32 @@ async function loadSingleAudit(requestId){
     document.querySelector('#tab-audit .section').style.display='none';
     document.getElementById('audit-timeline').style.display=auditCurrentSession?'none':'none';
     document.getElementById('audit-detail').style.display='block';
+
+    // Handle summary-only mode (rawData off)
+    if(data.summaryOnly){
+      const rawTab=document.querySelector('.audit-view-tab[data-view="raw"]');
+      rawTab.style.display='none';
+      document.getElementById('audit-raw').style.display='none';
+      document.getElementById('audit-parsed').style.display='';
+      const m=data.meta||{};
+      const dlpTag=m.dlp_hit?'<span class="tag dlp">DLP</span> ':'';
+      document.getElementById('audit-meta-cards').innerHTML=
+        (m.model?card('Model',esc(m.model)):'')+
+        card('Request Size',bytes(m.request_length||0))+
+        card('Response Size',bytes(m.response_length||0))+
+        (m.latency_ms?card('Latency',m.latency_ms+'ms'):'')+
+        (m.status_code?card('Status',String(m.status_code)):'');
+      document.getElementById('audit-messages').innerHTML=
+        '<div class="empty" style="text-align:left">'+dlpTag+
+        '<div style="margin-bottom:8px;color:#d29922">Raw data not available (storage disabled). Summary only:</div>'+
+        '<div class="msg-bubble system" style="white-space:pre-wrap">'+esc(data.summary||'No summary')+'</div></div>';
+      document.getElementById('audit-output').innerHTML='<div class="empty">Raw data not stored</div>';
+      return;
+    }
+
+    // Normal mode — show raw tab
+    const rawTab=document.querySelector('.audit-view-tab[data-view="raw"]');
+    rawTab.style.display='';
     // Raw view
     document.getElementById('audit-req').textContent=tryPrettyJson(data.raw.request);
     document.getElementById('audit-res').textContent=tryPrettyJson(data.raw.response);

@@ -8,6 +8,9 @@ const log = createLogger('audit-plugin');
 
 export interface AuditLoggerConfig {
   retentionHours: number;
+  rawData: boolean;
+  rawMaxBytes: number;
+  summaryMaxBytes: number;
 }
 
 export function createAuditLoggerPlugin(db: Database.Database, config: AuditLoggerConfig): Plugin {
@@ -56,6 +59,10 @@ export function createAuditLoggerPlugin(db: Database.Database, config: AuditLogg
           request_id: context.request.id,
           requestBody,
           responseBody: context.body,
+          dlpHit: false,
+          rawData: config.rawData,
+          rawMaxBytes: config.rawMaxBytes,
+          summaryMaxBytes: config.summaryMaxBytes,
         });
         log.debug('Audit entry stored', { requestId: context.request.id });
       } catch (err) {

@@ -169,7 +169,13 @@ export function createApiRouter(
       }
       const parsed = auditRepo.getParsedByRequestId(requestId);
       if (!parsed) {
-        sendJson(res, { error: 'Audit entry not found' }, 404);
+        // Fallback: raw data may be off — return summary-only
+        const meta = auditRepo.getMetaByRequestId(requestId);
+        if (!meta) {
+          sendJson(res, { error: 'Audit entry not found' }, 404);
+          return true;
+        }
+        sendJson(res, { summaryOnly: true, summary: meta.summary, meta });
         return true;
       }
       sendJson(res, parsed);

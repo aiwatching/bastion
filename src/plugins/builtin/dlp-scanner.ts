@@ -119,6 +119,7 @@ export function createDlpScannerPlugin(db: Database.Database, config: DlpScanner
             request_id: context.id,
             requestBody: context.body,
             responseBody: JSON.stringify({ error: blockReason }),
+            dlpHit: true,
           });
         } catch (err) {
           log.warn('Failed to write DLP auto-audit for blocked request', { error: (err as Error).message });
@@ -188,7 +189,10 @@ export function createDlpScannerPlugin(db: Database.Database, config: DlpScanner
             request_id: context.request.id,
             requestBody: context.request.body,
             responseBody: context.body,
+            dlpHit: true,
           });
+        } else {
+          auditRepo.markDlpHit(context.request.id);
         }
       } catch (err) {
         log.warn('Failed to write DLP response auto-audit', { error: (err as Error).message });
@@ -223,7 +227,10 @@ export function createDlpScannerPlugin(db: Database.Database, config: DlpScanner
               request_id: context.request.id,
               requestBody,
               responseBody: context.body,
+              dlpHit: true,
             });
+          } else {
+            auditRepo.markDlpHit(context.request.id);
           }
         } catch (err) {
           log.warn('Failed to write DLP auto-audit', { error: (err as Error).message });
@@ -269,7 +276,10 @@ export function createDlpScannerPlugin(db: Database.Database, config: DlpScanner
             request_id: context.request.id,
             requestBody: context.request.body,
             responseBody: context.body,
+            dlpHit: true,
           });
+        } else {
+          auditRepo.markDlpHit(context.request.id);
         }
       } catch (err) {
         log.warn('Failed to write DLP streaming response auto-audit', { error: (err as Error).message });

@@ -33,6 +33,9 @@ export interface BastionConfig {
     audit: {
       enabled: boolean;
       retentionHours: number;
+      rawData: boolean;
+      rawMaxBytes: number;
+      summaryMaxBytes: number;
     };
   };
   timeouts: {
