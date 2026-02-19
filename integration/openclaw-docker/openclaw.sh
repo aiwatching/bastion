@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC_DIR="${SCRIPT_DIR}/openclaw-src"
 IMAGE_NAME="openclaw:local"
-INSTANCES_DIR="${SCRIPT_DIR}/instances"
+INSTANCES_DIR="${SCRIPT_DIR}/.instances"
 DEFAULT_PORT=18789
 
 # ── helpers ──────────────────────────────────────────────────────────────────
