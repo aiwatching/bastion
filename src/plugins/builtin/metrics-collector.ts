@@ -2,6 +2,7 @@ import type { Plugin, ResponseCompleteContext } from '../types.js';
 import { extractMetrics } from '../../metrics/collector.js';
 import { RequestsRepository } from '../../storage/repositories/requests.js';
 import { SessionsRepository } from '../../storage/repositories/sessions.js';
+import { isPollingRequest } from '../../proxy/providers/classify.js';
 import { createLogger } from '../../utils/logger.js';
 import type Database from 'better-sqlite3';
 import { basename } from 'node:path';
@@ -53,6 +54,9 @@ export function createMetricsCollectorPlugin(db: Database.Database): Plugin {
     priority: 10,
 
     async onResponseComplete(context: ResponseCompleteContext): Promise<void> {
+      // Skip high-frequency polling requests (e.g., Telegram getUpdates)
+      if (isPollingRequest(context.request.provider, context.request.path)) return;
+
       const metrics = extractMetrics(context);
       const sessionId = context.request.sessionId ?? null;
 

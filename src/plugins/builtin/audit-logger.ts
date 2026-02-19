@@ -1,5 +1,6 @@
 import type { Plugin, RequestContext, PluginRequestResult, ResponseCompleteContext } from '../types.js';
 import { AuditLogRepository } from '../../storage/repositories/audit-log.js';
+import { isPollingRequest } from '../../proxy/providers/classify.js';
 import { createLogger } from '../../utils/logger.js';
 import type Database from 'better-sqlite3';
 
@@ -42,6 +43,9 @@ export function createAuditLoggerPlugin(db: Database.Database, config: AuditLogg
     async onResponseComplete(context: ResponseCompleteContext): Promise<void> {
       const requestBody = pendingRequests.get(context.request.id) ?? '';
       pendingRequests.delete(context.request.id);
+
+      // Skip high-frequency polling requests (e.g., Telegram getUpdates)
+      if (isPollingRequest(context.request.provider, context.request.path)) return;
 
       // Store asynchronously to avoid blocking
       setImmediate(() => {
