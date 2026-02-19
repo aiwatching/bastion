@@ -12,6 +12,7 @@ import { registerAnthropicProvider } from './proxy/providers/anthropic.js';
 import { registerOpenAIProvider } from './proxy/providers/openai.js';
 import { registerGeminiProvider } from './proxy/providers/gemini.js';
 import { registerClaudeWebProvider } from './proxy/providers/claude-web.js';
+import { registerMessagingProviders } from './proxy/providers/messaging.js';
 import { createProxyServer, startServer } from './proxy/server.js';
 import { writePidFile } from './cli/daemon.js';
 import { getCACertPath } from './proxy/certs.js';
@@ -36,6 +37,7 @@ export async function startGateway(): Promise<void> {
   registerOpenAIProvider();
   registerGeminiProvider();
   registerClaudeWebProvider();
+  registerMessagingProviders();
 
   // Initialize plugin manager — register all plugins, disable those not enabled
   const pluginManager = new PluginManager(config.timeouts.plugin);

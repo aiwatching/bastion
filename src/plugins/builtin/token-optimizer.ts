@@ -4,6 +4,7 @@ import { trimContent } from '../../optimizer/trimmer.js';
 import { reorderForCache } from '../../optimizer/reorder.js';
 import { estimateTokens } from '../../optimizer/estimator.js';
 import { OptimizerEventsRepository } from '../../storage/repositories/optimizer-events.js';
+import { isLLMProvider } from '../../proxy/providers/classify.js';
 import { createLogger } from '../../utils/logger.js';
 import type Database from 'better-sqlite3';
 
@@ -48,7 +49,10 @@ export function createTokenOptimizerPlugin(db: Database.Database, config: TokenO
     async onRequest(context: RequestContext): Promise<PluginRequestResult | void> {
       const originalLength = context.body.length;
 
-      // Skip cache for streaming requests and agentic loops (tool_result present)
+      // Skip cache for non-LLM providers, streaming requests, and agentic loops
+      // Only optimize/cache LLM providers — skip messaging platforms entirely
+      if (!isLLMProvider(context.provider)) return;
+
       const skipCache = context.isStreaming || isAgenticRequest(context.parsedBody);
 
       // Check cache first
@@ -118,6 +122,7 @@ export function createTokenOptimizerPlugin(db: Database.Database, config: TokenO
       // Cache successful non-streaming, non-agentic responses
       if (
         cache &&
+        isLLMProvider(context.request.provider) &&
         !context.isStreaming &&
         context.statusCode === 200 &&
         context.body &&

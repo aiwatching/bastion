@@ -242,6 +242,23 @@ export function parseAuditContent(reqStr: string, resStr: string): ParsedAudit {
         content: parseContentBlocks(m.content),
       }));
     }
+
+    // Claude Web / unknown format: if no messages parsed, extract text-like fields
+    if (result.request.messages.length === 0) {
+      const prompt = req.prompt ?? req.text ?? req.query ?? req.content;
+      if (prompt) {
+        result.request.messages = [{
+          role: 'user',
+          content: [{ type: 'text', text: truncText(String(prompt), 3000) }],
+        }];
+      } else {
+        // Show full request body as raw
+        result.request.messages = [{
+          role: 'raw',
+          content: [{ type: 'text', text: truncText(reqStr, 3000) }],
+        }];
+      }
+    }
   } catch {
     // JSON parse failed (likely truncated) — put raw text as a single message
     result.request.messages = [{
@@ -255,22 +272,32 @@ export function parseAuditContent(reqStr: string, resStr: string): ParsedAudit {
   try {
     const res = JSON.parse(resStr);
     result.response.model = res.model ?? null;
-    result.response.stopReason = res.stop_reason ?? null;
+    result.response.stopReason = res.stop_reason ?? res.finish_reason ?? null;
     if (res.usage) result.response.usage = res.usage;
 
-    // Anthropic format
+    // Anthropic API format
     if (Array.isArray(res.content)) {
       result.response.content = parseContentBlocks(res.content);
+      return result;
     }
-    // OpenAI format
-    else if (Array.isArray(res.choices)) {
+    // OpenAI API format
+    if (Array.isArray(res.choices)) {
       for (const c of res.choices) {
         const m = c.message ?? c.delta ?? {};
         if (m.content) {
           result.response.content.push({ type: 'text', text: truncText(m.content, 3000) });
         }
       }
+      return result;
     }
+    // Claude Web / unknown JSON format: extract any text-like fields
+    const text = res.completion ?? res.text ?? res.answer ?? res.response ?? res.output;
+    if (text) {
+      result.response.content = [{ type: 'text', text: truncText(String(text), 3000) }];
+      return result;
+    }
+    // Valid JSON but unrecognized structure — show as formatted JSON
+    result.response.content = [{ type: 'text', text: truncText(resStr, 3000) }];
     return result;
   } catch { /* not JSON */ }
 
@@ -279,11 +306,30 @@ export function parseAuditContent(reqStr: string, resStr: string): ParsedAudit {
     const events = parseSSEEvents(resStr);
     if (events.length > 0) {
       const sse = reconstructFromSSE(events);
-      result.response.model = sse.model;
-      result.response.stopReason = sse.stopReason;
-      result.response.usage = sse.usage;
-      result.response.content = sse.content;
-      return result;
+      // Only use SSE result if we actually extracted content
+      if (sse.content.length > 0) {
+        result.response.model = sse.model;
+        result.response.stopReason = sse.stopReason;
+        result.response.usage = sse.usage;
+        result.response.content = sse.content;
+        return result;
+      }
+      // SSE parsed but no content extracted — try Claude Web SSE format
+      const textParts: string[] = [];
+      for (const evt of events) {
+        // Claude Web: {"type":"completion","completion":"..."} or {"completion":"..."}
+        const comp = (evt.completion ?? evt.text ?? evt.delta) as string | undefined;
+        if (typeof comp === 'string') textParts.push(comp);
+        // Nested delta.text
+        const delta = evt.delta as Record<string, unknown> | undefined;
+        if (delta && typeof delta.text === 'string') textParts.push(delta.text);
+        if (evt.model && !result.response.model) result.response.model = evt.model as string;
+        if (evt.stop_reason) result.response.stopReason = evt.stop_reason as string;
+      }
+      if (textParts.length > 0) {
+        result.response.content = [{ type: 'text', text: truncText(textParts.join(''), 3000) }];
+        return result;
+      }
     }
   }
 

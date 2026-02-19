@@ -7,16 +7,28 @@ import type { BastionConfig } from '../config/schema.js';
 import { ensureCA, getHostCert, getCACertPath } from './certs.js';
 import { resolveRoute, sendError } from './router.js';
 import { forwardRequest } from './forwarder.js';
+import { isMessagingProvider } from './providers/classify.js';
 import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('connect');
 
 // API domains to MITM intercept — only these get decrypted
+// API domains to MITM intercept — only these get decrypted
+// LLM providers + messaging platforms (for OpenClaw integration)
 const INTERCEPT_HOSTS = new Set([
+  // LLM providers
   'api.anthropic.com',
   'api.openai.com',
   'generativelanguage.googleapis.com',
   'claude.ai',
+  // Messaging platforms
+  'api.telegram.org',
+  'discord.com',
+  'gateway.discord.gg',
+  'api.slack.com',
+  'slack.com',
+  'graph.facebook.com',       // WhatsApp Business API
+  'api.line.me',
 ]);
 
 // Map socket → session ID for session tracking across CONNECT tunnels
@@ -79,7 +91,11 @@ export function setupConnectHandler(
       log.debug('Session mapped', { sessionId, hostname, source });
     }
 
-    log.info('CONNECT', { hostname, port, intercept: INTERCEPT_HOSTS.has(hostname), sessionId, source });
+    if (INTERCEPT_HOSTS.has(hostname)) {
+      log.info('CONNECT', { hostname, port, sessionId, source });
+    } else {
+      log.debug('CONNECT tunnel', { hostname, port });
+    }
 
     if (INTERCEPT_HOSTS.has(hostname)) {
       handleMITM(hostname, port, clientSocket, head, ca, config, pluginManager, sessionId, source);
@@ -186,7 +202,9 @@ function createMITMRequestHandler(
   sessionSource?: string,
 ) {
   return async (req: IncomingMessage, res: ServerResponse) => {
-    log.info('MITM request', { method: req.method, hostname, path: req.url, sessionId });
+    // Redact secrets from logged paths (e.g., Telegram bot tokens)
+    const safePath = (req.url ?? '/').replace(/\/bot[^/]+\//, '/bot****/');
+    log.debug('MITM request', { method: req.method, hostname, path: safePath, sessionId });
 
     // Try to match a known provider route
     const route = resolveRoute(req);
