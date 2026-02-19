@@ -26,3 +26,4 @@ Thumbs.db
 
 # Debug logs
 *.log
+/integration/openclaw-docker/openclaw-src/

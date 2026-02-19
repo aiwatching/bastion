@@ -11,6 +11,7 @@ import { createAuditLoggerPlugin } from './plugins/builtin/audit-logger.js';
 import { registerAnthropicProvider } from './proxy/providers/anthropic.js';
 import { registerOpenAIProvider } from './proxy/providers/openai.js';
 import { registerGeminiProvider } from './proxy/providers/gemini.js';
+import { registerClaudeWebProvider } from './proxy/providers/claude-web.js';
 import { createProxyServer, startServer } from './proxy/server.js';
 import { writePidFile } from './cli/daemon.js';
 import { getCACertPath } from './proxy/certs.js';
@@ -34,6 +35,7 @@ export async function startGateway(): Promise<void> {
   registerAnthropicProvider();
   registerOpenAIProvider();
   registerGeminiProvider();
+  registerClaudeWebProvider();
 
   // Initialize plugin manager — register all plugins, disable those not enabled
   const pluginManager = new PluginManager(config.timeouts.plugin);

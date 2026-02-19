@@ -16,6 +16,7 @@ const INTERCEPT_HOSTS = new Set([
   'api.anthropic.com',
   'api.openai.com',
   'generativelanguage.googleapis.com',
+  'claude.ai',
 ]);
 
 // Map socket → session ID for session tracking across CONNECT tunnels
