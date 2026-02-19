@@ -111,4 +111,10 @@ export const highConfidencePatterns: DlpPattern[] = [
     description: 'Azure OpenAI API Key (32-char hex)',
     requireContext: ['azure', 'AZURE_OPENAI', 'openai.azure.com'],
   },
+  {
+    name: 'password-assignment',
+    category: 'high-confidence',
+    regex: /(?:password|passwd|pwd|pass_?word|secret_?key|auth_?token|access_?token|api_?key|apikey|\bkey\b|_key|_secret|_token|credential)[\s]*[=:]\s*['"]?([^\s'"]{6,})/gi,
+    description: 'Password or secret assignment (key=value pattern)',
+  },
 ];

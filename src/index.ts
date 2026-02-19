@@ -49,6 +49,7 @@ export async function startGateway(): Promise<void> {
     action: config.plugins.dlp.action,
     patterns: config.plugins.dlp.patterns,
     aiValidation: config.plugins.dlp.aiValidation,
+    getAction: () => configManager.get().plugins.dlp.action,
   }));
   if (!config.plugins.dlp.enabled) pluginManager.disable('dlp-scanner');
 
