@@ -135,7 +135,7 @@ Open `http://127.0.0.1:8420/dashboard` in a browser while the gateway is running
 
 5 tabs:
 - **Overview** — Request metrics, cost, tokens, per-provider/per-model/per-session breakdown
-- **DLP** — Sub-tabs: Config (pattern management, toggle, add custom), Findings (direction, snippets, drill-into audit), Test (standalone scanner with presets, trace log)
+- **DLP** — Sub-tabs: Findings (direction, snippets, drill-into audit), Config (engine toggle, action mode, AI validation, semantics), Signatures (remote sync status, version tracking, changelog, pattern management), Test (standalone scanner with presets, trace log)
 - **Optimizer** — Cache hit rate, tokens saved
 - **Audit** — Session-based timeline, DLP-tagged entries, summary preview, formatted request/response viewer
 - **Settings** — Toggle plugins, configure AI validation, semantic rules, runtime changes without restart
