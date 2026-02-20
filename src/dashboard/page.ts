@@ -84,6 +84,7 @@ tr:hover{background:#1c2128}
   <button class="tab active" data-tab="overview">Overview</button>
   <button class="tab" data-tab="dlp">DLP</button>
   <button class="tab" data-tab="findings">Findings</button>
+  <button class="tab" data-tab="dlp-test">DLP Test</button>
   <button class="tab" data-tab="optimizer">Optimizer</button>
   <button class="tab" data-tab="audit">Audit</button>
   <button class="tab" data-tab="settings">Settings</button>
@@ -224,6 +225,66 @@ tr:hover{background:#1c2128}
     </div>
     <table><thead><tr><th>Time</th><th>Dir</th><th>Request</th><th>Pattern</th><th>Category</th><th>Action</th><th>Matches</th><th>Original Snippet</th><th>Redacted Snippet</th></tr></thead><tbody id="findings-list"></tbody></table>
     <p class="empty" id="no-findings">No DLP findings yet.</p>
+  </div>
+</div>
+
+<!-- DLP TEST TAB -->
+<div class="tab-content" id="tab-dlp-test">
+  <div class="section">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h2>DLP Scanner Test</h2>
+      <div style="display:flex;gap:8px;align-items:center">
+        <select id="scan-action" class="config-select">
+          <option value="block">Block</option>
+          <option value="redact">Redact</option>
+          <option value="warn">Warn</option>
+        </select>
+        <button id="scan-btn" style="padding:6px 20px;font-size:13px;cursor:pointer;color:#fff;background:#238636;border:1px solid #2ea043;border-radius:6px;font-weight:500">Scan</button>
+      </div>
+    </div>
+    <div style="margin-bottom:12px">
+      <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">
+        <span style="font-size:11px;color:#7d8590;align-self:center;margin-right:4px">Presets:</span>
+        <button class="scan-preset" data-preset="clean" style="padding:2px 10px;font-size:11px;cursor:pointer;color:#7d8590;background:#161b22;border:1px solid #30363d;border-radius:10px">Clean</button>
+        <button class="scan-preset" data-preset="aws" style="padding:2px 10px;font-size:11px;cursor:pointer;color:#f85149;background:#161b22;border:1px solid #30363d;border-radius:10px">AWS Key</button>
+        <button class="scan-preset" data-preset="github" style="padding:2px 10px;font-size:11px;cursor:pointer;color:#f85149;background:#161b22;border:1px solid #30363d;border-radius:10px">GitHub Token</button>
+        <button class="scan-preset" data-preset="openai" style="padding:2px 10px;font-size:11px;cursor:pointer;color:#f85149;background:#161b22;border:1px solid #30363d;border-radius:10px">OpenAI Key</button>
+        <button class="scan-preset" data-preset="pem" style="padding:2px 10px;font-size:11px;cursor:pointer;color:#f85149;background:#161b22;border:1px solid #30363d;border-radius:10px">Private Key</button>
+        <button class="scan-preset" data-preset="password" style="padding:2px 10px;font-size:11px;cursor:pointer;color:#f85149;background:#161b22;border:1px solid #30363d;border-radius:10px">Password</button>
+        <button class="scan-preset" data-preset="cc" style="padding:2px 10px;font-size:11px;cursor:pointer;color:#d29922;background:#161b22;border:1px solid #30363d;border-radius:10px">Credit Card</button>
+        <button class="scan-preset" data-preset="ssn" style="padding:2px 10px;font-size:11px;cursor:pointer;color:#d29922;background:#161b22;border:1px solid #30363d;border-radius:10px">SSN</button>
+        <button class="scan-preset" data-preset="email" style="padding:2px 10px;font-size:11px;cursor:pointer;color:#58a6ff;background:#161b22;border:1px solid #30363d;border-radius:10px">Email</button>
+        <button class="scan-preset" data-preset="multi" style="padding:2px 10px;font-size:11px;cursor:pointer;color:#f0a0f0;background:#161b22;border:1px solid #30363d;border-radius:10px">Multi</button>
+        <button class="scan-preset" data-preset="json-secret" style="padding:2px 10px;font-size:11px;cursor:pointer;color:#f0a0f0;background:#161b22;border:1px solid #30363d;border-radius:10px">JSON Secret</button>
+        <button class="scan-preset" data-preset="llm-body" style="padding:2px 10px;font-size:11px;cursor:pointer;color:#b388ff;background:#161b22;border:1px solid #30363d;border-radius:10px">LLM Request</button>
+      </div>
+      <textarea id="scan-input" rows="8" placeholder="Paste or type text to scan for sensitive data..." style="width:100%;background:#0f1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:12px;font-family:'SF Mono',Monaco,monospace;font-size:12px;resize:vertical;line-height:1.6"></textarea>
+    </div>
+  </div>
+
+  <div id="scan-result" style="display:none">
+    <div class="grid" id="scan-result-cards" style="margin-bottom:16px"></div>
+
+    <div class="section" id="scan-findings-section" style="display:none">
+      <h2>Findings</h2>
+      <table>
+        <thead><tr><th>Pattern</th><th>Category</th><th>Matches</th><th>Matched Values</th></tr></thead>
+        <tbody id="scan-findings-body"></tbody>
+      </table>
+    </div>
+
+    <div id="scan-diff-section" style="display:none">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+        <div class="card">
+          <div class="label">Original</div>
+          <pre id="scan-original" style="white-space:pre-wrap;word-break:break-all;font-family:'SF Mono',Monaco,monospace;font-size:11px;line-height:1.6;color:#e1e4e8;max-height:400px;overflow:auto;margin-top:8px"></pre>
+        </div>
+        <div class="card">
+          <div class="label">Redacted</div>
+          <pre id="scan-redacted" style="white-space:pre-wrap;word-break:break-all;font-family:'SF Mono',Monaco,monospace;font-size:11px;line-height:1.6;color:#e1e4e8;max-height:400px;overflow:auto;margin-top:8px"></pre>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -590,6 +651,97 @@ function renderFindings(){
 }
 document.getElementById('findings-action-filter').addEventListener('change',renderFindings);
 document.getElementById('findings-dir-filter').addEventListener('change',renderFindings);
+
+// ── DLP Test tab ──
+const SCAN_PRESETS={
+  clean:'What is the capital of France? Please explain in detail.',
+  aws:'Deploy using AWS credentials:\\nAWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE\\nAWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
+  github:'Clone the repo with: git clone https://github.com/user/repo\\nUse token: ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijk',
+  openai:'Set OPENAI_API_KEY=sk-proj-abc123def456ghi789jkl012mno345pqr678stu901vwx234',
+  pem:'Server private key:\\n-----BEGIN RSA PRIVATE KEY-----\\nMIIEpAIBAAKCAQEA0Z3VS5JJcds3xfn/ygWyF8PbnGy0AHB7MhgHcTz6sE2I2yPB\\naFDrBz9vFqU4yVkzSzl9JYpP0kLgHrFhLXQ2RD3G7X1SE6tU0ZMaXR9T5eJA\\n-----END RSA PRIVATE KEY-----',
+  password:'Database config:\\nDB_HOST=prod-db.internal\\nDB_USER=admin\\nDB_PASSWORD=xK9mP2vL5nR8qW4jB7fT3aZ6',
+  cc:'Customer payment info:\\nName: John Doe\\nCard: 4111111111111111\\nExp: 12/25\\nSSN: 219-09-9999',
+  ssn:'Employee record: Name=Alice Smith, SSN: 219-09-9999, DOB: 1990-01-15',
+  email:'Please contact the user at their email address john.doe@company.com or call their phone number (555) 123-4567',
+  multi:'Config dump:\\nAKIAIOSFODNN7EXAMPLE\\nghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijk\\nsk-proj-abc123def456ghi789jkl012mno345pqr678stu901vwx234\\npassword=SuperSecret123xK9m',
+  'json-secret':JSON.stringify({model:'claude-haiku-4.5-20241022',config:{database_password:'xK9mP2vL5nR8qW4jB7fT3aZ6yU0cD1eH',api_secret:'aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2uV3'}},null,2),
+  'llm-body':JSON.stringify({model:'claude-haiku-4.5-20241022',max_tokens:1024,messages:[{role:'system',content:'You are a helpful assistant.'},{role:'user',content:'My server credentials are:\\nHost: 192.168.1.100\\nAPI Key: AKIAIOSFODNN7EXAMPLE\\nPassword: xK9mP2vL5nR8qW4jB7fT3aZ6\\nPlease help me configure the deployment.'}]},null,2),
+};
+
+document.querySelectorAll('.scan-preset').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    const p=btn.dataset.preset;
+    if(SCAN_PRESETS[p]!==undefined) document.getElementById('scan-input').value=SCAN_PRESETS[p];
+    document.getElementById('scan-result').style.display='none';
+  });
+});
+
+function highlightMatches(text,matches){
+  if(!matches||!matches.length)return esc(text);
+  let result=text;
+  const sorted=[...new Set(matches)].sort((a,b)=>b.length-a.length);
+  const placeholder=[];
+  sorted.forEach((m,i)=>{
+    const tag='\\x00MARK'+i+'\\x00';
+    result=result.split(m).join(tag);
+    placeholder.push({tag,m,i});
+  });
+  result=esc(result);
+  placeholder.forEach(({tag,m,i})=>{
+    result=result.split(esc(tag)).join('<span style="background:#5c2020;color:#ff6b6b;border-radius:2px;padding:0 2px">'+esc(m)+'</span>');
+  });
+  return result;
+}
+
+function highlightRedacted(text){
+  if(!text)return'';
+  return esc(text).replace(/\\[([A-Z_-]+_REDACTED)\\]/g,'<span style="background:#1a3d1a;color:#3fb950;border-radius:2px;padding:0 2px">[$1]</span>');
+}
+
+document.getElementById('scan-btn').addEventListener('click',async()=>{
+  const text=document.getElementById('scan-input').value.trim();
+  if(!text)return;
+  const action=document.getElementById('scan-action').value;
+  const btn=document.getElementById('scan-btn');
+  btn.textContent='Scanning...';btn.disabled=true;
+  try{
+    const r=await fetch('/api/dlp/scan',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text,action})});
+    const data=await r.json();
+    if(data.error){alert(data.error);return;}
+    const resultEl=document.getElementById('scan-result');
+    resultEl.style.display='block';
+    const n=data.findings.length;
+    const allMatches=data.findings.flatMap(f=>f.matches||[]);
+    const actionColor=data.action==='block'?'warn':data.action==='redact'?'blue':data.action==='pass'?'':'blue';
+    const actionLabel=data.action==='pass'?'No findings':'Action: '+data.action;
+    document.getElementById('scan-result-cards').innerHTML=
+      card('Result',actionLabel,actionColor)+
+      card('Findings',n.toString(),n>0?'warn':'')+
+      card('Patterns',n>0?data.findings.map(f=>f.patternName).join(', '):'None','');
+    const findSec=document.getElementById('scan-findings-section');
+    if(n>0){
+      findSec.style.display='';
+      document.getElementById('scan-findings-body').innerHTML=data.findings.map(f=>{
+        const catClass=f.patternCategory==='high-confidence'?'cached':f.patternCategory==='validated'?'blue':f.patternCategory==='context-aware'?'warn':'redact';
+        const matchDisp=(f.matches||[]).map(m=>'<div class="snippet" style="margin-bottom:2px;display:inline-block">'+esc(m.length>60?m.slice(0,60)+'...':m)+'</div>').join(' ');
+        return '<tr><td class="mono" style="font-size:12px;white-space:nowrap">'+esc(f.patternName)+'</td>'+
+          '<td><span class="tag '+catClass+'">'+esc(f.patternCategory)+'</span></td>'+
+          '<td>'+f.matchCount+'</td><td>'+matchDisp+'</td></tr>';
+      }).join('');
+    }else{findSec.style.display='none';}
+    const diffSec=document.getElementById('scan-diff-section');
+    if(n>0){
+      diffSec.style.display='';
+      document.getElementById('scan-original').innerHTML=highlightMatches(text,allMatches);
+      document.getElementById('scan-redacted').innerHTML=data.redactedText?highlightRedacted(data.redactedText):'<span style="color:#7d8590">(action is not redact)</span>';
+    }else{diffSec.style.display='none';}
+  }catch(e){alert('Scan failed: '+e.message);}
+  finally{btn.textContent='Scan';btn.disabled=false;}
+});
+
+document.getElementById('scan-input').addEventListener('keydown',e=>{
+  if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){e.preventDefault();document.getElementById('scan-btn').click();}
+});
 
 // DLP Patterns management
 async function refreshPatterns(){
