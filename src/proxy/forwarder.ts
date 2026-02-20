@@ -207,19 +207,15 @@ async function handleStreamingResponse(
 
       const latencyMs = Date.now() - startTime;
 
-      // Extract usage from the last SSE event (often contains usage summary)
-      let usage = { inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0 };
-      for (const event of sseEvents.reverse()) {
+      // Extract usage by merging across all SSE events (take max per field).
+      // Anthropic splits usage: input_tokens in message_start, output_tokens in message_delta.
+      const usage = { inputTokens: 0, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0 };
+      for (const event of sseEvents) {
         const extracted = provider.extractUsage(event);
-        if (extracted.inputTokens > 0 || extracted.outputTokens > 0) {
-          usage = {
-            inputTokens: extracted.inputTokens,
-            outputTokens: extracted.outputTokens,
-            cacheCreationTokens: extracted.cacheCreationTokens ?? 0,
-            cacheReadTokens: extracted.cacheReadTokens ?? 0,
-          };
-          break;
-        }
+        if (extracted.inputTokens > usage.inputTokens) usage.inputTokens = extracted.inputTokens;
+        if (extracted.outputTokens > usage.outputTokens) usage.outputTokens = extracted.outputTokens;
+        if ((extracted.cacheCreationTokens ?? 0) > usage.cacheCreationTokens) usage.cacheCreationTokens = extracted.cacheCreationTokens ?? 0;
+        if ((extracted.cacheReadTokens ?? 0) > usage.cacheReadTokens) usage.cacheReadTokens = extracted.cacheReadTokens ?? 0;
       }
 
       const completeContext: ResponseCompleteContext = {
