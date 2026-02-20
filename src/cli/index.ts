@@ -10,6 +10,7 @@ import { registerEnvCommand } from './commands/env.js';
 import { registerWrapCommand } from './commands/wrap.js';
 import { registerTrustCaCommand } from './commands/trust-ca.js';
 import { registerProxyCommand } from './commands/proxy.js';
+import { registerOpenclawCommand } from './commands/openclaw.js';
 
 const program = new Command();
 
@@ -28,5 +29,6 @@ registerEnvCommand(program);
 registerWrapCommand(program);
 registerTrustCaCommand(program);
 registerProxyCommand(program);
+registerOpenclawCommand(program);
 
 program.parse();
