@@ -7,12 +7,19 @@ export interface ModelPricing {
 }
 
 const PRICING: Record<string, ModelPricing> = {
-  // Anthropic
+  // Anthropic — current generation
   'claude-opus-4-20250514': { inputPerMillion: 15, outputPerMillion: 75, cacheCreationPerMillion: 18.75, cacheReadPerMillion: 1.5 },
   'claude-sonnet-4-20250514': { inputPerMillion: 3, outputPerMillion: 15, cacheCreationPerMillion: 3.75, cacheReadPerMillion: 0.3 },
   'claude-sonnet-4-5-20250514': { inputPerMillion: 3, outputPerMillion: 15, cacheCreationPerMillion: 3.75, cacheReadPerMillion: 0.3 },
   'claude-haiku-3-5-20241022': { inputPerMillion: 0.80, outputPerMillion: 4, cacheCreationPerMillion: 1, cacheReadPerMillion: 0.08 },
   'claude-haiku-4-5-20241022': { inputPerMillion: 0.80, outputPerMillion: 4, cacheCreationPerMillion: 1, cacheReadPerMillion: 0.08 },
+  // Anthropic — older naming convention (claude-3-5-* format)
+  'claude-3-5-sonnet-20241022': { inputPerMillion: 3, outputPerMillion: 15, cacheCreationPerMillion: 3.75, cacheReadPerMillion: 0.3 },
+  'claude-3-5-sonnet-20240620': { inputPerMillion: 3, outputPerMillion: 15 },
+  'claude-3-5-haiku-20241022': { inputPerMillion: 0.80, outputPerMillion: 4, cacheCreationPerMillion: 1, cacheReadPerMillion: 0.08 },
+  'claude-3-opus-20240229': { inputPerMillion: 15, outputPerMillion: 75 },
+  'claude-3-sonnet-20240229': { inputPerMillion: 3, outputPerMillion: 15 },
+  'claude-3-haiku-20240307': { inputPerMillion: 0.25, outputPerMillion: 1.25 },
 
   // OpenAI
   'gpt-4o': { inputPerMillion: 2.5, outputPerMillion: 10 },

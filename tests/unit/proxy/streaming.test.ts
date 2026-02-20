@@ -57,6 +57,30 @@ describe('SSEParser', () => {
     expect(parseSSEData(events[0])).toBeNull();
   });
 
+  it('handles CRLF line endings', () => {
+    const events: SSEEvent[] = [];
+    const parser = new SSEParser((e) => events.push(e));
+
+    parser.feed('event: message_start\r\ndata: {"type":"message_start"}\r\n\r\nevent: message_delta\r\ndata: {"type":"message_delta"}\r\n\r\n');
+
+    expect(events).toHaveLength(2);
+    expect(events[0].event).toBe('message_start');
+    expect(events[0].data).toBe('{"type":"message_start"}');
+    expect(events[1].event).toBe('message_delta');
+  });
+
+  it('handles chunked CRLF data', () => {
+    const events: SSEEvent[] = [];
+    const parser = new SSEParser((e) => events.push(e));
+
+    parser.feed('event: content_block_delta\r\n');
+    parser.feed('data: {"type":"delta"}\r\n');
+    parser.feed('\r\n');
+
+    expect(events).toHaveLength(1);
+    expect(events[0].data).toBe('{"type":"delta"}');
+  });
+
   it('flushes remaining data', () => {
     const events: SSEEvent[] = [];
     const parser = new SSEParser((e) => events.push(e));

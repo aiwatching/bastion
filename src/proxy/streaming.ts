@@ -26,7 +26,9 @@ export class SSEParser {
     // Keep the last incomplete line in the buffer
     this.buffer = lines.pop() ?? '';
 
-    for (const line of lines) {
+    for (const rawLine of lines) {
+      // Strip trailing \r to handle both \n and \r\n line endings
+      const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine;
       if (line.startsWith('event: ')) {
         this.currentEvent = line.slice(7).trim();
       } else if (line.startsWith('data: ')) {

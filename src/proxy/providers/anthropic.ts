@@ -26,7 +26,12 @@ export const anthropicProvider: ProviderConfig = {
     cacheCreationTokens?: number;
     cacheReadTokens?: number;
   } {
-    const usage = body.usage as Record<string, number> | undefined;
+    // Check top-level usage (non-streaming responses and message_delta events)
+    let usage = body.usage as Record<string, number> | undefined;
+    // Also check message.usage for streaming message_start events
+    if (!usage && body.message) {
+      usage = (body.message as Record<string, unknown>).usage as Record<string, number> | undefined;
+    }
     if (!usage) return { inputTokens: 0, outputTokens: 0 };
     return {
       inputTokens: usage.input_tokens ?? 0,
