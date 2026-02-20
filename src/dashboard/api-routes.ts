@@ -8,7 +8,7 @@ import { CacheRepository } from '../storage/repositories/cache.js';
 import { SessionsRepository } from '../storage/repositories/sessions.js';
 import { DlpPatternsRepository } from '../storage/repositories/dlp-patterns.js';
 import { DlpConfigHistoryRepository } from '../storage/repositories/dlp-config-history.js';
-import { scanText } from '../dlp/engine.js';
+import { scanText, type DlpTrace } from '../dlp/engine.js';
 import type { DlpAction } from '../dlp/actions.js';
 import { getBuiltinSensitivePatterns, getBuiltinNonSensitiveNames } from '../dlp/semantics.js';
 import type { ConfigManager } from '../config/manager.js';
@@ -101,7 +101,9 @@ export function createApiRouter(
           }
           const action = (data.action ?? configManager.get().plugins.dlp.action ?? 'warn') as DlpAction;
           const patterns = dlpPatternsRepo.getEnabled();
-          const result = scanText(text, patterns, action);
+          const enableTrace = Boolean(data.trace);
+          const trace: DlpTrace | undefined = enableTrace ? { entries: [], totalDurationMs: 0 } : undefined;
+          const result = scanText(text, patterns, action, trace);
           sendJson(res, {
             action: result.action,
             findings: result.findings.map((f) => ({
@@ -111,6 +113,7 @@ export function createApiRouter(
               matches: f.matches,
             })),
             redactedText: result.redactedBody ?? null,
+            trace: trace ?? null,
           });
         } catch (err) {
           sendJson(res, { error: (err as Error).message }, 400);

@@ -17,6 +17,12 @@ h1{font-size:20px;font-weight:600;margin-bottom:4px;color:#f0f3f6}
 .tab.active{color:#58a6ff;border-bottom-color:#58a6ff}
 .tab-content{display:none}
 .tab-content.active{display:block}
+.sub-tabs{display:flex;gap:2px;margin-bottom:16px;background:#161b22;border-radius:8px;padding:3px;border:1px solid #30363d}
+.sub-tab{padding:6px 14px;cursor:pointer;color:#7d8590;font-size:12px;font-weight:500;border:none;background:none;border-radius:6px;transition:all .15s}
+.sub-tab:hover{color:#e1e4e8}
+.sub-tab.active{color:#e1e4e8;background:#30363d}
+.sub-content{display:none}
+.sub-content.active{display:block}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px}
 .card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px}
 .card .label{font-size:11px;text-transform:uppercase;color:#7d8590;letter-spacing:.5px;margin-bottom:4px}
@@ -83,8 +89,6 @@ tr:hover{background:#1c2128}
 <div class="tabs">
   <button class="tab active" data-tab="overview">Overview</button>
   <button class="tab" data-tab="dlp">DLP</button>
-  <button class="tab" data-tab="findings">Findings</button>
-  <button class="tab" data-tab="dlp-test">DLP Test</button>
   <button class="tab" data-tab="optimizer">Optimizer</button>
   <button class="tab" data-tab="audit">Audit</button>
   <button class="tab" data-tab="settings">Settings</button>
@@ -115,6 +119,15 @@ tr:hover{background:#1c2128}
 <!-- DLP TAB -->
 <div class="tab-content" id="tab-dlp">
   <div class="grid" id="dlp-cards"></div>
+
+  <div class="sub-tabs" id="dlp-sub-tabs">
+    <button class="sub-tab active" data-dlp-sub="config">Config</button>
+    <button class="sub-tab" data-dlp-sub="findings">Findings</button>
+    <button class="sub-tab" data-dlp-sub="test">Test</button>
+  </div>
+
+  <!-- SUB: Config -->
+  <div class="sub-content active" id="dlp-sub-config">
 
   <!-- Unified DLP Configuration -->
   <div class="section">
@@ -201,10 +214,10 @@ tr:hover{background:#1c2128}
     <p class="empty" id="no-patterns">No patterns configured.</p>
   </div>
 
-</div>
+  </div><!-- /dlp-sub-config -->
 
-<!-- FINDINGS TAB -->
-<div class="tab-content" id="tab-findings">
+  <!-- SUB: Findings -->
+  <div class="sub-content" id="dlp-sub-findings">
   <div class="grid" id="findings-cards"></div>
   <div class="section">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -226,10 +239,10 @@ tr:hover{background:#1c2128}
     <table><thead><tr><th>Time</th><th>Dir</th><th>Request</th><th>Pattern</th><th>Category</th><th>Action</th><th>Matches</th><th>Original Snippet</th><th>Redacted Snippet</th></tr></thead><tbody id="findings-list"></tbody></table>
     <p class="empty" id="no-findings">No DLP findings yet.</p>
   </div>
-</div>
+  </div><!-- /dlp-sub-findings -->
 
-<!-- DLP TEST TAB -->
-<div class="tab-content" id="tab-dlp-test">
+  <!-- SUB: Test -->
+  <div class="sub-content" id="dlp-sub-test">
   <div class="section">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
       <h2>DLP Scanner Test</h2>
@@ -239,6 +252,7 @@ tr:hover{background:#1c2128}
           <option value="redact">Redact</option>
           <option value="warn">Warn</option>
         </select>
+        <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:#7d8590;cursor:pointer"><input type="checkbox" id="scan-trace"> Trace</label>
         <button id="scan-btn" style="padding:6px 20px;font-size:13px;cursor:pointer;color:#fff;background:#238636;border:1px solid #2ea043;border-radius:6px;font-weight:500">Scan</button>
       </div>
     </div>
@@ -285,8 +299,17 @@ tr:hover{background:#1c2128}
         </div>
       </div>
     </div>
+
+    <div id="scan-trace-section" style="display:none">
+      <div class="section">
+        <h2>Trace Log</h2>
+        <div id="scan-trace-log" style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:12px;font-family:'SF Mono',Monaco,monospace;font-size:11px;line-height:1.7;max-height:500px;overflow:auto;white-space:pre-wrap;word-break:break-all"></div>
+      </div>
+    </div>
   </div>
-</div>
+  </div><!-- /dlp-sub-test -->
+
+</div><!-- /tab-dlp -->
 
 <!-- OPTIMIZER TAB -->
 <div class="tab-content" id="tab-optimizer">
@@ -373,10 +396,20 @@ document.querySelectorAll('.tab').forEach(t=>{
     t.classList.add('active');
     document.getElementById('tab-'+t.dataset.tab).classList.add('active');
     if(t.dataset.tab==='dlp')refreshDlp();
-    if(t.dataset.tab==='findings')refreshFindings();
     if(t.dataset.tab==='optimizer')refreshOptimizer();
     if(t.dataset.tab==='audit')refreshAudit();
     if(t.dataset.tab==='settings')refreshSettings();
+  });
+});
+
+// DLP sub-tab switching
+document.querySelectorAll('#dlp-sub-tabs .sub-tab').forEach(t=>{
+  t.addEventListener('click',()=>{
+    document.querySelectorAll('#dlp-sub-tabs .sub-tab').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('#tab-dlp .sub-content').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById('dlp-sub-'+t.dataset.dlpSub).classList.add('active');
+    if(t.dataset.dlpSub==='findings')refreshFindings();
   });
 });
 
@@ -698,14 +731,30 @@ function highlightRedacted(text){
   return esc(text).replace(/\\[([A-Z_-]+_REDACTED)\\]/g,'<span style="background:#1a3d1a;color:#3fb950;border-radius:2px;padding:0 2px">[$1]</span>');
 }
 
+const TRACE_LAYER_COLORS={'-1':'#7d8590','0':'#58a6ff','1':'#d29922','2':'#b388ff','3':'#3fb950'};
+const TRACE_LAYER_NAMES={'-1':'INIT','0':'STRUCT','1':'ENTROPY','2':'REGEX','3':'SEMANTIC'};
+function renderTrace(trace){
+  if(!trace||!trace.entries)return'';
+  return trace.entries.map(e=>{
+    const color=TRACE_LAYER_COLORS[e.layer]||'#7d8590';
+    const label=TRACE_LAYER_NAMES[e.layer]||e.layerName;
+    const dur=e.durationMs!==undefined?' <span style="color:#484f58">('+e.durationMs.toFixed(2)+'ms)</span>':'';
+    const icon=e.step==='finding'||e.step==='summary'||e.step==='done'?'<span style="color:#3fb950">&#9679;</span> ':
+      e.step.includes('skip')||e.step==='not-sensitive'||e.step==='low'||e.step==='dedup'?'<span style="color:#484f58">&#9675;</span> ':
+      e.step==='high'||e.step==='match'||e.step==='context-match'?'<span style="color:#d29922">&#9679;</span> ':'  ';
+    return icon+'<span style="color:'+color+';font-weight:600">['+esc(label)+']</span> <span style="color:#7d8590">'+esc(e.step)+'</span> '+esc(e.detail)+dur;
+  }).join('\\n');
+}
+
 document.getElementById('scan-btn').addEventListener('click',async()=>{
   const text=document.getElementById('scan-input').value.trim();
   if(!text)return;
   const action=document.getElementById('scan-action').value;
+  const enableTrace=document.getElementById('scan-trace').checked;
   const btn=document.getElementById('scan-btn');
   btn.textContent='Scanning...';btn.disabled=true;
   try{
-    const r=await fetch('/api/dlp/scan',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text,action})});
+    const r=await fetch('/api/dlp/scan',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text,action,trace:enableTrace})});
     const data=await r.json();
     if(data.error){alert(data.error);return;}
     const resultEl=document.getElementById('scan-result');
@@ -735,6 +784,12 @@ document.getElementById('scan-btn').addEventListener('click',async()=>{
       document.getElementById('scan-original').innerHTML=highlightMatches(text,allMatches);
       document.getElementById('scan-redacted').innerHTML=data.redactedText?highlightRedacted(data.redactedText):'<span style="color:#7d8590">(action is not redact)</span>';
     }else{diffSec.style.display='none';}
+    // Trace log
+    const traceSec=document.getElementById('scan-trace-section');
+    if(data.trace&&data.trace.entries&&data.trace.entries.length>0){
+      traceSec.style.display='';
+      document.getElementById('scan-trace-log').innerHTML=renderTrace(data.trace);
+    }else{traceSec.style.display='none';}
   }catch(e){alert('Scan failed: '+e.message);}
   finally{btn.textContent='Scan';btn.disabled=false;}
 });
