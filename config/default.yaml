@@ -16,7 +16,7 @@ plugins:
       - "validated"
       - "context-aware"
     remotePatterns:
-      url: ""
+      url: "https://github.com/aiwatching/bastion_signature.git"
       branch: "auto"
       syncOnStart: true
       syncIntervalMinutes: 0

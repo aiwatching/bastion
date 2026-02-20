@@ -195,18 +195,24 @@ tr:hover{background:#1c2128}
   <!-- SUB: Signatures -->
   <div class="sub-content" id="dlp-sub-signatures">
 
-  <!-- Status -->
+  <!-- Status + Controls -->
   <div class="section">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <h2>Remote Signatures</h2>
-      <div style="display:flex;gap:8px;align-items:center">
+      <div style="display:flex;align-items:center;gap:10px">
+        <h2>Signatures</h2>
         <span id="sig-badge" style="display:none;font-size:11px;padding:2px 8px;border-radius:10px;background:#1f2937;border:1px solid #30363d;color:#7d8590"></span>
         <span id="sig-update" style="display:none;font-size:11px;padding:2px 8px;border-radius:10px;background:#2a1f00;border:1px solid #d29922;color:#d29922;cursor:pointer" title="Click to sync"></span>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <div class="toggle-row" style="padding:0;gap:6px">
+          <div style="font-size:12px;color:#7d8590">Auto-sync</div>
+          <label class="switch"><input type="checkbox" id="sig-auto-sync"><span class="slider"></span></label>
+        </div>
         <button id="sig-check-btn" style="padding:4px 10px;font-size:11px;cursor:pointer;color:#7d8590;background:none;border:1px solid #30363d;border-radius:6px">Check Update</button>
-        <button id="sig-sync-btn" style="padding:4px 10px;font-size:11px;cursor:pointer;color:#58a6ff;background:none;border:1px solid #1f3a5f;border-radius:6px">Sync Now</button>
+        <button id="sig-sync-btn" style="padding:4px 12px;font-size:12px;cursor:pointer;color:#58a6ff;background:none;border:1px solid #1f3a5f;border-radius:6px">Sync Now</button>
       </div>
     </div>
-    <div id="sig-status" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:12px">
+    <div id="sig-status" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
       <div style="padding:10px 14px;background:#161b22;border:1px solid #30363d;border-radius:8px">
         <div style="font-size:11px;color:#7d8590;margin-bottom:4px">Version</div>
         <div id="sig-ver" style="font-size:16px;font-weight:600;color:#e1e4e8">-</div>
@@ -224,46 +230,12 @@ tr:hover{background:#1c2128}
         <div id="sig-synced" style="font-size:14px;font-weight:500;color:#e1e4e8">-</div>
       </div>
     </div>
-    <div id="sig-no-config" style="padding:16px;text-align:center;color:#7d8590;font-size:13px">
-      Remote signatures not configured. Set <code>remotePatterns.url</code> in config or enter below.
+    <div id="sig-not-synced" style="display:none;margin-top:12px;padding:12px 16px;text-align:center;color:#7d8590;font-size:13px;background:#161b22;border:1px solid #30363d;border-radius:8px">
+      Not synced yet. Click <strong>Sync Now</strong> to pull the latest signatures.
     </div>
   </div>
 
-  <!-- Configuration -->
-  <div class="section">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <h2>Sync Configuration</h2>
-      <button id="sig-save-cfg-btn" style="display:none;padding:4px 16px;font-size:12px;cursor:pointer;color:#fff;background:#238636;border:1px solid #2ea043;border-radius:6px">Save</button>
-    </div>
-    <div style="display:grid;grid-template-columns:2fr 1fr;gap:8px;margin-bottom:8px">
-      <div>
-        <div style="font-size:11px;color:#7d8590;margin-bottom:4px">Repository URL</div>
-        <input id="sig-cfg-url" placeholder="https://github.com/org/repo.git" style="width:100%;box-sizing:border-box;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 10px;border-radius:4px;font-size:12px;font-family:monospace">
-      </div>
-      <div>
-        <div style="font-size:11px;color:#7d8590;margin-bottom:4px">Branch</div>
-        <input id="sig-cfg-branch" value="auto" style="width:100%;box-sizing:border-box;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 10px;border-radius:4px;font-size:12px">
-      </div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      <div class="toggle-row" style="padding:6px 0">
-        <div><div class="toggle-label" style="font-size:12px">Sync on start</div></div>
-        <label class="switch"><input type="checkbox" id="sig-cfg-sync-start" checked><span class="slider"></span></label>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px">
-        <div style="font-size:11px;color:#7d8590">Interval (minutes, 0=disabled)</div>
-        <input id="sig-cfg-interval" type="number" value="0" min="0" style="width:60px;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:4px 8px;border-radius:4px;font-size:12px;text-align:center">
-      </div>
-    </div>
-  </div>
-
-  <!-- Changelog -->
-  <div class="section">
-    <h2>Changelog</h2>
-    <div id="sig-changelog" style="color:#7d8590;font-size:13px">No changelog available.</div>
-  </div>
-
-  <!-- DLP Patterns (moved here from Config) -->
+  <!-- DLP Patterns -->
   <div class="section">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
       <h2>DLP Patterns</h2>
@@ -286,6 +258,19 @@ tr:hover{background:#1c2128}
     </div>
     <table><thead><tr><th style="width:60px">Enabled</th><th>Name</th><th>Category</th><th>Regex</th><th>Description</th><th style="width:60px">Actions</th></tr></thead><tbody id="dlp-patterns"></tbody></table>
     <p class="empty" id="no-patterns">No patterns configured.</p>
+  </div>
+
+  <!-- Sync Log (collapsible) -->
+  <div class="section">
+    <div style="cursor:pointer;display:flex;align-items:center;gap:6px;user-select:none" id="sig-log-toggle">
+      <span id="sig-log-arrow" style="font-size:10px;color:#7d8590;transition:transform 0.2s">\u25b6</span>
+      <h2 style="margin:0;font-size:14px">Sync Log</h2>
+      <span id="sig-log-count" style="font-size:11px;color:#7d8590"></span>
+    </div>
+    <div id="sig-log-body" style="display:none;margin-top:8px;max-height:300px;overflow-y:auto">
+      <div id="sig-log-entries" style="font-family:monospace;font-size:11px;line-height:1.7;color:#8b949e"></div>
+      <p class="empty" id="sig-log-empty">No sync log entries.</p>
+    </div>
   </div>
 
   </div><!-- /dlp-sub-signatures -->
@@ -1062,6 +1047,29 @@ async function refreshPatterns(){
 }
 
 // Signature management
+const sigLog=[];
+function addSigLog(msg,ok){
+  sigLog.unshift({time:new Date().toLocaleTimeString(),msg,ok});
+  if(sigLog.length>50)sigLog.length=50;
+  renderSigLog();
+}
+function renderSigLog(){
+  const el=document.getElementById('sig-log-entries');
+  const empty=document.getElementById('sig-log-empty');
+  if(!sigLog.length){empty.style.display='';el.innerHTML='';document.getElementById('sig-log-count').textContent='';return;}
+  empty.style.display='none';
+  document.getElementById('sig-log-count').textContent='('+sigLog.length+')';
+  el.innerHTML=sigLog.map(e=>{
+    const color=e.ok===false?'#f85149':e.ok===true?'#3fb950':'#7d8590';
+    return '<div style="padding:3px 0;border-bottom:1px solid #21262d"><span style="color:#484f58">'+esc(e.time)+'</span> <span style="color:'+color+'">'+esc(e.msg)+'</span></div>';
+  }).join('');
+}
+document.getElementById('sig-log-toggle').addEventListener('click',()=>{
+  const body=document.getElementById('sig-log-body');
+  const arrow=document.getElementById('sig-log-arrow');
+  if(body.style.display==='none'){body.style.display='';arrow.style.transform='rotate(90deg)';}
+  else{body.style.display='none';arrow.style.transform='';}
+});
 async function refreshSignature(checkRemote){
   try{
     const url=checkRemote?'/api/dlp/signature?check=true':'/api/dlp/signature';
@@ -1069,8 +1077,7 @@ async function refreshSignature(checkRemote){
     const s=await r.json();
     const badge=document.getElementById('sig-badge');
     const upd=document.getElementById('sig-update');
-    const noConfig=document.getElementById('sig-no-config');
-    // Status cards
+    const notSynced=document.getElementById('sig-not-synced');
     if(s.local){
       badge.textContent='#'+s.local.version;
       badge.style.display='';
@@ -1079,75 +1086,62 @@ async function refreshSignature(checkRemote){
       document.getElementById('sig-branch').textContent=s.local.branch;
       document.getElementById('sig-synced').textContent=new Date(s.local.syncedAt).toLocaleString();
       document.getElementById('sig-status').style.display='';
-      noConfig.style.display='none';
-      // Changelog
-      if(s.local.changelog&&s.local.changelog.length){
-        document.getElementById('sig-changelog').innerHTML=s.local.changelog.map(c=>{
-          const items=(c.changes||[]).map(ch=>'<li style="margin:2px 0">'+esc(ch)+'</li>').join('');
-          return '<div style="margin-bottom:10px"><div style="font-weight:600;color:#e1e4e8">#'+c.version+' <span style="font-weight:400;color:#7d8590">('+esc(c.date)+')</span></div><ul style="margin:4px 0 0 16px;padding:0;list-style:disc;color:#8b949e;font-size:12px">'+items+'</ul></div>';
-        }).join('');
-      }else{
-        document.getElementById('sig-changelog').textContent='No changelog available.';
-      }
+      notSynced.style.display='none';
     }else{
       badge.style.display='none';
       document.getElementById('sig-ver').textContent='-';
       document.getElementById('sig-count').textContent='-';
       document.getElementById('sig-branch').textContent='-';
       document.getElementById('sig-synced').textContent='-';
-      document.getElementById('sig-status').style.display='none';
-      noConfig.style.display='';
-      document.getElementById('sig-changelog').textContent='No changelog available.';
+      document.getElementById('sig-status').style.display='';
+      notSynced.style.display='';
     }
-    // Update available badge
     if(s.updateAvailable&&s.remote){
       upd.textContent='#'+s.remote.version+' available';
       upd.title='Click to sync to #'+s.remote.version+' ('+s.remote.patternCount+' patterns)';
       upd.style.display='';
       upd.onclick=()=>syncSignature();
+      if(checkRemote)addSigLog('Update available: #'+s.remote.version+' ('+s.remote.patternCount+' patterns)',null);
     }else{
       upd.style.display='none';
+      if(checkRemote&&s.local)addSigLog('Already up to date (#'+s.local.version+')',true);
     }
-    // Populate config form from current config
+    // Auto-sync toggle
     const cfgR=await fetch('/api/config');
     const cfg=await cfgR.json();
     const rp=cfg.config?.plugins?.dlp?.remotePatterns||{};
-    document.getElementById('sig-cfg-url').value=rp.url||'';
-    document.getElementById('sig-cfg-branch').value=rp.branch||'auto';
-    document.getElementById('sig-cfg-sync-start').checked=rp.syncOnStart!==false;
-    document.getElementById('sig-cfg-interval').value=rp.syncIntervalMinutes||0;
-    document.getElementById('sig-save-cfg-btn').style.display='';
+    document.getElementById('sig-auto-sync').checked=rp.syncOnStart!==false;
   }catch(e){console.error('Signature refresh error',e)}
 }
 async function syncSignature(){
   const syncBtn=document.getElementById('sig-sync-btn');
   const oldText=syncBtn.textContent;
   syncBtn.textContent='Syncing...';syncBtn.disabled=true;
+  addSigLog('Sync started...',null);
   try{
     const r=await fetch('/api/dlp/signature/sync',{method:'POST'});
     const data=await r.json();
     if(data.ok){
+      addSigLog('Sync complete: '+data.synced+' patterns synced'+(data.signature?' (v#'+data.signature.version+')':''),true);
       refreshPatterns();
       refreshSignature(false);
     }else{
-      alert('Sync failed: '+(data.error||'unknown error'));
+      addSigLog('Sync failed: '+(data.error||'unknown error'),false);
     }
-  }catch(e){alert('Sync error: '+e.message)}
+  }catch(e){addSigLog('Sync error: '+e.message,false)}
   finally{syncBtn.textContent=oldText;syncBtn.disabled=false}
 }
 document.getElementById('sig-sync-btn').addEventListener('click',syncSignature);
-document.getElementById('sig-check-btn').addEventListener('click',()=>refreshSignature(true));
-document.getElementById('sig-save-cfg-btn').addEventListener('click',async()=>{
-  const payload={plugins:{dlp:{remotePatterns:{
-    url:document.getElementById('sig-cfg-url').value.trim(),
-    branch:document.getElementById('sig-cfg-branch').value.trim()||'auto',
-    syncOnStart:document.getElementById('sig-cfg-sync-start').checked,
-    syncIntervalMinutes:parseInt(document.getElementById('sig-cfg-interval').value)||0,
-  }}}};
+document.getElementById('sig-check-btn').addEventListener('click',()=>{
+  addSigLog('Checking for updates...',null);
+  refreshSignature(true);
+});
+document.getElementById('sig-auto-sync').addEventListener('change',async function(){
+  const enabled=this.checked;
   try{
-    await fetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
-    refreshSignature(false);
-  }catch(e){alert('Save failed: '+e.message)}
+    await fetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({plugins:{dlp:{remotePatterns:{syncOnStart:enabled}}}})});
+    addSigLog('Auto-sync '+(enabled?'enabled':'disabled'),true);
+  }catch(e){addSigLog('Failed to update auto-sync: '+e.message,false)}
 });
 
 // Add pattern form
