@@ -54,12 +54,15 @@ export function createAuditLoggerPlugin(db: Database.Database, config: AuditLogg
         // Avoid duplicates — DLP auto-audit may have already stored this request
         if (auditRepo.hasEntry(context.request.id)) return;
 
+        // Read DLP flag set by upstream dlp-scanner plugin during onRequest/onResponse
+        const dlpHit = Boolean(context.request.dlpHit);
+
         auditRepo.insert({
           id: crypto.randomUUID(),
           request_id: context.request.id,
           requestBody,
           responseBody: context.body,
-          dlpHit: false,
+          dlpHit,
           rawData: config.rawData,
           rawMaxBytes: config.rawMaxBytes,
           summaryMaxBytes: config.summaryMaxBytes,

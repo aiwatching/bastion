@@ -12,6 +12,10 @@ export interface RequestContext {
   sessionId?: string;
   sessionSource?: string; // 'wrap' | 'auto' | 'direct'
   apiKeyHash?: string;
+  /** Set by DLP scanner during onRequest/onResponse for downstream plugins */
+  dlpHit?: boolean;
+  dlpAction?: string;
+  dlpFindings?: number;
 }
 
 export interface ResponseCompleteContext {
