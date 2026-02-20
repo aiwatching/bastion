@@ -111,6 +111,16 @@ export class DlpPatternsRepository {
     });
   }
 
+  /** Get DlpPattern objects by name (regardless of enabled status) */
+  getByNames(names: string[]): DlpPattern[] {
+    if (names.length === 0) return [];
+    const placeholders = names.map(() => '?').join(',');
+    const rows = this.db.prepare(
+      `SELECT * FROM dlp_patterns WHERE name IN (${placeholders})`
+    ).all(...names) as DlpPatternRecord[];
+    return rows.map(rowToPattern);
+  }
+
   /** Delete a custom pattern. Rejects if is_builtin=1. Returns true if deleted. */
   remove(id: string): boolean {
     const row = this.db.prepare(
