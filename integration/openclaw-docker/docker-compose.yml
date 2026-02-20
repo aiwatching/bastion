@@ -9,7 +9,7 @@ services:
       CLAUDE_WEB_SESSION_KEY: ${CLAUDE_WEB_SESSION_KEY}
       CLAUDE_WEB_COOKIE: ${CLAUDE_WEB_COOKIE}
       # ── Bastion proxy ──
-      HTTPS_PROXY: "http://openclaw-gw@host.docker.internal:8420"
+      HTTPS_PROXY: "http://openclaw-gw@host.docker.internal:${BASTION_PORT:-8420}"
       NODE_EXTRA_CA_CERTS: "/etc/ssl/certs/bastion-ca.crt"
       NO_PROXY: "localhost,127.0.0.1,host.docker.internal"
     volumes:
@@ -43,7 +43,7 @@ services:
       CLAUDE_WEB_SESSION_KEY: ${CLAUDE_WEB_SESSION_KEY}
       CLAUDE_WEB_COOKIE: ${CLAUDE_WEB_COOKIE}
       # ── Bastion proxy ──
-      HTTPS_PROXY: "http://openclaw-cli@host.docker.internal:8420"
+      HTTPS_PROXY: "http://openclaw-cli@host.docker.internal:${BASTION_PORT:-8420}"
       NODE_EXTRA_CA_CERTS: "/etc/ssl/certs/bastion-ca.crt"
       NO_PROXY: "localhost,127.0.0.1,host.docker.internal"
     volumes:
