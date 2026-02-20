@@ -14,6 +14,12 @@ export interface BastionConfig {
       enabled: boolean;
       action: 'pass' | 'warn' | 'redact' | 'block';
       patterns: ('high-confidence' | 'validated' | 'context-aware')[];
+      remotePatterns: {
+        url: string;
+        branch: string;
+        syncOnStart: boolean;
+        syncIntervalMinutes: number;
+      };
       aiValidation: {
         enabled: boolean;
         provider: 'anthropic' | 'openai';

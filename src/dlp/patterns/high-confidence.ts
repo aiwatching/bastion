@@ -112,6 +112,12 @@ export const highConfidencePatterns: DlpPattern[] = [
     requireContext: ['azure', 'AZURE_OPENAI', 'openai.azure.com'],
   },
   {
+    name: 'telegram-bot-token',
+    category: 'high-confidence',
+    regex: /\b\d{8,10}:AA[A-Za-z0-9_-]{33,35}\b/g,
+    description: 'Telegram Bot Token',
+  },
+  {
     name: 'password-assignment',
     category: 'high-confidence',
     regex: /(?:password|passwd|pwd|pass_?word|secret_?key|auth_?token|access_?token|api_?key|apikey|\bkey\b|_key|_secret|_token|credential)[\s]*[=:]\s*['"]?([^\s'"]{6,})/gi,

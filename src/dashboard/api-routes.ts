@@ -11,6 +11,7 @@ import { DlpConfigHistoryRepository } from '../storage/repositories/dlp-config-h
 import { scanText, type DlpTrace } from '../dlp/engine.js';
 import type { DlpAction } from '../dlp/actions.js';
 import { getBuiltinSensitivePatterns, getBuiltinNonSensitiveNames } from '../dlp/semantics.js';
+import { getLocalSignatureMeta, checkForUpdates, syncRemotePatterns } from '../dlp/remote-sync.js';
 import type { ConfigManager } from '../config/manager.js';
 import type { PluginManager } from '../plugins/index.js';
 import { createLogger } from '../utils/logger.js';
@@ -340,6 +341,37 @@ export function createApiRouter(
         sensitivePatterns: getBuiltinSensitivePatterns(),
         nonSensitiveNames: getBuiltinNonSensitiveNames(),
       });
+      return true;
+    }
+
+    // GET /api/dlp/signature — signature version and update status
+    if (req.method === 'GET' && path === '/api/dlp/signature') {
+      const remoteConfig = configManager.get().plugins.dlp.remotePatterns;
+      const check = url.searchParams.get('check') === 'true';
+      if (check && remoteConfig?.url) {
+        sendJson(res, checkForUpdates(remoteConfig));
+      } else {
+        const local = getLocalSignatureMeta();
+        sendJson(res, { local, remote: null, updateAvailable: false });
+      }
+      return true;
+    }
+
+    // POST /api/dlp/signature/sync — trigger manual sync
+    if (req.method === 'POST' && path === '/api/dlp/signature/sync') {
+      const remoteConfig = configManager.get().plugins.dlp.remotePatterns;
+      if (!remoteConfig?.url) {
+        sendJson(res, { error: 'Remote patterns not configured' }, 400);
+        return true;
+      }
+      const enabledCategories = configManager.get().plugins.dlp.patterns;
+      const count = syncRemotePatterns(remoteConfig, dlpPatternsRepo, enabledCategories);
+      if (count < 0) {
+        sendJson(res, { error: 'Sync failed' }, 500);
+        return true;
+      }
+      const local = getLocalSignatureMeta();
+      sendJson(res, { ok: true, synced: count, signature: local });
       return true;
     }
 

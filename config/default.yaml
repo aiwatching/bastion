@@ -15,6 +15,11 @@ plugins:
       - "high-confidence"
       - "validated"
       - "context-aware"
+    remotePatterns:
+      url: ""
+      branch: "auto"
+      syncOnStart: true
+      syncIntervalMinutes: 0
     aiValidation:
       enabled: false
       provider: "anthropic"

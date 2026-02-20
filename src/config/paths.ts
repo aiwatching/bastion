@@ -10,4 +10,5 @@ export const paths = {
   encryptionKeyFile: join(BASTION_DIR, '.key'),
   pidFile: join(BASTION_DIR, 'bastion.pid'),
   logFile: join(BASTION_DIR, 'bastion.log'),
+  signaturesDir: join(BASTION_DIR, 'signatures'),
 };

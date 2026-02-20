@@ -161,15 +161,18 @@ Any DLP hit automatically creates an audit log entry with the full request/respo
 
 The engine uses a 5-layer detection pipeline (structure parsing → entropy filtering → regex matching → field-name semantics → AI validation). See [docs/dlp.md](docs/dlp.md) for the full architecture.
 
-**Built-in patterns (19):**
+**Built-in patterns (20):**
 
 | Category | Patterns |
 |----------|----------|
-| `high-confidence` | AWS Access Key, AWS Secret Key, GitHub PAT, GitHub Fine-grained PAT, Slack Token, Stripe Secret Key, Private Key, OpenAI API Key, Anthropic API Key, Google AI / Gemini API Key, Hugging Face Token, Replicate API Token, Groq API Key, Perplexity API Key, xAI (Grok) API Key, Cohere / Mistral / Together AI API Key (context-aware), Azure OpenAI API Key (context-aware) |
+| `high-confidence` | AWS Access Key, AWS Secret Key, GitHub PAT, GitHub Fine-grained PAT, Slack Token, Stripe Secret Key, Private Key, OpenAI API Key, Anthropic API Key, Google AI / Gemini API Key, Hugging Face Token, Replicate API Token, Groq API Key, Perplexity API Key, xAI (Grok) API Key, Cohere / Mistral / Together AI API Key (context-aware), Azure OpenAI API Key (context-aware), Telegram Bot Token |
 | `validated` | Credit Card (Luhn check), US SSN (structural validation) |
-| `context-aware` | Email Address, Phone Number, IPv4 Address |
+| `context-aware` | Email Address, Phone Number, IPv4 Address, Driver License, Passport Number |
 
 Patterns are stored in SQLite and can be managed from the dashboard (enable/disable, add custom patterns) without restarting. Built-in patterns are seeded on first start.
+
+**Remote signatures:**
+Patterns can also be synced from a remote Git repo ([bastion_signature](https://github.com/aiwatching/bastion_signature)), with independent versioning and automatic update detection. See [docs/remote-signatures.md](docs/remote-signatures.md).
 
 **Generic secret detection:**
 High-entropy values in sensitive field names (e.g. `password`, `secret`, `api_key`) are detected even without a specific regex pattern. Sensitivity rules and non-sensitive field names are configurable at runtime.
@@ -195,6 +198,11 @@ plugins:
       - "high-confidence"
       - "validated"
       - "context-aware"
+    remotePatterns:
+      url: "https://github.com/aiwatching/bastion_signature.git"  # leave empty to disable
+      branch: "auto"          # "auto" = match Bastion VERSION, or explicit e.g. "v0.1.0"
+      syncOnStart: true       # pull latest on startup
+      syncIntervalMinutes: 0  # 0 = startup only, >0 = periodic sync (minutes)
     aiValidation:
       enabled: false          # set to true to enable LLM-based false positive filtering
       provider: "anthropic"   # anthropic | openai
@@ -237,6 +245,11 @@ plugins:
       - "high-confidence"
       - "validated"
       - "context-aware"
+    remotePatterns:
+      url: ""
+      branch: "auto"
+      syncOnStart: true
+      syncIntervalMinutes: 0
     aiValidation:
       enabled: false
       provider: "anthropic"   # anthropic | openai
@@ -290,6 +303,8 @@ All endpoints are available at `http://127.0.0.1:8420` while the gateway is runn
 | `GET` | `/api/dlp/config/history` | Last 10 DLP config changes |
 | `POST` | `/api/dlp/config/restore/:id` | Restore a previous DLP config snapshot |
 | `GET` | `/api/dlp/semantics/builtins` | Read-only built-in semantic rules |
+| `GET` | `/api/dlp/signature` | Signature version info. `?check=true` to check remote for updates |
+| `POST` | `/api/dlp/signature/sync` | Trigger manual sync of remote signature patterns |
 | `GET` | `/api/audit/recent?limit=50` | Recent audit entries |
 | `GET` | `/api/audit/sessions` | Audit sessions list |
 | `GET` | `/api/audit/session/:id` | Parsed timeline for a session |
@@ -305,6 +320,7 @@ All endpoints are available at `http://127.0.0.1:8420` while the gateway is runn
 - [OpenClaw Docker Integration](docs/openclaw-docker.md) — Docker Compose setup (fresh install + existing setup)
 - [OpenClaw Local Installation](docs/openclaw-local.md) — Run OpenClaw natively with Bastion proxy
 - [AI Agent Monitoring](docs/agent-monitoring.md) — Monitor any local AI agent (Claude Code, Cursor, custom apps)
+- [Remote Signatures](docs/remote-signatures.md) — Remote DLP pattern sync from Git repo
 
 ## Data Storage
 
