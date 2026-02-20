@@ -135,16 +135,16 @@ Open `http://127.0.0.1:8420/dashboard` in a browser while the gateway is running
 
 5 tabs:
 - **Overview** — Request metrics, cost, tokens, per-provider/per-model/per-session breakdown
-- **DLP** — Findings with direction (req/resp), clickable request links to drill into full audit detail, original/redacted snippets, pattern management (toggle, add custom, delete)
+- **DLP** — Sub-tabs: Config (pattern management, toggle, add custom), Findings (direction, snippets, drill-into audit), Test (standalone scanner with presets, trace log)
 - **Optimizer** — Cache hit rate, tokens saved
-- **Audit** — Session-based request/response viewer with timeline, formatted JSON views
-- **Settings** — Toggle plugins, configure AI validation, runtime changes without restart
+- **Audit** — Session-based timeline, DLP-tagged entries, summary preview, formatted request/response viewer
+- **Settings** — Toggle plugins, configure AI validation, semantic rules, runtime changes without restart
 
 ## How It Works
 
 Bastion operates as an HTTPS proxy with selective MITM (Man-in-the-Middle) interception:
 
-- **API domains** (`api.anthropic.com`, `api.openai.com`, `generativelanguage.googleapis.com`) — Traffic is decrypted, processed through the plugin pipeline (DLP, metrics, caching), then forwarded to the real upstream.
+- **API domains** (`api.anthropic.com`, `api.openai.com`, `generativelanguage.googleapis.com`, `claude.ai`, `api.telegram.org`, `discord.com`, `api.slack.com`, etc.) — Traffic is decrypted, processed through the plugin pipeline (DLP, metrics, caching), then forwarded to the real upstream.
 - **All other domains** — Plain TCP tunnel, no inspection. OAuth flows, browser traffic, etc. pass through unmodified.
 
 A local CA certificate (`~/.bastion/ca.crt`) is generated automatically. Node.js tools trust it via `NODE_EXTRA_CA_CERTS`.
@@ -152,12 +152,14 @@ A local CA certificate (`~/.bastion/ca.crt`) is generated automatically. Node.js
 ## Plugins
 
 ### Metrics Collector
-Records every API request: provider, model, tokens, cost, latency. Data stored in SQLite (`~/.bastion/bastion.db`).
+Records every API request: provider, model, tokens, cost, latency. Data stored in SQLite (`~/.bastion/bastion.db`). Supports per-session and per-API-key filtering.
 
 ### DLP Scanner
 Bidirectional scanning — inspects both **outgoing requests** and **incoming responses** for sensitive data. Non-streaming responses are intercepted pre-send (can block/redact before reaching the client). Streaming responses are scanned post-send (detection + audit only).
 
-Any DLP hit automatically creates an audit log entry with the full request/response content, regardless of whether the Audit Logger plugin is enabled.
+Any DLP hit automatically creates an audit log entry with the full request/response content, regardless of whether the Audit Logger plugin is enabled. DLP-tagged audit entries are visually marked in the dashboard.
+
+The engine uses a 5-layer detection pipeline (structure parsing → entropy filtering → regex matching → field-name semantics → AI validation). See [docs/dlp.md](docs/dlp.md) for the full architecture.
 
 **Built-in patterns (19):**
 
@@ -169,6 +171,9 @@ Any DLP hit automatically creates an audit log entry with the full request/respo
 
 Patterns are stored in SQLite and can be managed from the dashboard (enable/disable, add custom patterns) without restarting. Built-in patterns are seeded on first start.
 
+**Generic secret detection:**
+High-entropy values in sensitive field names (e.g. `password`, `secret`, `api_key`) are detected even without a specific regex pattern. Sensitivity rules and non-sensitive field names are configurable at runtime.
+
 **AI Validation (optional, off by default):**
 Uses an LLM to filter false positives. Enable in config with an API key — results are cached (LRU) to minimize token usage.
 
@@ -176,8 +181,10 @@ Uses an LLM to filter false positives. Enable in config with an API key — resu
 ```bash
 curl -X POST http://127.0.0.1:8420/api/dlp/scan \
   -H "Content-Type: application/json" \
-  -d '{"text": "my key is sk-ant-abc123...", "action": "warn"}'
+  -d '{"text": "my key is sk-ant-abc123...", "action": "warn", "trace": true}'
 ```
+
+Pass `"trace": true` to get a detailed step-by-step trace log of the detection pipeline (useful for debugging pattern behavior).
 
 Configure in `~/.bastion/config.yaml`:
 ```yaml
@@ -193,6 +200,9 @@ plugins:
       provider: "anthropic"   # anthropic | openai
       model: "claude-haiku-4-5-20241022"
       apiKey: ""              # required if enabled
+    semantics:
+      sensitivePatterns: []   # extra regex patterns for sensitive field names
+      nonSensitiveNames: []   # extra field names to exclude from detection
 ```
 
 ### Token Optimizer
@@ -200,7 +210,10 @@ plugins:
 - **Whitespace trimming** — Collapses excessive whitespace to save tokens
 
 ### Audit Logger
-Stores request/response content (encrypted at rest) for review in the dashboard. Configurable retention period with automatic purge. Note: DLP hits are auto-audited even if this plugin is disabled.
+Stores request/response content (encrypted at rest) for review in the dashboard. Configurable retention period with automatic purge. DLP hits are auto-audited even if this plugin is disabled.
+
+- **Summary** — Always stored (configurable max size), shown as preview in lists
+- **Raw data** — Full encrypted content, enabled by default, can be disabled to save space
 
 ## Configuration
 
@@ -231,6 +244,9 @@ plugins:
       apiKey: ""
       timeoutMs: 5000
       cacheSize: 500
+    semantics:
+      sensitivePatterns: []
+      nonSensitiveNames: []
   optimizer:
     enabled: true
     cache: true
@@ -239,7 +255,10 @@ plugins:
     reorderForCache: true
   audit:
     enabled: true
-    retentionHours: 168  # 7 days
+    retentionHours: 168    # 7 days
+    rawData: true          # store full encrypted content
+    rawMaxBytes: 524288    # 512KB max per entry
+    summaryMaxBytes: 1024  # 1KB summary
 
 timeouts:
   upstream: 120000     # 2 minutes
@@ -262,19 +281,27 @@ All endpoints are available at `http://127.0.0.1:8420` while the gateway is runn
 | `GET` | `/api/stats` | Usage statistics (requests, tokens, cost). Query params: `session_id`, `api_key_hash`, `hours` |
 | `GET` | `/api/sessions` | List tracked sessions |
 | `GET` | `/api/dlp/recent?limit=50` | Recent DLP findings (joined with request metadata) |
-| `POST` | `/api/dlp/scan` | Standalone DLP scan (body: `{"text": "...", "action": "warn"}`) |
+| `POST` | `/api/dlp/scan` | Standalone DLP scan (body: `{"text": "...", "action": "warn", "trace": true}`) |
 | `GET` | `/api/dlp/patterns` | List all DLP patterns |
 | `POST` | `/api/dlp/patterns` | Add custom pattern |
 | `PUT` | `/api/dlp/patterns/:id` | Update pattern (toggle enabled, edit fields) |
 | `DELETE` | `/api/dlp/patterns/:id` | Delete custom pattern (built-ins cannot be deleted) |
+| `POST` | `/api/dlp/config/apply` | Batch-apply DLP config and record history |
+| `GET` | `/api/dlp/config/history` | Last 10 DLP config changes |
+| `POST` | `/api/dlp/config/restore/:id` | Restore a previous DLP config snapshot |
+| `GET` | `/api/dlp/semantics/builtins` | Read-only built-in semantic rules |
 | `GET` | `/api/audit/recent?limit=50` | Recent audit entries |
 | `GET` | `/api/audit/sessions` | Audit sessions list |
 | `GET` | `/api/audit/session/:id` | Parsed timeline for a session |
-| `GET` | `/api/audit/:requestId` | Single request detail (parsed request + response) |
+| `GET` | `/api/audit/:requestId` | Single request detail (parsed or summary-only fallback) |
 | `GET` | `/api/optimizer/stats` | Cache hit rate and tokens saved |
 | `GET` | `/api/optimizer/recent?limit=50` | Recent optimizer events |
 | `GET` | `/api/config` | Current configuration + plugin status |
 | `PUT` | `/api/config` | Update configuration at runtime |
+
+## Docs
+
+- [DLP Engine Architecture](docs/dlp.md) — 5-layer detection pipeline details
 
 ## Data Storage
 
