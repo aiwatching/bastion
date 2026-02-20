@@ -302,6 +302,9 @@ All endpoints are available at `http://127.0.0.1:8420` while the gateway is runn
 ## Docs
 
 - [DLP Engine Architecture](docs/dlp.md) — 5-layer detection pipeline details
+- [OpenClaw Docker Integration](docs/openclaw-docker.md) — Docker Compose setup (fresh install + existing setup)
+- [OpenClaw Local Installation](docs/openclaw-local.md) — Run OpenClaw natively with Bastion proxy
+- [AI Agent Monitoring](docs/agent-monitoring.md) — Monitor any local AI agent (Claude Code, Cursor, custom apps)
 
 ## Data Storage
 
