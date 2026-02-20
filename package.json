@@ -12,7 +12,12 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "lint": "eslint src/"
+    "lint": "eslint src/",
+    "dlp:test": "tsx scripts/dlp-test-env.ts",
+    "dlp:test:block": "tsx scripts/dlp-test-env.ts --action block",
+    "dlp:test:redact": "tsx scripts/dlp-test-env.ts --action redact",
+    "dlp:test:warn": "tsx scripts/dlp-test-env.ts --action warn",
+    "dlp:test:interactive": "tsx scripts/dlp-test-env.ts --interactive"
   },
   "dependencies": {
     "better-sqlite3": "^11.7.0",

@@ -51,6 +51,14 @@ function walkJson(obj: unknown, path: string, out: StructuredField[]): void {
     if (obj.length >= 6) {
       out.push({ key, path, value: obj });
     }
+    // Try parsing string values that look like embedded JSON
+    if (obj.length > 10 && (obj[0] === '{' || obj[0] === '[')) {
+      try {
+        const nested = JSON.parse(obj);
+        walkJson(nested, path, out);
+        return; // Embedded JSON handled; skip assignment extraction
+      } catch { /* not valid JSON, fall through */ }
+    }
     // Also scan long string content for inline assignments
     if (obj.length > 20) {
       extractAssignments(obj, out);
