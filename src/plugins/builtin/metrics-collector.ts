@@ -74,8 +74,8 @@ export function createMetricsCollectorPlugin(db: Database.Database): Plugin {
         cost_usd: metrics.costUsd,
         latency_ms: metrics.latencyMs,
         cached: 0,
-        dlp_action: null,
-        dlp_findings: 0,
+        dlp_action: context.request.dlpAction ?? null,
+        dlp_findings: context.request.dlpFindings ?? 0,
         session_id: sessionId,
         api_key_hash: context.request.apiKeyHash ?? null,
       });

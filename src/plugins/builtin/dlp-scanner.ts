@@ -64,9 +64,6 @@ export function createDlpScannerPlugin(db: Database.Database, config: DlpScanner
   ];
   patternsRepo.seedBuiltins(allBuiltins, config.patterns);
 
-  // Track pending audits: requestId → requestBody
-  const pendingAudits = new Map<string, string>();
-
   return {
     name: 'dlp-scanner',
     priority: 20,
@@ -113,6 +110,11 @@ export function createDlpScannerPlugin(db: Database.Database, config: DlpScanner
         findings: result.findings.map((f) => f.patternName),
       });
 
+      // Set DLP flags on context for downstream plugins (audit-logger, metrics-collector)
+      context.dlpHit = true;
+      context.dlpAction = result.action;
+      context.dlpFindings = result.findings.length;
+
       // Auto-audit on DLP hit
       if (result.action === 'block') {
         const blockReason = `Request blocked: sensitive data detected (${result.findings.map((f) => f.patternName).join(', ')})`;
@@ -129,9 +131,6 @@ export function createDlpScannerPlugin(db: Database.Database, config: DlpScanner
         }
         return { blocked: { reason: blockReason } };
       }
-
-      // Non-block: stash request body for onResponseComplete audit
-      pendingAudits.set(context.id, context.body);
 
       if (result.action === 'redact' && result.redactedBody) {
         return { modifiedBody: result.redactedBody };
@@ -184,22 +183,10 @@ export function createDlpScannerPlugin(db: Database.Database, config: DlpScanner
         findings: result.findings.map((f) => f.patternName),
       });
 
-      // Auto-audit
-      try {
-        if (!auditRepo.hasEntry(context.request.id)) {
-          auditRepo.insert({
-            id: crypto.randomUUID(),
-            request_id: context.request.id,
-            requestBody: context.request.body,
-            responseBody: context.body,
-            dlpHit: true,
-          });
-        } else {
-          auditRepo.markDlpHit(context.request.id);
-        }
-      } catch (err) {
-        log.warn('Failed to write DLP response auto-audit', { error: (err as Error).message });
-      }
+      // Set DLP flags on context for downstream plugins (audit-logger reads these)
+      context.request.dlpHit = true;
+      context.request.dlpAction = result.action;
+      context.request.dlpFindings = (context.request.dlpFindings ?? 0) + result.findings.length;
 
       // Apply action: block or redact the response
       if (result.action === 'block') {
@@ -217,30 +204,8 @@ export function createDlpScannerPlugin(db: Database.Database, config: DlpScanner
       // 'warn' and 'pass' — let through without modification
     },
 
-    // ── Post-send: handle pending request-side audits + streaming response detection ──
+    // ── Post-send: streaming response detection (can't block, but record + audit) ──
     async onResponseComplete(context: ResponseCompleteContext): Promise<void> {
-      // Handle pending request-side audit
-      const requestBody = pendingAudits.get(context.request.id);
-      if (requestBody) {
-        pendingAudits.delete(context.request.id);
-        try {
-          if (!auditRepo.hasEntry(context.request.id)) {
-            auditRepo.insert({
-              id: crypto.randomUUID(),
-              request_id: context.request.id,
-              requestBody,
-              responseBody: context.body,
-              dlpHit: true,
-            });
-          } else {
-            auditRepo.markDlpHit(context.request.id);
-          }
-        } catch (err) {
-          log.warn('Failed to write DLP auto-audit', { error: (err as Error).message });
-        }
-      }
-
-      // Streaming responses: post-send detection only (can't block, but record + audit)
       if (!context.isStreaming) return;
 
       const patterns = patternsRepo.getEnabled();
