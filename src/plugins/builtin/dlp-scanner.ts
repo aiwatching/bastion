@@ -15,6 +15,7 @@ import { AiValidator, type AiValidatorConfig } from '../../dlp/ai-validator.js';
 import { highConfidencePatterns } from '../../dlp/patterns/high-confidence.js';
 import { validatedPatterns } from '../../dlp/patterns/validated.js';
 import { contextAwarePatterns } from '../../dlp/patterns/context-aware.js';
+import { syncRemotePatterns, startPeriodicSync } from '../../dlp/remote-sync.js';
 import { createLogger } from '../../utils/logger.js';
 import type Database from 'better-sqlite3';
 
@@ -25,6 +26,12 @@ const SNIPPET_CONTEXT = 25; // chars of context on each side of match
 export interface DlpScannerConfig {
   action: DlpAction;
   patterns: string[];
+  remotePatterns?: {
+    url: string;
+    branch: string;
+    syncOnStart: boolean;
+    syncIntervalMinutes: number;
+  };
   aiValidation?: AiValidatorConfig;
   /** Live getter for action — when provided, overrides static `action` field */
   getAction?: () => DlpAction;
@@ -63,6 +70,16 @@ export function createDlpScannerPlugin(db: Database.Database, config: DlpScanner
     ...contextAwarePatterns,
   ];
   patternsRepo.seedBuiltins(allBuiltins, config.patterns);
+
+  // Sync remote patterns from signature repo (if configured)
+  if (config.remotePatterns?.url) {
+    try {
+      syncRemotePatterns(config.remotePatterns, patternsRepo, config.patterns);
+    } catch (err) {
+      log.warn('Remote pattern sync failed on startup', { error: (err as Error).message });
+    }
+    startPeriodicSync(config.remotePatterns, patternsRepo, config.patterns);
+  }
 
   return {
     name: 'dlp-scanner',

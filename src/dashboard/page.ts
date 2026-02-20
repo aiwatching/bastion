@@ -192,8 +192,15 @@ tr:hover{background:#1c2128}
   <!-- DLP Patterns -->
   <div class="section">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <h2>DLP Patterns</h2>
-      <button id="dlp-add-btn" style="padding:4px 12px;font-size:12px;cursor:pointer;color:#3fb950;background:none;border:1px solid #3fb950;border-radius:6px">+ Add Pattern</button>
+      <div style="display:flex;align-items:center;gap:10px">
+        <h2>DLP Patterns</h2>
+        <span id="sig-badge" style="display:none;font-size:11px;padding:2px 8px;border-radius:10px;background:#1f2937;border:1px solid #30363d;color:#7d8590"></span>
+        <span id="sig-update" style="display:none;font-size:11px;padding:2px 8px;border-radius:10px;background:#2a1f00;border:1px solid #d29922;color:#d29922;cursor:pointer" title="Click to sync"></span>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button id="sig-sync-btn" style="display:none;padding:4px 10px;font-size:11px;cursor:pointer;color:#58a6ff;background:none;border:1px solid #1f3a5f;border-radius:6px" title="Sync remote signatures">Sync</button>
+        <button id="dlp-add-btn" style="padding:4px 12px;font-size:12px;cursor:pointer;color:#3fb950;background:none;border:1px solid #3fb950;border-radius:6px">+ Add Pattern</button>
+      </div>
     </div>
     <div id="dlp-add-form" style="display:none;margin-bottom:12px;padding:12px 16px;background:#161b22;border:1px solid #30363d;border-radius:8px">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
@@ -631,6 +638,7 @@ async function refreshDlp(){
       card('Warned',fmt(ba.warn||0));
     await loadDlpConfig();
     refreshPatterns();
+    refreshSignature(true);
     refreshFindings();
   }catch(e){}
 }
@@ -986,6 +994,53 @@ async function refreshPatterns(){
     });
   }catch(e){console.error('Pattern refresh error',e)}
 }
+
+// Signature version badge
+async function refreshSignature(checkRemote){
+  try{
+    const url=checkRemote?'/api/dlp/signature?check=true':'/api/dlp/signature';
+    const r=await fetch(url);
+    const s=await r.json();
+    const badge=document.getElementById('sig-badge');
+    const upd=document.getElementById('sig-update');
+    const syncBtn=document.getElementById('sig-sync-btn');
+    if(s.local){
+      badge.textContent='Signatures #'+s.local.version;
+      badge.title='Synced: '+new Date(s.local.syncedAt).toLocaleString()+'\\nPatterns: '+s.local.patternCount+'\\nBranch: '+s.local.branch;
+      badge.style.display='';
+      syncBtn.style.display='';
+    }
+    if(s.updateAvailable&&s.remote){
+      upd.textContent='#'+s.remote.version+' available';
+      upd.title='Click to sync to #'+s.remote.version+' ('+s.remote.patternCount+' patterns)';
+      upd.style.display='';
+      upd.onclick=()=>syncSignature();
+    }else{
+      upd.style.display='none';
+    }
+    if(!s.local&&!s.updateAvailable){
+      badge.style.display='none';
+      syncBtn.style.display='none';
+    }
+  }catch(e){console.error('Signature check error',e)}
+}
+async function syncSignature(){
+  const syncBtn=document.getElementById('sig-sync-btn');
+  const oldText=syncBtn.textContent;
+  syncBtn.textContent='Syncing...';syncBtn.disabled=true;
+  try{
+    const r=await fetch('/api/dlp/signature/sync',{method:'POST'});
+    const data=await r.json();
+    if(data.ok){
+      refreshPatterns();
+      refreshSignature(false);
+    }else{
+      alert('Sync failed: '+(data.error||'unknown error'));
+    }
+  }catch(e){alert('Sync error: '+e.message)}
+  finally{syncBtn.textContent=oldText;syncBtn.disabled=false}
+}
+document.getElementById('sig-sync-btn').addEventListener('click',syncSignature);
 
 // Add pattern form
 document.getElementById('dlp-add-btn').addEventListener('click',()=>{

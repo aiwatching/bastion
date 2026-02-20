@@ -57,6 +57,7 @@ export async function startGateway(): Promise<void> {
   pluginManager.register(createDlpScannerPlugin(db, {
     action: config.plugins.dlp.action,
     patterns: config.plugins.dlp.patterns,
+    remotePatterns: config.plugins.dlp.remotePatterns,
     aiValidation: config.plugins.dlp.aiValidation,
     getAction: () => configManager.get().plugins.dlp.action,
   }));

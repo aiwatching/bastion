@@ -111,6 +111,47 @@ export class DlpPatternsRepository {
     });
   }
 
+  /**
+   * Upsert a remote pattern from the signature repo.
+   * New patterns: inserted with enabled based on category match.
+   * Existing patterns: regex/description/etc updated, but user's enabled toggle is preserved.
+   */
+  upsertRemote(record: {
+    id: string;
+    name: string;
+    category: string;
+    regex_source: string;
+    regex_flags: string;
+    description: string | null;
+    validator: string | null;
+    require_context: string | null;
+    enabled: boolean;
+    source: string;
+  }): void {
+    this.db.prepare(`
+      INSERT INTO dlp_patterns (id, name, category, regex_source, regex_flags, description, validator, require_context, enabled, is_builtin)
+      VALUES (@id, @name, @category, @regex_source, @regex_flags, @description, @validator, @require_context, @enabled, 0)
+      ON CONFLICT(id) DO UPDATE SET
+        name = @name,
+        category = @category,
+        regex_source = @regex_source,
+        regex_flags = @regex_flags,
+        description = @description,
+        validator = @validator,
+        require_context = @require_context
+    `).run({
+      id: record.id,
+      name: record.name,
+      category: record.category,
+      regex_source: record.regex_source,
+      regex_flags: record.regex_flags,
+      description: record.description,
+      validator: record.validator,
+      require_context: record.require_context,
+      enabled: record.enabled ? 1 : 0,
+    });
+  }
+
   /** Get DlpPattern objects by name (regardless of enabled status) */
   getByNames(names: string[]): DlpPattern[] {
     if (names.length === 0) return [];
