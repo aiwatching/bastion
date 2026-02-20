@@ -16,21 +16,21 @@
 /** Patterns that indicate a field likely holds a secret */
 const BUILTIN_SENSITIVE: RegExp[] = [
   /passw(?:or)?d/i,
-  /\bsecret/i,
-  /\btoken\b/i,
+  /(?:^|[_-]|\b)secret/i,
+  /(?:^|[_-]|\b)token(?:$|[_-]|\b)/i,
   /api[_-]?key/i,
-  /\bauth/i,
+  /(?:^|[_-]|\b)auth/i,
   /credential/i,
   /private[_-]?key/i,
   /access[_-]?key/i,
   /secret[_-]?key/i,
-  /\bcipher\b/i,
-  /\bsalt\b/i,
+  /(?:^|[_-]|\b)cipher(?:$|[_-]|\b)/i,
+  /(?:^|[_-]|\b)salt(?:$|[_-]|\b)/i,
   /connection[_-]?string/i,
-  /\bdsn\b/i,
-  /\bsigning/i,
-  /\bbearer\b/i,
-  /\bauthorization\b/i,
+  /(?:^|[_-]|\b)dsn(?:$|[_-]|\b)/i,
+  /(?:^|[_-]|\b)signing/i,
+  /(?:^|[_-]|\b)bearer(?:$|[_-]|\b)/i,
+  /(?:^|[_-]|\b)authorization(?:$|[_-]|\b)/i,
 ];
 
 /** Known non-sensitive field names (fast reject to avoid false positives) */
