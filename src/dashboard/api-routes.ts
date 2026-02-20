@@ -185,6 +185,26 @@ export function createApiRouter(
         sendJson(res, { summaryOnly: true, summary: meta.summary, meta });
         return true;
       }
+
+      // DLP highlight: re-scan raw text with matched patterns to get exact match strings
+      if (url.searchParams.get('dlp') === 'true') {
+        const dlpFindings = dlpRepo.getByRequestId(requestId);
+        if (dlpFindings.length > 0) {
+          const patternNames = [...new Set(dlpFindings.map(f => f.pattern_name))];
+          const relevantPatterns = dlpPatternsRepo.getByNames(patternNames);
+          if (relevantPatterns.length > 0) {
+            const allMatches: string[] = [];
+            try {
+              const reqResult = scanText(parsed.raw.request, relevantPatterns, 'warn');
+              reqResult.findings.forEach(f => allMatches.push(...f.matches));
+              const resResult = scanText(parsed.raw.response, relevantPatterns, 'warn');
+              resResult.findings.forEach(f => allMatches.push(...f.matches));
+            } catch { /* ignore scan errors */ }
+            (parsed as unknown as Record<string, unknown>).dlpHighlights = [...new Set(allMatches)];
+          }
+        }
+      }
+
       sendJson(res, parsed);
       return true;
     }

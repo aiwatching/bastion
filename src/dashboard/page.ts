@@ -121,13 +121,13 @@ tr:hover{background:#1c2128}
   <div class="grid" id="dlp-cards"></div>
 
   <div class="sub-tabs" id="dlp-sub-tabs">
-    <button class="sub-tab active" data-dlp-sub="config">Config</button>
-    <button class="sub-tab" data-dlp-sub="findings">Findings</button>
+    <button class="sub-tab active" data-dlp-sub="findings">Findings</button>
+    <button class="sub-tab" data-dlp-sub="config">Config</button>
     <button class="sub-tab" data-dlp-sub="test">Test</button>
   </div>
 
   <!-- SUB: Config -->
-  <div class="sub-content active" id="dlp-sub-config">
+  <div class="sub-content" id="dlp-sub-config">
 
   <!-- Unified DLP Configuration -->
   <div class="section">
@@ -217,7 +217,7 @@ tr:hover{background:#1c2128}
   </div><!-- /dlp-sub-config -->
 
   <!-- SUB: Findings -->
-  <div class="sub-content" id="dlp-sub-findings">
+  <div class="sub-content active" id="dlp-sub-findings">
   <div class="grid" id="findings-cards"></div>
   <div class="section">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -631,6 +631,7 @@ async function refreshDlp(){
       card('Warned',fmt(ba.warn||0));
     await loadDlpConfig();
     refreshPatterns();
+    refreshFindings();
   }catch(e){}
 }
 
@@ -663,24 +664,175 @@ function renderFindings(){
     const dirTag=dir==='response'?'<span class="tag warn">resp</span>':'<span class="tag" style="background:#1a2a3d;color:#58a6ff">req</span>';
     const rid=e.request_id||'';
     const modelTag=e.model?'<span class="mono" style="font-size:10px;color:#7d8590">'+esc(e.model)+'</span>':'';
-    const reqCell='<span class="findings-view-req" data-rid="'+esc(rid)+'" style="cursor:pointer;color:#58a6ff;font-size:11px" title="'+esc(rid)+'">'+esc(rid.slice(0,8))+'...</span>'+(modelTag?' '+modelTag:'');
+    const reqCell='<span class="findings-expand-audit" data-rid="'+esc(rid)+'" style="cursor:pointer;color:#58a6ff;font-size:11px" title="Click to expand audit log">&#9654; '+esc(rid.slice(0,8))+'...</span>'+(modelTag?' '+modelTag:'');
     return '<tr><td>'+ago(e.created_at)+'</td><td>'+dirTag+'</td><td>'+reqCell+'</td><td class="mono">'+esc(e.pattern_name)+'</td><td>'+esc(e.pattern_category)+'</td>'+
       '<td>'+actionTag(e.action)+'</td><td>'+e.match_count+'</td>'+
       '<td><div class="snippet">'+esc(e.original_snippet||'-')+'</div></td>'+
       '<td><div class="snippet">'+esc(e.redacted_snippet||'-')+'</div></td></tr>';
   }).join('');
-  document.querySelectorAll('.findings-view-req').forEach(el=>{
-    el.addEventListener('click',()=>{
+  document.querySelectorAll('.findings-expand-audit').forEach(el=>{
+    el.addEventListener('click',async()=>{
       const rid=el.dataset.rid;
       if(!rid)return;
-      document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
-      document.querySelectorAll('.tab-content').forEach(x=>x.classList.remove('active'));
-      document.querySelector('[data-tab="audit"]').classList.add('active');
-      document.getElementById('tab-audit').classList.add('active');
-      auditCurrentSession=null;
-      loadSingleAudit(rid);
+      const parentRow=el.closest('tr');
+      const existing=parentRow.nextElementSibling;
+      if(existing&&existing.classList.contains('findings-audit-row')){
+        existing.remove();
+        el.innerHTML='&#9654; '+esc(rid.slice(0,8))+'...';
+        return;
+      }
+      // Remove any other expanded rows
+      document.querySelectorAll('.findings-audit-row').forEach(r=>{
+        const prev=r.previousElementSibling;
+        if(prev){const s=prev.querySelector('.findings-expand-audit');if(s)s.innerHTML='&#9654; '+esc(s.dataset.rid.slice(0,8))+'...';}
+        r.remove();
+      });
+      el.innerHTML='&#9660; '+esc(rid.slice(0,8))+'...';
+      const detailRow=document.createElement('tr');
+      detailRow.className='findings-audit-row';
+      const td=document.createElement('td');
+      td.colSpan=9;
+      td.style.cssText='padding:0;border:none';
+      td.innerHTML='<div style="margin:4px 12px 12px;padding:12px;background:#0d1117;border:1px solid #30363d;border-radius:6px"><span style="color:#7d8590">Loading audit log...</span></div>';
+      detailRow.appendChild(td);
+      parentRow.after(detailRow);
+      try{
+        const r=await fetch('/api/audit/'+rid+'?dlp=true');
+        const data=await r.json();
+        td.innerHTML=renderInlineAudit(data,rid);
+      }catch(e){
+        td.innerHTML='<div style="margin:4px 12px 12px;padding:12px;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#f85149">Failed to load audit log</div>';
+      }
     });
   });
+}
+
+// Escape text with DLP match highlighting
+function escHL(text,highlights){
+  if(!highlights||!highlights.length)return esc(text);
+  let result=text;
+  const sorted=[...new Set(highlights)].sort((a,b)=>b.length-a.length);
+  const phs=[];
+  sorted.forEach((m,i)=>{
+    const tag='\\x00HL'+i+'\\x00';
+    result=result.split(m).join(tag);
+    phs.push({tag,m,i});
+  });
+  result=esc(result);
+  phs.forEach(({tag,m})=>{
+    result=result.split(esc(tag)).join('<span style="background:#5c2020;color:#ff6b6b;border-radius:2px;padding:1px 3px;font-weight:600">'+esc(m)+'</span>');
+  });
+  return result;
+}
+
+function renderBlockHL(b,hl){
+  if(b.type==='text')return '<div class="msg-text">'+escHL(b.text||'',hl)+'</div>';
+  if(b.type==='image')return '<div class="msg-text" style="color:#7d8590">[image]</div>';
+  if(b.type==='tool_use'){
+    return '<div style="margin:4px 0;padding:6px 8px;background:#2a2a1a;border:1px solid #4d4d26;border-radius:6px;font-size:11px">'+
+      '<div style="color:#ffd43b;font-size:10px;font-weight:600;margin-bottom:3px">TOOL_USE: '+esc(b.toolName||'?')+'</div>'+
+      '<pre style="color:#e1e4e8;white-space:pre-wrap;word-break:break-word;margin:0;font-family:inherit">'+escHL(b.toolInput||'',hl)+'</pre></div>';
+  }
+  if(b.type==='tool_result'){
+    const errStyle=b.isError?' color:#f85149;':'';
+    return '<div style="margin:4px 0;padding:6px 8px;background:#1a2a2a;border:1px solid #264d4d;border-radius:6px;font-size:11px">'+
+      '<div style="color:#58a6ff;font-size:10px;font-weight:600;margin-bottom:3px">TOOL_RESULT'+(b.isError?' (error)':'')+'</div>'+
+      '<pre style="white-space:pre-wrap;word-break:break-word;margin:0;font-family:inherit;'+errStyle+'">'+escHL(b.text||'',hl)+'</pre></div>';
+  }
+  return '<div class="msg-text" style="color:#7d8590">'+escHL(b.text||JSON.stringify(b),hl)+'</div>';
+}
+
+function renderInlineAudit(data,rid){
+  const hl=data.dlpHighlights||[];
+  const wrap=(inner)=>'<div style="margin:4px 12px 12px;padding:12px;background:#0d1117;border:1px solid #30363d;border-radius:6px;font-size:12px">'+inner+'</div>';
+  if(data.summaryOnly){
+    const m=data.meta||{};
+    const dlpTag=m.dlp_hit?'<span class="tag dlp">DLP</span> ':'';
+    return wrap(
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">'+
+      (m.model?card('Model',esc(m.model)):'')+
+      card('Req Size',bytes(m.request_length||0))+
+      card('Res Size',bytes(m.response_length||0))+
+      (m.latency_ms?card('Latency',m.latency_ms+'ms'):'')+
+      (m.status_code?card('Status',String(m.status_code)):'')+
+      '</div>'+
+      dlpTag+'<div style="color:#d29922;margin-bottom:6px;font-size:11px">Raw data not available (storage disabled). Summary only:</div>'+
+      '<div class="msg-bubble system" style="white-space:pre-wrap;font-size:11px">'+esc(data.summary||'No summary')+'</div>'
+    );
+  }
+  const req=data.request||{};
+  const res=data.response||{};
+
+  // Highlight badge
+  const hlBadge=hl.length?'<div style="margin-bottom:8px;padding:4px 8px;background:#3d1f1f;border:1px solid #5c2020;border-radius:4px;font-size:11px;color:#ff6b6b">'+
+    '<span style="font-weight:600">DLP Matches ('+hl.length+'):</span> '+hl.map(m=>'<code style="background:#5c2020;padding:1px 4px;border-radius:2px;font-size:10px">'+esc(m.length>40?m.slice(0,37)+'...':m)+'</code>').join(' ')+'</div>':'';
+
+  // Meta cards
+  const model=req.model||res.model;
+  const usage=res.usage||{};
+  let metaHtml='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">';
+  if(model)metaHtml+=card('Model',esc(model));
+  if(usage.input_tokens)metaHtml+=card('In',fmt(usage.input_tokens),'blue');
+  if(usage.output_tokens)metaHtml+=card('Out',fmt(usage.output_tokens),'blue');
+  if(res.stopReason)metaHtml+=card('Stop',esc(res.stopReason));
+  metaHtml+='</div>';
+
+  // Request messages
+  let reqHtml='<div style="margin-bottom:8px"><div style="color:#58a6ff;font-weight:600;font-size:11px;margin-bottom:4px">REQUEST</div>';
+  if(req.system){
+    reqHtml+='<div class="msg-bubble system" style="font-size:11px"><div class="msg-role">system</div><div class="msg-text" style="max-height:150px;overflow-y:auto">'+escHL(req.system,hl)+'</div></div>';
+  }
+  if(req.tools&&req.tools.length>0){
+    reqHtml+='<div style="margin:4px 0;padding:4px 8px;background:#1c2128;border:1px solid #30363d;border-radius:4px;font-size:10px">'+
+      '<span style="color:#7d8590;font-weight:600">TOOLS ('+req.tools.length+'):</span> <span class="mono" style="color:#b388ff">'+req.tools.map(n=>esc(n)).join(', ')+'</span></div>';
+  }
+  if(req.messages&&req.messages.length>0){
+    reqHtml+=req.messages.map(m=>{
+      const role=m.role||'unknown';
+      const cls=role==='user'?'user':role==='assistant'?'assistant':'system';
+      const blocks=(m.content||[]).map(b=>renderBlockHL(b,hl)).join('');
+      return '<div class="msg-bubble '+cls+'" style="font-size:11px"><div class="msg-role">'+esc(role)+'</div><div style="max-height:200px;overflow-y:auto">'+blocks+'</div></div>';
+    }).join('');
+  }
+  reqHtml+='</div>';
+
+  // Response content
+  let resHtml='<div><div style="color:#3fb950;font-weight:600;font-size:11px;margin-bottom:4px">RESPONSE</div>';
+  if(res.content&&res.content.length>0){
+    resHtml+=res.content.map(b=>{
+      if(b.type==='text')return '<div class="msg-bubble assistant" style="font-size:11px"><div class="msg-role">assistant</div><div class="msg-text" style="max-height:200px;overflow-y:auto">'+escHL(b.text||'',hl)+'</div></div>';
+      if(b.type==='tool_use')return '<div class="msg-bubble system" style="font-size:11px"><div class="msg-role">tool_use: '+esc(b.toolName||'')+'</div><div class="msg-text" style="max-height:150px;overflow-y:auto">'+escHL(b.toolInput||'',hl)+'</div></div>';
+      return renderBlockHL(b,hl);
+    }).join('');
+  }else{
+    resHtml+='<div style="color:#484f58;font-size:11px">No response content</div>';
+  }
+  resHtml+='</div>';
+
+  // Raw JSON toggle (also highlighted)
+  const rawId='inline-raw-'+rid.replace(/[^a-zA-Z0-9]/g,'');
+  let rawHtml='<div style="margin-top:8px;border-top:1px solid #21262d;padding-top:8px">'+
+    '<span class="inline-raw-toggle" data-target="'+rawId+'" style="cursor:pointer;color:#7d8590;font-size:11px;user-select:none">&#9654; Raw JSON</span>'+
+    '<div id="'+rawId+'" style="display:none;margin-top:6px">'+
+    '<div style="color:#7d8590;font-size:10px;margin-bottom:2px">Request:</div>'+
+    '<pre style="background:#161b22;border:1px solid #21262d;border-radius:4px;padding:8px;font-size:10px;color:#e1e4e8;max-height:200px;overflow:auto;white-space:pre-wrap;word-break:break-word">'+escHL(tryPrettyJson(data.raw?.request||''),hl)+'</pre>'+
+    '<div style="color:#7d8590;font-size:10px;margin:6px 0 2px">Response:</div>'+
+    '<pre style="background:#161b22;border:1px solid #21262d;border-radius:4px;padding:8px;font-size:10px;color:#e1e4e8;max-height:200px;overflow:auto;white-space:pre-wrap;word-break:break-word">'+escHL(tryPrettyJson(data.raw?.response||''),hl)+'</pre>'+
+    '</div></div>';
+
+  setTimeout(()=>{
+    document.querySelectorAll('.inline-raw-toggle').forEach(t=>{
+      t.onclick=()=>{
+        const el=document.getElementById(t.dataset.target);
+        if(!el)return;
+        const show=el.style.display==='none';
+        el.style.display=show?'':'none';
+        t.innerHTML=(show?'&#9660;':'&#9654;')+' Raw JSON';
+      };
+    });
+  },0);
+
+  return wrap(hlBadge+metaHtml+reqHtml+resHtml+rawHtml);
 }
 document.getElementById('findings-action-filter').addEventListener('change',renderFindings);
 document.getElementById('findings-dir-filter').addEventListener('change',renderFindings);
