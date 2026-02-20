@@ -123,6 +123,7 @@ tr:hover{background:#1c2128}
   <div class="sub-tabs" id="dlp-sub-tabs">
     <button class="sub-tab active" data-dlp-sub="findings">Findings</button>
     <button class="sub-tab" data-dlp-sub="config">Config</button>
+    <button class="sub-tab" data-dlp-sub="signatures">Signatures</button>
     <button class="sub-tab" data-dlp-sub="test">Test</button>
   </div>
 
@@ -189,18 +190,84 @@ tr:hover{background:#1c2128}
     </div>
   </div>
 
-  <!-- DLP Patterns -->
+  </div><!-- /dlp-sub-config -->
+
+  <!-- SUB: Signatures -->
+  <div class="sub-content" id="dlp-sub-signatures">
+
+  <!-- Status -->
   <div class="section">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <div style="display:flex;align-items:center;gap:10px">
-        <h2>DLP Patterns</h2>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h2>Remote Signatures</h2>
+      <div style="display:flex;gap:8px;align-items:center">
         <span id="sig-badge" style="display:none;font-size:11px;padding:2px 8px;border-radius:10px;background:#1f2937;border:1px solid #30363d;color:#7d8590"></span>
         <span id="sig-update" style="display:none;font-size:11px;padding:2px 8px;border-radius:10px;background:#2a1f00;border:1px solid #d29922;color:#d29922;cursor:pointer" title="Click to sync"></span>
+        <button id="sig-check-btn" style="padding:4px 10px;font-size:11px;cursor:pointer;color:#7d8590;background:none;border:1px solid #30363d;border-radius:6px">Check Update</button>
+        <button id="sig-sync-btn" style="padding:4px 10px;font-size:11px;cursor:pointer;color:#58a6ff;background:none;border:1px solid #1f3a5f;border-radius:6px">Sync Now</button>
       </div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <button id="sig-sync-btn" style="display:none;padding:4px 10px;font-size:11px;cursor:pointer;color:#58a6ff;background:none;border:1px solid #1f3a5f;border-radius:6px" title="Sync remote signatures">Sync</button>
-        <button id="dlp-add-btn" style="padding:4px 12px;font-size:12px;cursor:pointer;color:#3fb950;background:none;border:1px solid #3fb950;border-radius:6px">+ Add Pattern</button>
+    </div>
+    <div id="sig-status" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:12px">
+      <div style="padding:10px 14px;background:#161b22;border:1px solid #30363d;border-radius:8px">
+        <div style="font-size:11px;color:#7d8590;margin-bottom:4px">Version</div>
+        <div id="sig-ver" style="font-size:16px;font-weight:600;color:#e1e4e8">-</div>
       </div>
+      <div style="padding:10px 14px;background:#161b22;border:1px solid #30363d;border-radius:8px">
+        <div style="font-size:11px;color:#7d8590;margin-bottom:4px">Patterns</div>
+        <div id="sig-count" style="font-size:16px;font-weight:600;color:#e1e4e8">-</div>
+      </div>
+      <div style="padding:10px 14px;background:#161b22;border:1px solid #30363d;border-radius:8px">
+        <div style="font-size:11px;color:#7d8590;margin-bottom:4px">Branch</div>
+        <div id="sig-branch" style="font-size:16px;font-weight:600;color:#e1e4e8">-</div>
+      </div>
+      <div style="padding:10px 14px;background:#161b22;border:1px solid #30363d;border-radius:8px">
+        <div style="font-size:11px;color:#7d8590;margin-bottom:4px">Last Synced</div>
+        <div id="sig-synced" style="font-size:14px;font-weight:500;color:#e1e4e8">-</div>
+      </div>
+    </div>
+    <div id="sig-no-config" style="padding:16px;text-align:center;color:#7d8590;font-size:13px">
+      Remote signatures not configured. Set <code>remotePatterns.url</code> in config or enter below.
+    </div>
+  </div>
+
+  <!-- Configuration -->
+  <div class="section">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <h2>Sync Configuration</h2>
+      <button id="sig-save-cfg-btn" style="display:none;padding:4px 16px;font-size:12px;cursor:pointer;color:#fff;background:#238636;border:1px solid #2ea043;border-radius:6px">Save</button>
+    </div>
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:8px;margin-bottom:8px">
+      <div>
+        <div style="font-size:11px;color:#7d8590;margin-bottom:4px">Repository URL</div>
+        <input id="sig-cfg-url" placeholder="https://github.com/org/repo.git" style="width:100%;box-sizing:border-box;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 10px;border-radius:4px;font-size:12px;font-family:monospace">
+      </div>
+      <div>
+        <div style="font-size:11px;color:#7d8590;margin-bottom:4px">Branch</div>
+        <input id="sig-cfg-branch" value="auto" style="width:100%;box-sizing:border-box;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 10px;border-radius:4px;font-size:12px">
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="toggle-row" style="padding:6px 0">
+        <div><div class="toggle-label" style="font-size:12px">Sync on start</div></div>
+        <label class="switch"><input type="checkbox" id="sig-cfg-sync-start" checked><span class="slider"></span></label>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="font-size:11px;color:#7d8590">Interval (minutes, 0=disabled)</div>
+        <input id="sig-cfg-interval" type="number" value="0" min="0" style="width:60px;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:4px 8px;border-radius:4px;font-size:12px;text-align:center">
+      </div>
+    </div>
+  </div>
+
+  <!-- Changelog -->
+  <div class="section">
+    <h2>Changelog</h2>
+    <div id="sig-changelog" style="color:#7d8590;font-size:13px">No changelog available.</div>
+  </div>
+
+  <!-- DLP Patterns (moved here from Config) -->
+  <div class="section">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <h2>DLP Patterns</h2>
+      <button id="dlp-add-btn" style="padding:4px 12px;font-size:12px;cursor:pointer;color:#3fb950;background:none;border:1px solid #3fb950;border-radius:6px">+ Add Pattern</button>
     </div>
     <div id="dlp-add-form" style="display:none;margin-bottom:12px;padding:12px 16px;background:#161b22;border:1px solid #30363d;border-radius:8px">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
@@ -221,7 +288,7 @@ tr:hover{background:#1c2128}
     <p class="empty" id="no-patterns">No patterns configured.</p>
   </div>
 
-  </div><!-- /dlp-sub-config -->
+  </div><!-- /dlp-sub-signatures -->
 
   <!-- SUB: Findings -->
   <div class="sub-content active" id="dlp-sub-findings">
@@ -417,6 +484,7 @@ document.querySelectorAll('#dlp-sub-tabs .sub-tab').forEach(t=>{
     t.classList.add('active');
     document.getElementById('dlp-sub-'+t.dataset.dlpSub).classList.add('active');
     if(t.dataset.dlpSub==='findings')refreshFindings();
+    if(t.dataset.dlpSub==='signatures'){refreshSignature(true);refreshPatterns();}
   });
 });
 
@@ -637,8 +705,6 @@ async function refreshDlp(){
       card('Redacted',fmt(ba.redact||0),'blue')+
       card('Warned',fmt(ba.warn||0));
     await loadDlpConfig();
-    refreshPatterns();
-    refreshSignature(true);
     refreshFindings();
   }catch(e){}
 }
@@ -995,7 +1061,7 @@ async function refreshPatterns(){
   }catch(e){console.error('Pattern refresh error',e)}
 }
 
-// Signature version badge
+// Signature management
 async function refreshSignature(checkRemote){
   try{
     const url=checkRemote?'/api/dlp/signature?check=true':'/api/dlp/signature';
@@ -1003,13 +1069,37 @@ async function refreshSignature(checkRemote){
     const s=await r.json();
     const badge=document.getElementById('sig-badge');
     const upd=document.getElementById('sig-update');
-    const syncBtn=document.getElementById('sig-sync-btn');
+    const noConfig=document.getElementById('sig-no-config');
+    // Status cards
     if(s.local){
-      badge.textContent='Signatures #'+s.local.version;
-      badge.title='Synced: '+new Date(s.local.syncedAt).toLocaleString()+'\\nPatterns: '+s.local.patternCount+'\\nBranch: '+s.local.branch;
+      badge.textContent='#'+s.local.version;
       badge.style.display='';
-      syncBtn.style.display='';
+      document.getElementById('sig-ver').textContent='#'+s.local.version;
+      document.getElementById('sig-count').textContent=s.local.patternCount;
+      document.getElementById('sig-branch').textContent=s.local.branch;
+      document.getElementById('sig-synced').textContent=new Date(s.local.syncedAt).toLocaleString();
+      document.getElementById('sig-status').style.display='';
+      noConfig.style.display='none';
+      // Changelog
+      if(s.local.changelog&&s.local.changelog.length){
+        document.getElementById('sig-changelog').innerHTML=s.local.changelog.map(c=>{
+          const items=(c.changes||[]).map(ch=>'<li style="margin:2px 0">'+esc(ch)+'</li>').join('');
+          return '<div style="margin-bottom:10px"><div style="font-weight:600;color:#e1e4e8">#'+c.version+' <span style="font-weight:400;color:#7d8590">('+esc(c.date)+')</span></div><ul style="margin:4px 0 0 16px;padding:0;list-style:disc;color:#8b949e;font-size:12px">'+items+'</ul></div>';
+        }).join('');
+      }else{
+        document.getElementById('sig-changelog').textContent='No changelog available.';
+      }
+    }else{
+      badge.style.display='none';
+      document.getElementById('sig-ver').textContent='-';
+      document.getElementById('sig-count').textContent='-';
+      document.getElementById('sig-branch').textContent='-';
+      document.getElementById('sig-synced').textContent='-';
+      document.getElementById('sig-status').style.display='none';
+      noConfig.style.display='';
+      document.getElementById('sig-changelog').textContent='No changelog available.';
     }
+    // Update available badge
     if(s.updateAvailable&&s.remote){
       upd.textContent='#'+s.remote.version+' available';
       upd.title='Click to sync to #'+s.remote.version+' ('+s.remote.patternCount+' patterns)';
@@ -1018,11 +1108,16 @@ async function refreshSignature(checkRemote){
     }else{
       upd.style.display='none';
     }
-    if(!s.local&&!s.updateAvailable){
-      badge.style.display='none';
-      syncBtn.style.display='none';
-    }
-  }catch(e){console.error('Signature check error',e)}
+    // Populate config form from current config
+    const cfgR=await fetch('/api/config');
+    const cfg=await cfgR.json();
+    const rp=cfg.config?.plugins?.dlp?.remotePatterns||{};
+    document.getElementById('sig-cfg-url').value=rp.url||'';
+    document.getElementById('sig-cfg-branch').value=rp.branch||'auto';
+    document.getElementById('sig-cfg-sync-start').checked=rp.syncOnStart!==false;
+    document.getElementById('sig-cfg-interval').value=rp.syncIntervalMinutes||0;
+    document.getElementById('sig-save-cfg-btn').style.display='';
+  }catch(e){console.error('Signature refresh error',e)}
 }
 async function syncSignature(){
   const syncBtn=document.getElementById('sig-sync-btn');
@@ -1041,6 +1136,19 @@ async function syncSignature(){
   finally{syncBtn.textContent=oldText;syncBtn.disabled=false}
 }
 document.getElementById('sig-sync-btn').addEventListener('click',syncSignature);
+document.getElementById('sig-check-btn').addEventListener('click',()=>refreshSignature(true));
+document.getElementById('sig-save-cfg-btn').addEventListener('click',async()=>{
+  const payload={plugins:{dlp:{remotePatterns:{
+    url:document.getElementById('sig-cfg-url').value.trim(),
+    branch:document.getElementById('sig-cfg-branch').value.trim()||'auto',
+    syncOnStart:document.getElementById('sig-cfg-sync-start').checked,
+    syncIntervalMinutes:parseInt(document.getElementById('sig-cfg-interval').value)||0,
+  }}}};
+  try{
+    await fetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+    refreshSignature(false);
+  }catch(e){alert('Save failed: '+e.message)}
+});
 
 // Add pattern form
 document.getElementById('dlp-add-btn').addEventListener('click',()=>{
