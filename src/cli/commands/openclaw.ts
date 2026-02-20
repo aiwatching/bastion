@@ -106,13 +106,8 @@ function generateComposeFile(caPath: string, image: string): string {
     restart: unless-stopped
     command:
       [
-        "node",
-        "dist/index.js",
-        "gateway",
-        "--bind",
-        "\${OPENCLAW_GATEWAY_BIND:-lan}",
-        "--port",
-        "18789",
+        "sh", "-c",
+        "find /home/node/.openclaw/agents -name '*.lock' -delete 2>/dev/null; exec node dist/index.js gateway --bind \${OPENCLAW_GATEWAY_BIND:-lan} --port 18789",
       ]
 
   openclaw-cli:
@@ -578,6 +573,57 @@ export function registerOpenclawCommand(program: Command): void {
       const code = await dc(name, ['down']);
       if (code !== 0) process.exit(code);
       console.log('Stopped.');
+    });
+
+  // bastion openclaw docker exec <name> [-- args...]
+  docker
+    .command('exec')
+    .description('Run a command inside the OpenClaw gateway container')
+    .argument('<name>', 'Instance name')
+    .argument('[args...]', 'Command args (passed to openclaw CLI)')
+    .passThroughOptions()
+    .allowUnknownOption()
+    .action(async (name: string, args: string[]) => {
+      const dir = instanceDir(name);
+      if (!existsSync(dir)) {
+        console.error(`Instance '${name}' does not exist.`);
+        process.exit(1);
+      }
+      const code = await dc(name, ['exec', 'openclaw-gateway', 'node', 'dist/index.js', ...args]);
+      if (code !== 0) process.exit(code);
+    });
+
+  // bastion openclaw docker destroy <name>
+  docker
+    .command('destroy')
+    .description('Stop and remove a Docker OpenClaw instance (data dirs preserved)')
+    .argument('<name>', 'Instance name')
+    .action(async (name: string) => {
+      const dir = instanceDir(name);
+      if (!existsSync(dir)) {
+        console.error(`Instance '${name}' does not exist.`);
+        process.exit(1);
+      }
+
+      // Read config/workspace paths before deleting
+      const configDir = envVal(name, 'OPENCLAW_CONFIG_DIR');
+      const workspaceDir = envVal(name, 'OPENCLAW_WORKSPACE_DIR');
+
+      // docker compose down -v
+      console.log(`Destroying instance '${name}'...`);
+      await dc(name, ['down', '-v']);
+
+      // Remove instance dir
+      const { rmSync } = require('node:fs') as typeof import('node:fs');
+      rmSync(dir, { recursive: true, force: true });
+
+      console.log(`Instance '${name}' removed.`);
+      console.log('');
+      console.log('Data directories preserved (delete manually if needed):');
+      if (configDir) console.log(`  ${configDir}`);
+      if (workspaceDir) console.log(`  ${workspaceDir}`);
+      console.log('');
+      console.log(`To fully clean up: rm -rf ${configDir} ${workspaceDir}`);
     });
 
   // bastion openclaw docker status

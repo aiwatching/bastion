@@ -23,13 +23,8 @@ services:
     restart: unless-stopped
     command:
       [
-        "node",
-        "dist/index.js",
-        "gateway",
-        "--bind",
-        "${OPENCLAW_GATEWAY_BIND:-lan}",
-        "--port",
-        "18789",
+        "sh", "-c",
+        "find /home/node/.openclaw/agents -name '*.lock' -delete 2>/dev/null; exec node dist/index.js gateway --bind ${OPENCLAW_GATEWAY_BIND:-lan} --port 18789",
       ]
 
   openclaw-cli:
