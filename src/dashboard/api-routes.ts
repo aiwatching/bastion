@@ -108,6 +108,7 @@ export function createApiRouter(
               patternName: f.patternName,
               patternCategory: f.patternCategory,
               matchCount: f.matchCount,
+              matches: f.matches,
             })),
             redactedText: result.redactedBody ?? null,
           });
