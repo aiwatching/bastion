@@ -1,25 +1,27 @@
+**English** | [中文](agent-monitoring.zh.md)
+
 # AI Agent Monitoring
 
-通过 Bastion 代理监控任意本地运行的 AI Agent（Claude Code、Cursor、Aider、自定义 Python/Node 应用等），实现 DLP 扫描、用量统计、成本追踪和审计日志。
+Monitor any locally running AI agent (Claude Code, Cursor, Aider, custom Python/Node apps, etc.) through Bastion proxy, enabling DLP scanning, usage statistics, cost tracking, and audit logging.
 
 ---
 
-## 核心原理
+## How It Works
 
-Bastion 作为 HTTPS 代理，拦截所有发往 AI Provider 的流量：
+Bastion acts as an HTTPS proxy, intercepting all traffic destined for AI providers:
 
 ```
-AI Agent (任意进程)
+AI Agent (any process)
     │
     │  HTTPS_PROXY → Bastion
     │
     ▼
 Bastion Gateway (127.0.0.1:8420)
     │
-    ├─ DLP 扫描（敏感数据检测）
-    ├─ 指标采集（token 用量、成本）
-    ├─ 审计日志（请求/响应记录）
-    ├─ 响应缓存（可选）
+    ├─ DLP scanning (sensitive data detection)
+    ├─ Metrics collection (token usage, cost)
+    ├─ Audit logging (request/response recording)
+    ├─ Response caching (optional)
     │
     ▼
 LLM Provider (Anthropic / OpenAI / Gemini / ...)
@@ -27,62 +29,62 @@ LLM Provider (Anthropic / OpenAI / Gemini / ...)
 
 ---
 
-## 三种接入方式
+## Three Ways to Connect
 
-### 方式一：`bastion wrap`（单进程，推荐）
+### Option 1: `bastion wrap` (single process, recommended)
 
-最简单，代理仅作用于该命令及其子进程：
+The simplest approach. The proxy only applies to the specified command and its child processes:
 
 ```bash
 # Claude Code
 bastion wrap claude
 
-# Cursor 打开项目
+# Cursor opening a project
 bastion wrap cursor /path/to/project
 
-# Python 应用
+# Python app
 bastion wrap python my_agent.py
 
-# Node.js 应用
+# Node.js app
 bastion wrap node server.js
 
-# 带 label 标识（Dashboard 中显示）
+# With a label (displayed in Dashboard)
 bastion wrap --label "code-review" claude
 bastion wrap --label "data-pipeline" python etl.py
 ```
 
-每次 `bastion wrap` 生成唯一 session ID，Dashboard 中按 session 分组查看。
+Each `bastion wrap` invocation generates a unique session ID. Sessions are grouped in the Dashboard for easy viewing.
 
-### 方式二：`bastion proxy on`（全局代理）
+### Option 2: `bastion proxy on` (system-wide proxy)
 
-所有终端、所有新进程、GUI 应用都经过 Bastion：
+All terminals, all new processes, and GUI applications go through Bastion:
 
 ```bash
 eval $(bastion proxy on)
 ```
 
-关闭：
+To disable:
 
 ```bash
 eval $(bastion proxy off)
 ```
 
-适合：同时运行多个 AI 工具，希望统一监控。
+Best for: running multiple AI tools simultaneously with unified monitoring.
 
-### 方式三：手动设置环境变量
+### Option 3: Manually setting environment variables
 
-对于特殊场景，手动注入环境变量：
+For special scenarios, inject the environment variables manually:
 
 ```bash
 export HTTPS_PROXY="http://127.0.0.1:8420"
 export NODE_EXTRA_CA_CERTS="$HOME/.bastion/ca.crt"
 export NO_PROXY="127.0.0.1,localhost"
 
-# 然后运行你的 agent
+# Then run your agent
 python my_agent.py
 ```
 
-或在代码中设置（Python 示例）：
+Or set them in code (Python example):
 
 ```python
 import os
@@ -92,7 +94,7 @@ os.environ["SSL_CERT_FILE"] = os.path.expanduser("~/.bastion/ca.crt")
 
 ---
 
-## 常见 AI Agent 配置
+## Common AI Agent Configurations
 
 ### Claude Code
 
@@ -100,7 +102,7 @@ os.environ["SSL_CERT_FILE"] = os.path.expanduser("~/.bastion/ca.crt")
 bastion wrap claude
 ```
 
-Claude Code 原生支持 `HTTPS_PROXY`，无需额外配置。
+Claude Code natively supports `HTTPS_PROXY` -- no additional configuration needed.
 
 ### Cursor
 
@@ -108,7 +110,7 @@ Claude Code 原生支持 `HTTPS_PROXY`，无需额外配置。
 bastion wrap cursor .
 ```
 
-或在 Cursor Settings → Proxy 中设置 `http://127.0.0.1:8420`。
+Alternatively, set `http://127.0.0.1:8420` in Cursor Settings -> Proxy.
 
 ### Aider
 
@@ -122,27 +124,27 @@ bastion wrap aider --model claude-3-5-sonnet
 bastion wrap python my_app.py
 ```
 
-Python `httpx`（OpenAI SDK 底层）自动读取 `HTTPS_PROXY`。
+Python `httpx` (the underlying HTTP library for the OpenAI SDK) automatically reads `HTTPS_PROXY`.
 
-对于 CA 证书信任，设置：
+For CA certificate trust, set:
 
 ```bash
 export SSL_CERT_FILE="$HOME/.bastion/ca.crt"
-# 或
+# or
 export REQUESTS_CA_BUNDLE="$HOME/.bastion/ca.crt"
 ```
 
-### Go 应用
+### Go Applications
 
-Go 的 `net/http` 自动读取 `HTTPS_PROXY`：
+Go's `net/http` automatically reads `HTTPS_PROXY`:
 
 ```bash
 bastion wrap go run ./cmd/myagent
 ```
 
-### Docker 容器中的 Agent
+### Agent in Docker Container
 
-参考 [OpenClaw Docker 文档](openclaw-docker.md) 中的方式，核心是：
+Refer to the [OpenClaw Docker documentation](openclaw-docker.md) for details. The key configuration is:
 
 ```yaml
 environment:
@@ -155,9 +157,9 @@ volumes:
 
 ---
 
-## Dashboard 监控
+## Dashboard Monitoring
 
-启动 Bastion 后，打开 Dashboard：
+After starting Bastion, open the Dashboard:
 
 ```
 http://127.0.0.1:8420/dashboard
@@ -165,87 +167,87 @@ http://127.0.0.1:8420/dashboard
 
 ### Overview Tab
 
-- **请求量**：按 provider / model / session 分组
-- **Token 用量**：input + output tokens，实时统计
-- **成本追踪**：基于各 model 定价自动计算
-- **延迟**：每个请求的 upstream 响应时间
+- **Request volume**: grouped by provider / model / session
+- **Token usage**: input + output tokens, real-time statistics
+- **Cost tracking**: automatically calculated based on per-model pricing
+- **Latency**: upstream response time for each request
 
 ### DLP Tab
 
-- **Config**：管理检测模式（19 种内置 + 自定义），实时开关
-- **Findings**：检测到的敏感数据，按方向（请求/响应）分类
-- **Test**：独立测试扫描器，粘贴文本即时检测
+- **Config**: manage detection patterns (19 built-in + custom), toggle in real time
+- **Findings**: detected sensitive data, categorized by direction (request/response)
+- **Test**: standalone scanner testing -- paste text for instant detection
 
 ### Audit Tab
 
-- **Session Timeline**：按 session 分组的请求时间线
-- **DLP 标记**：敏感数据命中的条目高亮显示
-- **请求详情**：完整的 request/response 内容查看
+- **Session Timeline**: request timeline grouped by session
+- **DLP flags**: entries with sensitive data hits are highlighted
+- **Request details**: full request/response content viewer
 
 ### Optimizer Tab
 
-- **缓存命中率**：相同请求的缓存效果
-- **Token 节省**：空白压缩节省的 token 数
+- **Cache hit rate**: caching effectiveness for identical requests
+- **Token savings**: tokens saved through whitespace compression
 
 ---
 
-## 统计 API
+## Stats API
 
-通过 API 获取监控数据（适合集成到自定义看板）：
+Retrieve monitoring data via the API (suitable for integrating into custom dashboards):
 
 ```bash
-# 总体统计
+# Overall statistics
 curl http://127.0.0.1:8420/api/stats
 
-# 按 session 筛选
+# Filter by session
 curl "http://127.0.0.1:8420/api/stats?session_id=<uuid>"
 
-# 最近 24 小时
+# Last 24 hours
 curl "http://127.0.0.1:8420/api/stats?hours=24"
 
-# Session 列表
+# Session list
 curl http://127.0.0.1:8420/api/sessions
 
-# 审计记录
+# Audit records
 curl http://127.0.0.1:8420/api/audit/recent?limit=20
 
-# DLP 检测记录
+# DLP detection records
 curl http://127.0.0.1:8420/api/dlp/recent?limit=20
 ```
 
 ---
 
-## 多 Agent 同时监控
+## Monitoring Multiple Agents Simultaneously
 
-Bastion 天然支持多进程同时代理，每个进程通过 session ID 区分：
+Bastion natively supports proxying multiple processes at the same time, distinguishing each by session ID:
 
 ```bash
-# 终端 1
+# Terminal 1
 bastion wrap --label "claude-code" claude
 
-# 终端 2
+# Terminal 2
 bastion wrap --label "python-agent" python agent.py
 
-# 终端 3
+# Terminal 3
 bastion wrap --label "data-pipeline" node pipeline.js
 ```
 
-Dashboard 中按 session 分组查看每个 agent 的独立统计。
+The Dashboard groups sessions so you can view independent statistics for each agent.
 
 ---
 
-## DLP 保护
+## DLP Protection
 
-Bastion 的 DLP 引擎在代理层自动工作，无需 agent 侧修改：
+Bastion's DLP engine works automatically at the proxy layer -- no modifications needed on the agent side:
 
-| 动作 | 说明 |
-|------|------|
-| `pass` | 仅记录，不干预 |
-| `warn` | 记录 + Dashboard 警告 |
-| `redact` | 自动替换敏感数据为 `[REDACTED]` |
-| `block` | 阻止整个请求发送 |
+| Action | Description |
+|--------|-------------|
+| `pass` | Log only, no intervention |
+| `warn` | Log + Dashboard warning |
+| `redact` | Automatically replace sensitive data with `[REDACTED]` |
+| `block` | Block the entire request from being sent |
 
-配置：
+Configuration:
 
 ```yaml
 # ~/.bastion/config.yaml
@@ -255,57 +257,57 @@ plugins:
     action: "warn"        # pass | warn | redact | block
 ```
 
-检测 19 种内置模式：AWS 密钥、GitHub Token、信用卡号、SSN、邮箱、IP 地址等。详见 [DLP 文档](dlp.md)。
+Detects 19 built-in patterns: AWS keys, GitHub tokens, credit card numbers, SSNs, emails, IP addresses, and more. See the [DLP documentation](dlp.md) for details.
 
 ---
 
-## 故障排查
+## Troubleshooting
 
-### Agent 无法连接 API
+### Agent cannot connect to the API
 
 ```bash
-# 1. Bastion 是否在跑
+# 1. Check if Bastion is running
 bastion health
 
-# 2. 手动测试代理
+# 2. Manually test the proxy
 curl -x http://127.0.0.1:8420 https://api.anthropic.com/v1/messages \
   --cacert ~/.bastion/ca.crt \
   -H "x-api-key: test" \
   -d '{}'
 ```
 
-### SSL 证书错误
+### SSL certificate errors
 
 ```bash
-# 确认 CA 证书存在
+# Verify the CA certificate exists
 ls ~/.bastion/ca.crt
 
-# Node.js 应用
+# Node.js apps
 export NODE_EXTRA_CA_CERTS="$HOME/.bastion/ca.crt"
 
-# Python 应用
+# Python apps
 export SSL_CERT_FILE="$HOME/.bastion/ca.crt"
 export REQUESTS_CA_BUNDLE="$HOME/.bastion/ca.crt"
 
-# 系统级信任（macOS）
+# System-level trust (macOS)
 bastion proxy on --trust-ca
 ```
 
-### Dashboard 看不到数据
+### Dashboard shows no data
 
 ```bash
-# 确认 metrics 插件启用
+# Verify the metrics plugin is enabled
 curl http://127.0.0.1:8420/api/config | python3 -m json.tool
 
-# 确认 agent 确实经过 Bastion
+# Verify the agent is actually going through Bastion
 bastion stats
 ```
 
-### 某些域名不想走代理
+### Excluding certain domains from the proxy
 
-Bastion 默认只拦截 AI API 域名。OAuth、认证等域名通过 `NO_PROXY` 排除。
+Bastion only intercepts AI API domains by default. OAuth, authentication, and similar domains are excluded via `NO_PROXY`.
 
-如需自定义排除列表：
+To customize the exclusion list:
 
 ```bash
 export NO_PROXY="127.0.0.1,localhost,internal.company.com"

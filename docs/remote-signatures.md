@@ -1,88 +1,91 @@
-# Remote Signature Patterns — Development Guide
+# Remote Signature Patterns -- Development Guide
 
-Bastion 支持从远程 Git 仓库同步 DLP 检测规则（signatures），独立于 Bastion 自身版本更新。
+**English** | [中文](remote-signatures.zh.md)
+
+Bastion supports syncing DLP detection rules (signatures) from a remote Git repository, independently of Bastion's own version updates.
 
 ---
 
-## 架构概览
+## Architecture Overview
 
 ```
 ┌──────────────────────────────────┐
 │  bastion_signature (Git repo)    │
 │                                  │
-│  signature.yaml   ← 版本清单     │
+│  signature.yaml   ← manifest    │
 │  patterns/                       │
 │    high-confidence.yaml          │
 │    validated.yaml                │
 │    context-aware.yaml            │
-│    (可扩展更多 .yaml 文件)        │
+│    (extensible with more .yaml)  │
 └──────────┬───────────────────────┘
            │ git clone / pull
            ▼
 ┌──────────────────────────────────┐
 │  ~/.bastion/signatures/          │
 │                                  │
-│  .meta.json  ← 本地版本元数据     │
+│  .meta.json  ← local metadata   │
 │  signature.yaml                  │
 │  patterns/*.yaml                 │
 └──────────┬───────────────────────┘
-           │ YAML 解析 → upsert
+           │ YAML parse → upsert
            ▼
 ┌──────────────────────────────────┐
-│  SQLite: dlp_patterns 表          │
+│  SQLite: dlp_patterns table      │
 │                                  │
 │  id = "remote-{name}"           │
 │  is_builtin = 0                  │
-│  (与 builtin-* / custom-* 共存)  │
+│  (coexists with builtin-*/       │
+│   custom-*)                      │
 └──────────┬───────────────────────┘
            │
            ▼
 ┌──────────────────────────────────┐
 │  Dashboard / API                 │
 │                                  │
-│  版本 badge: Signatures #1       │
-│  更新提醒:   #2 available        │
-│  手动同步:   Sync 按钮            │
+│  Version badge: Signatures #1    │
+│  Update notice: #2 available     │
+│  Manual sync:   Sync button      │
 └──────────────────────────────────┘
 ```
 
-## 版本策略
+## Versioning Strategy
 
-有两个独立的版本号：
+There are two independent version numbers:
 
-| 版本 | 含义 | 存放位置 | 更新频率 |
-|------|------|----------|---------|
-| **Git 分支名** | Bastion 兼容版本 | 仓库分支 `v0.1.0` | Bastion 大版本升级时 |
-| **Signature version** | 签名修订号（整数递增） | `signature.yaml → version` | 每次 pattern 增删改 |
+| Version | Meaning | Location | Update Frequency |
+|---------|---------|----------|-----------------|
+| **Git branch name** | Bastion compatibility version | Repository branch `v0.1.0` | On Bastion major version upgrades |
+| **Signature version** | Signature revision number (incrementing integer) | `signature.yaml → version` | On each pattern add/remove/modify |
 
-### 为什么分开？
+### Why Separate?
 
-- Bastion 0.1.0 的 pattern 格式可能和 0.2.0 不同（新增字段、validator 变更等）
-- 同一个 Bastion 版本下，patterns 可以独立更新多次（#1 → #2 → #3）
-- `branch: "auto"` 会读取 Bastion 的 `VERSION` 文件，自动映射到 `v0.1.0` 分支
+- The pattern format in Bastion 0.1.0 may differ from 0.2.0 (new fields, validator changes, etc.)
+- Within the same Bastion version, patterns can be updated independently multiple times (#1 → #2 → #3)
+- `branch: "auto"` reads Bastion's `VERSION` file and automatically maps to the `v0.1.0` branch
 
 ---
 
-## 仓库结构 (bastion_signature)
+## Repository Structure (bastion_signature)
 
 ```
 bastion_signature/
-├── signature.yaml              # 版本清单（必须）
+├── signature.yaml              # Version manifest (required)
 ├── README.md
 ├── LICENSE
 └── patterns/
-    ├── schema.yaml             # Pattern 格式说明（不会被加载为 patterns）
-    ├── high-confidence.yaml    # 高置信度 patterns
-    ├── validated.yaml          # 带验证器的 patterns
-    └── context-aware.yaml      # 上下文感知 patterns
+    ├── schema.yaml             # Pattern format reference (not loaded as patterns)
+    ├── high-confidence.yaml    # High-confidence patterns
+    ├── validated.yaml          # Patterns with validators
+    └── context-aware.yaml      # Context-aware patterns
 ```
 
-### signature.yaml 格式
+### signature.yaml Format
 
 ```yaml
-version: 1                    # 整数，每次更新递增
-updatedAt: "2026-02-20"       # 最后更新日期
-patternCount: 27              # 总 pattern 数量
+version: 1                    # Integer, incremented on each update
+updatedAt: "2026-02-20"       # Last update date
+patternCount: 27              # Total pattern count
 
 changelog:
   - version: 1
@@ -92,105 +95,105 @@ changelog:
       - "27 patterns across 3 categories"
 ```
 
-### Pattern YAML 格式
+### Pattern YAML Format
 
 ```yaml
 patterns:
-  - name: my-pattern-name       # 唯一标识符（kebab-case）
+  - name: my-pattern-name       # Unique identifier (kebab-case)
     category: high-confidence    # high-confidence | validated | context-aware | custom
-    regex: 'sk-[A-Za-z0-9]{40}' # 正则表达式（字符串，不含分隔符）
-    flags: g                     # 可选，默认 "g"
-    description: My Pattern      # 人类可读描述
-    validator: luhn              # 可选，内置验证器：luhn, ssn
-    requireContext:              # 可选，上下文关键词
+    regex: 'sk-[A-Za-z0-9]{40}' # Regular expression (string, no delimiters)
+    flags: g                     # Optional, defaults to "g"
+    description: My Pattern      # Human-readable description
+    validator: luhn              # Optional, built-in validators: luhn, ssn
+    requireContext:              # Optional, context keywords
       - keyword1
       - keyword2
 ```
 
-**注意事项：**
-- `name` 全局唯一，存入 DB 时 id = `remote-{name}`
-- 如果 `name` 与内置 pattern 同名（如 `aws-access-key`），由于 id 前缀不同（`builtin-` vs `remote-`），不会冲突，但 DB 的 `UNIQUE(name)` 约束会阻止插入 — 内置 pattern 优先
-- `schema.yaml` 文件会被自动跳过不解析
-- 任何 `.yaml` 或 `.yml` 文件都会被解析（按字母序）
+**Notes:**
+- `name` must be globally unique; stored in the DB with id = `remote-{name}`
+- If a `name` collides with a built-in pattern (e.g., `aws-access-key`), the different id prefixes (`builtin-` vs `remote-`) avoid id conflicts, but the DB's `UNIQUE(name)` constraint will block the insert -- built-in patterns take precedence
+- `schema.yaml` is automatically skipped during parsing
+- Any `.yaml` or `.yml` file will be parsed (in alphabetical order)
 
 ---
 
-## Bastion 端关键文件
+## Key Files on the Bastion Side
 
-| 文件 | 职责 |
-|------|------|
-| `src/dlp/remote-sync.ts` | 核心同步引擎：git clone/pull、YAML 解析、版本检查 |
-| `src/config/schema.ts` | `remotePatterns` 配置类型定义 |
+| File | Responsibility |
+|------|---------------|
+| `src/dlp/remote-sync.ts` | Core sync engine: git clone/pull, YAML parsing, version checking |
+| `src/config/schema.ts` | `remotePatterns` config type definition |
 | `src/config/paths.ts` | `signaturesDir` = `~/.bastion/signatures/` |
-| `config/default.yaml` | 默认配置（url 为空 = 禁用） |
-| `src/storage/repositories/dlp-patterns.ts` | `upsertRemote()` 方法 |
-| `src/plugins/builtin/dlp-scanner.ts` | 启动时调用 sync + 启动定时器 |
-| `src/dashboard/api-routes.ts` | API 端点：`/api/dlp/signature`, `/api/dlp/signature/sync` |
-| `src/dashboard/page.ts` | Dashboard UI：版本 badge、更新提醒、Sync 按钮 |
+| `config/default.yaml` | Default config (empty url = disabled) |
+| `src/storage/repositories/dlp-patterns.ts` | `upsertRemote()` method |
+| `src/plugins/builtin/dlp-scanner.ts` | Calls sync on startup + starts periodic timer |
+| `src/dashboard/api-routes.ts` | API endpoints: `/api/dlp/signature`, `/api/dlp/signature/sync` |
+| `src/dashboard/page.ts` | Dashboard UI: version badge, update notice, Sync button |
 
 ---
 
-## 核心流程
+## Core Flows
 
-### 1. 启动同步 (syncOnStart)
+### 1. Startup Sync (syncOnStart)
 
 ```
-Bastion 启动
+Bastion starts
   → createDlpScannerPlugin()
-    → seedBuiltins()           # 内置 patterns 写入 DB
-    → syncRemotePatterns()     # 远程 patterns 同步
-      → resolveBranch("auto")  # 读 VERSION → "v0.1.0"
+    → seedBuiltins()           # Write built-in patterns to DB
+    → syncRemotePatterns()     # Sync remote patterns
+      → resolveBranch("auto")  # Read VERSION → "v0.1.0"
       → syncRepo()             # git clone / pull
-      → loadPatternFiles()     # 解析 patterns/*.yaml
-      → upsertPatterns()       # 写入 DB (id = "remote-{name}")
-      → readSignatureYaml()    # 读 signature.yaml
-      → writeMetaFile()        # 保存 .meta.json
-    → startPeriodicSync()      # 如果 syncIntervalMinutes > 0
+      → loadPatternFiles()     # Parse patterns/*.yaml
+      → upsertPatterns()       # Write to DB (id = "remote-{name}")
+      → readSignatureYaml()    # Read signature.yaml
+      → writeMetaFile()        # Save .meta.json
+    → startPeriodicSync()      # If syncIntervalMinutes > 0
 ```
 
-### 2. 更新检查 (checkForUpdates)
+### 2. Update Check (checkForUpdates)
 
 ```
-Dashboard 打开 DLP tab
+Dashboard opens DLP tab
   → GET /api/dlp/signature?check=true
     → checkForUpdates()
-      → git fetch origin              # 只 fetch，不 pull
-      → git show origin/v0.1.0:signature.yaml  # 读远程版本
-      → 比较 local.version vs remote.version
-      → 返回 { local, remote, updateAvailable }
+      → git fetch origin              # Fetch only, no pull
+      → git show origin/v0.1.0:signature.yaml  # Read remote version
+      → Compare local.version vs remote.version
+      → Return { local, remote, updateAvailable }
 ```
 
-### 3. 手动同步
+### 3. Manual Sync
 
 ```
-用户点击 "Sync" 按钮 / 点击 "#2 available"
+User clicks "Sync" button / clicks "#2 available"
   → POST /api/dlp/signature/sync
-    → syncRemotePatterns()   # 完整同步流程
-    → 返回 { ok, synced, signature }
-  → refreshPatterns()        # UI 刷新 pattern 列表
-  → refreshSignature()       # UI 刷新版本 badge
+    → syncRemotePatterns()   # Full sync flow
+    → Return { ok, synced, signature }
+  → refreshPatterns()        # UI refreshes pattern list
+  → refreshSignature()       # UI refreshes version badge
 ```
 
-### 4. Pattern 写入逻辑 (upsertRemote)
+### 4. Pattern Write Logic (upsertRemote)
 
 ```sql
--- 新 pattern：按 category 决定 enabled 状态
+-- New pattern: enabled state determined by category
 INSERT INTO dlp_patterns (id, name, ..., enabled)
 VALUES ('remote-xxx', 'xxx', ..., 1)
 
--- 已存在的 pattern：更新 regex/description 等内容，但保留 enabled 状态
+-- Existing pattern: update regex/description etc., but preserve enabled state
 ON CONFLICT(id) DO UPDATE SET
   regex_source = @regex_source,
   description = @description,
   ...
-  -- 注意：不覆盖 enabled 字段
+  -- Note: does NOT overwrite the enabled field
 ```
 
-这确保用户在 Dashboard 手动 disable 的 pattern 不会在下次同步时被重新 enable。
+This ensures that patterns manually disabled by the user in the Dashboard will not be re-enabled on the next sync.
 
 ---
 
-## 配置
+## Configuration
 
 ```yaml
 # ~/.bastion/config.yaml
@@ -199,25 +202,25 @@ plugins:
     remotePatterns:
       url: "https://github.com/aiwatching/bastion_signature.git"
       branch: "auto"            # "auto" | "v0.1.0" | "main" | ...
-      syncOnStart: true         # 启动时拉取
-      syncIntervalMinutes: 0    # 0 = 仅启动时，>0 = 定时同步（分钟）
+      syncOnStart: true         # Pull on startup
+      syncIntervalMinutes: 0    # 0 = startup only, >0 = periodic sync (minutes)
 ```
 
-- `url: ""` → 完全禁用远程签名
-- `branch: "auto"` → 读取 `VERSION` 文件 → `v{version}`
-- `syncIntervalMinutes: 60` → 每小时自动拉取一次
+- `url: ""` → Completely disables remote signatures
+- `branch: "auto"` → Reads the `VERSION` file → `v{version}`
+- `syncIntervalMinutes: 60` → Automatically pulls once per hour
 
 ---
 
 ## API
 
-| Method | Endpoint | 说明 |
-|--------|----------|------|
-| `GET` | `/api/dlp/signature` | 返回本地签名版本信息 |
-| `GET` | `/api/dlp/signature?check=true` | 同上 + 检查远程是否有更新 |
-| `POST` | `/api/dlp/signature/sync` | 手动触发同步，返回同步结果 |
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/dlp/signature` | Returns local signature version info |
+| `GET` | `/api/dlp/signature?check=true` | Same as above + checks if a remote update is available |
+| `POST` | `/api/dlp/signature/sync` | Manually triggers sync, returns sync result |
 
-### GET /api/dlp/signature?check=true 响应
+### GET /api/dlp/signature?check=true Response
 
 ```json
 {
@@ -239,7 +242,7 @@ plugins:
 }
 ```
 
-### POST /api/dlp/signature/sync 响应
+### POST /api/dlp/signature/sync Response
 
 ```json
 {
@@ -258,50 +261,50 @@ plugins:
 
 ---
 
-## 开发指南
+## Development Guide
 
-### 添加新 Pattern 到签名仓库
+### Adding New Patterns to the Signature Repository
 
 ```bash
-# 1. Clone 仓库
+# 1. Clone the repository
 git clone -b v0.1.0 https://github.com/aiwatching/bastion_signature.git
 cd bastion_signature
 
-# 2. 编辑或新增 patterns/*.yaml
+# 2. Edit or add patterns/*.yaml
 vim patterns/high-confidence.yaml
 
-# 3. 更新 signature.yaml
-#    - version +1
-#    - patternCount 更新
-#    - changelog 添加条目
+# 3. Update signature.yaml
+#    - Increment version
+#    - Update patternCount
+#    - Add changelog entry
 vim signature.yaml
 
-# 4. 提交推送
+# 4. Commit and push
 git add -A
 git commit -m "Add discord-bot-token pattern (#2)"
 git push origin v0.1.0
 ```
 
-### 新建 Bastion 版本分支
+### Creating a New Bastion Version Branch
 
-当 Bastion 升级到新版本（如 0.2.0），需要在签名仓库创建对应分支：
+When Bastion upgrades to a new version (e.g., 0.2.0), a corresponding branch must be created in the signature repository:
 
 ```bash
 cd bastion_signature
 git checkout v0.1.0
 git checkout -b v0.2.0
 
-# 如果 pattern 格式有变化，在这里修改
-# 重置 signature version 到 1 或继续递增（推荐继续递增）
+# If the pattern format has changed, make modifications here
+# Reset signature version to 1 or continue incrementing (continuing is recommended)
 vim signature.yaml
 
 git push -u origin v0.2.0
 ```
 
-### 本地测试同步
+### Testing Sync Locally
 
 ```bash
-# 1. 配置 Bastion 指向本地或测试仓库
+# 1. Configure Bastion to point to a local or test repository
 # ~/.bastion/config.yaml
 plugins:
   dlp:
@@ -310,58 +313,58 @@ plugins:
       branch: "v0.1.0"
       syncOnStart: true
 
-# 2. 重启 Bastion
+# 2. Restart Bastion
 bastion stop && bastion start
 
-# 3. 检查日志
+# 3. Check logs
 tail -f ~/.bastion/bastion.log | grep remote-sync
 
-# 4. 通过 API 验证
+# 4. Verify via API
 curl http://127.0.0.1:8420/api/dlp/signature
 curl http://127.0.0.1:8420/api/dlp/signature?check=true
 curl -X POST http://127.0.0.1:8420/api/dlp/signature/sync
 ```
 
-### 常见问题
+### FAQ
 
-**Q: 远程 pattern name 与内置 pattern name 重复怎么办？**
+**Q: What happens if a remote pattern name duplicates a built-in pattern name?**
 
-DB 中 `name` 有 UNIQUE 约束。由于内置 patterns 先 seed（id = `builtin-{name}`），远程 pattern 的 `upsertRemote` 使用 `ON CONFLICT(id)` 不会触发 name 冲突 — 但 `INSERT` 时会因为 name 重复而失败。解决方案：远程 pattern 应使用不同的 name，或在 `upsertRemote` 中改用 `ON CONFLICT(name)` 策略。
+The DB has a `UNIQUE` constraint on `name`. Since built-in patterns are seeded first (id = `builtin-{name}`), the remote pattern's `upsertRemote` uses `ON CONFLICT(id)` which won't trigger a name conflict -- but the `INSERT` will fail due to the duplicate name. Solution: remote patterns should use different names, or `upsertRemote` should be changed to use an `ON CONFLICT(name)` strategy.
 
-> **TODO**: 当前实现中，远程 pattern 如果与内置 pattern 同名会被静默跳过（INSERT 失败被 try-catch 吞掉）。如果需要"远程覆盖内置"语义，需要修改 upsert 策略。
+> **TODO**: In the current implementation, remote patterns with names that match built-in patterns are silently skipped (the INSERT failure is swallowed by try-catch). If "remote overrides built-in" semantics are needed, the upsert strategy must be modified.
 
-**Q: git 不可用或网络不通怎么办？**
+**Q: What if git is unavailable or the network is down?**
 
-同步失败只打 warn 日志，不影响 Bastion 启动。已有的本地 patterns（内置 + 之前同步的远程）继续生效。
+Sync failures only produce a warning log and do not affect Bastion startup. Existing local patterns (built-in + previously synced remote patterns) continue to function.
 
-**Q: 定时同步会阻塞请求处理吗？**
+**Q: Does periodic sync block request processing?**
 
-`syncRemotePatterns()` 是同步调用（`execSync`），在定时器回调中执行。git pull 通常 < 1s（shallow clone），YAML 解析和 DB upsert 也很快。但如果网络慢（timeout 30s），会短暂阻塞。
+`syncRemotePatterns()` is a synchronous call (`execSync`) executed in a timer callback. A git pull typically takes < 1s (shallow clone), and YAML parsing plus DB upsert are also fast. However, if the network is slow (timeout 30s), it will briefly block.
 
-> **TODO**: 可以考虑改为异步（worker thread 或 child process）避免阻塞主线程。
+> **TODO**: Consider switching to async (worker thread or child process) to avoid blocking the main thread.
 
 ---
 
-## 文件存储
+## File Storage
 
 ```
 ~/.bastion/
-  signatures/               # git clone 的签名仓库
+  signatures/               # Git-cloned signature repository
     .git/
-    .meta.json              # 本地版本元数据
-    signature.yaml          # 远程清单
+    .meta.json              # Local version metadata
+    signature.yaml          # Remote manifest
     patterns/
       high-confidence.yaml
       validated.yaml
       context-aware.yaml
       schema.yaml
-  bastion.db                # SQLite: dlp_patterns 表存储最终 patterns
+  bastion.db                # SQLite: dlp_patterns table stores final patterns
 ```
 
-`dlp_patterns` 表中 pattern 的 id 前缀区分来源：
+Pattern ids in the `dlp_patterns` table use prefixes to distinguish their source:
 
-| 前缀 | 来源 | 可删除 |
-|------|------|--------|
-| `builtin-` | 内置（源码） | 不可删除，可禁用 |
-| `remote-` | 远程签名仓库 | 不可删除，可禁用 |
-| `custom-` | 用户手动添加 | 可删除 |
+| Prefix | Source | Deletable |
+|--------|--------|-----------|
+| `builtin-` | Built-in (source code) | Cannot delete, can disable |
+| `remote-` | Remote signature repository | Cannot delete, can disable |
+| `custom-` | User-added manually | Can delete |

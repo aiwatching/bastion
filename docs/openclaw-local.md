@@ -1,37 +1,39 @@
+**English** | [中文](openclaw-local.zh.md)
+
 # OpenClaw Local Installation
 
-在本地直接运行 OpenClaw 进程（不使用 Docker），通过 Bastion 代理所有 AI 流量。
+Run the OpenClaw process directly on your local machine (without Docker), proxying all AI traffic through Bastion.
 
 ---
 
-## 前置条件
+## Prerequisites
 
-- Bastion 已安装（`bastion` 命令可用）
-- OpenClaw 已在本地安装（`openclaw` 命令可用，或知道二进制路径）
+- Bastion is installed (the `bastion` command is available)
+- OpenClaw is installed locally (the `openclaw` command is available, or you know the binary path)
 - Node.js 18+
 
 ```bash
-# 确认 Bastion
+# Verify Bastion
 bastion --version
 
-# 确认 OpenClaw
+# Verify OpenClaw
 which openclaw
-# 或
+# or
 ~/.openclaw/bin/openclaw --version
 ```
 
 ---
 
-## 快速开始
+## Quick Start
 
-### 1. 启动 Bastion
+### 1. Start Bastion
 
 ```bash
 bastion start
 bastion health
 ```
 
-### 2. 启动 OpenClaw（daemon 模式）
+### 2. Start OpenClaw (daemon mode)
 
 ```bash
 bastion openclaw local start mywork \
@@ -40,7 +42,7 @@ bastion openclaw local start mywork \
   --workspace ~/openclaw-data/mywork/workspace
 ```
 
-输出：
+Output:
 
 ```
 Starting OpenClaw 'mywork' on port 18789 (daemon)...
@@ -55,7 +57,7 @@ Starting OpenClaw 'mywork' on port 18789 (daemon)...
 Dashboard: http://127.0.0.1:18789/
 ```
 
-### 3. 前台模式（调试用）
+### 3. Foreground mode (for debugging)
 
 ```bash
 bastion openclaw local start mywork \
@@ -63,38 +65,38 @@ bastion openclaw local start mywork \
   --foreground
 ```
 
-日志直接输出到终端，Ctrl+C 停止。
+Logs are printed directly to the terminal. Press Ctrl+C to stop.
 
 ---
 
-## 参数说明
+## Parameters
 
-| 参数 | 说明 | 默认值 |
-|------|------|--------|
-| `<name>` | 实例名称 | 必填 |
-| `--port` | 网关端口 | 18789 |
-| `--bin` | OpenClaw 二进制路径 | 自动搜索 PATH / `~/.openclaw/bin/` |
-| `--config-dir` | 配置目录 | `~/.openclaw-<name>` |
-| `--workspace` | 工作区目录 | `~/openclaw-<name>/workspace` |
-| `--foreground` | 前台运行（不 daemon） | 默认 daemon |
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `<name>` | Instance name | Required |
+| `--port` | Gateway port | 18789 |
+| `--bin` | OpenClaw binary path | Auto-searches PATH / `~/.openclaw/bin/` |
+| `--config-dir` | Configuration directory | `~/.openclaw-<name>` |
+| `--workspace` | Workspace directory | `~/openclaw-<name>/workspace` |
+| `--foreground` | Run in foreground (no daemon) | Daemon by default |
 
 ---
 
-## 日常管理
+## Day-to-Day Management
 
 ```bash
-# 查看所有本地实例
+# List all local instances
 bastion openclaw local status
 
-# 停止
+# Stop an instance
 bastion openclaw local stop mywork
 
-# 查看日志
+# View logs
 bastion openclaw local logs mywork
-bastion openclaw local logs mywork -f   # 实时跟踪
+bastion openclaw local logs mywork -f   # follow in real time
 ```
 
-### 状态输出示例
+### Example status output
 
 ```bash
 bastion openclaw local status
@@ -108,7 +110,7 @@ dev2       stopped  18800  -      http://127.0.0.1:18800/
 
 ---
 
-## 多实例
+## Multiple Instances
 
 ```bash
 bastion openclaw local start dev1 --port 18789
@@ -120,95 +122,95 @@ bastion openclaw local status
 
 ---
 
-## 代理原理
+## How the Proxy Works
 
-本地模式下，Bastion 通过环境变量注入代理：
+In local mode, Bastion injects the proxy via environment variables:
 
 ```
-OpenClaw (本地进程)
+OpenClaw (local process)
     │
     │  HTTPS_PROXY=http://openclaw-local-mywork@127.0.0.1:8420
     │  NODE_EXTRA_CA_CERTS=~/.bastion/ca.crt
     │  NO_PROXY=127.0.0.1,localhost
     │
     ▼
-Bastion (本地进程)
+Bastion (local process)
     │
-    │  DLP 扫描 → 指标采集 → 审计日志 → 缓存
+    │  DLP scan → Metrics collection → Audit log → Cache
     │
     ▼
 LLM Provider (api.anthropic.com / api.openai.com / ...)
 ```
 
-Bastion 自动：
-1. 读取当前配置的 host + port
-2. 注入 `HTTPS_PROXY`（包含实例名作为 session 标识）
-3. 注入 `NODE_EXTRA_CA_CERTS` 指向 Bastion CA 证书
-4. 以 daemon 或前台方式启动 `openclaw gateway --port <port> --bind localhost`
+Bastion automatically:
+1. Reads the currently configured host and port
+2. Injects `HTTPS_PROXY` (including the instance name as a session identifier)
+3. Injects `NODE_EXTRA_CA_CERTS` pointing to the Bastion CA certificate
+4. Launches `openclaw gateway --port <port> --bind localhost` in daemon or foreground mode
 
 ---
 
-## 数据目录
+## Data Directory
 
 ```
 ~/.bastion/openclaw/local/
-  ├── mywork.pid          # PID 文件（运行时存在）
-  ├── mywork.json         # 元数据（端口、路径、启动时间）
-  └── mywork.log          # 日志文件（daemon 模式）
+  ├── mywork.pid          # PID file (exists while running)
+  ├── mywork.json         # Metadata (port, paths, start time)
+  └── mywork.log          # Log file (daemon mode)
 
-~/openclaw-data/mywork/   # 或你指定的路径
-  ├── config/             # OpenClaw 配置
-  └── workspace/          # 工作区
+~/openclaw-data/mywork/   # or your custom path
+  ├── config/             # OpenClaw configuration
+  └── workspace/          # Workspace
 ```
 
 ---
 
-## Docker vs Local 对比
+## Docker vs Local Comparison
 
 | | Docker | Local |
 |---|---|---|
-| 隔离性 | 完全隔离，不影响宿主 | 共享宿主环境 |
-| 安装 | 只需 Docker 镜像 | 需要安装 OpenClaw 二进制 |
-| 网络 | 通过 `host.docker.internal` 连接 | 直接 `127.0.0.1` |
-| 多实例 | 每个实例独立容器 | 每个实例独立进程 |
-| 性能 | 有 Docker 开销 | 原生性能 |
-| 适用场景 | 生产环境、团队统一环境 | 开发调试、快速迭代 |
-| Bastion 命令 | `bastion openclaw docker ...` | `bastion openclaw local ...` |
+| Isolation | Fully isolated, no impact on host | Shares host environment |
+| Installation | Only needs a Docker image | Requires installing the OpenClaw binary |
+| Networking | Connects via `host.docker.internal` | Direct `127.0.0.1` |
+| Multiple instances | Each instance is a separate container | Each instance is a separate process |
+| Performance | Docker overhead | Native performance |
+| Best for | Production, consistent team environments | Development, debugging, rapid iteration |
+| Bastion command | `bastion openclaw docker ...` | `bastion openclaw local ...` |
 
 ---
 
-## 故障排查
+## Troubleshooting
 
-### OpenClaw 二进制找不到
+### OpenClaw binary not found
 
 ```bash
-# 检查 PATH
+# Check PATH
 which openclaw
 
-# 手动指定路径
+# Specify the path manually
 bastion openclaw local start mywork --bin /path/to/openclaw
 
-# 常见安装位置
+# Common install locations
 ls ~/.openclaw/bin/openclaw
 ls /usr/local/bin/openclaw
 ```
 
-### 端口冲突
+### Port conflict
 
 ```bash
-# 检查端口占用
+# Check what is using the port
 lsof -i :18789
 
-# 使用其他端口
+# Use a different port
 bastion openclaw local start mywork --port 19000
 ```
 
-### 进程已退出但 PID 文件残留
+### Process exited but PID file remains
 
 ```bash
-# status 会自动清理 stale PID
+# status automatically cleans up stale PIDs
 bastion openclaw local status
 
-# 或手动删除
+# Or remove manually
 rm ~/.bastion/openclaw/local/mywork.pid
 ```
