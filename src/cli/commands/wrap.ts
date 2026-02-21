@@ -57,6 +57,8 @@ export function registerWrapCommand(program: Command): void {
       const child = spawn(cmd, cmdArgs, {
         stdio: 'inherit',
         env,
+        // Windows needs shell:true to find .cmd/.bat/.ps1 commands (e.g. "claude", "node")
+        ...(process.platform === 'win32' ? { shell: true } : {}),
       });
 
       child.on('close', (code) => {

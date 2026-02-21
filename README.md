@@ -13,7 +13,7 @@ Local-first proxy for LLM providers (Anthropic, OpenAI, Gemini). Provides DLP sc
 
 ## Install
 
-One-liner:
+### macOS / Linux
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/your-org/bastion/main/install.sh | bash
@@ -25,7 +25,19 @@ Or from local source:
 cd bastion && bash install.sh
 ```
 
-Requires Node.js 18+. Installs to `~/.bastion/app/`, links `bastion` command to `/usr/local/bin/`.
+### Windows (PowerShell)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install.ps1
+```
+
+Or from local source:
+
+```powershell
+cd bastion; powershell -ExecutionPolicy Bypass -File install.ps1
+```
+
+Requires Node.js 18+. Installs to `~/.bastion/app/`.
 
 ## Quick Start
 
@@ -38,7 +50,8 @@ bastion wrap claude
 bastion wrap python my_app.py
 
 # Option B: Global proxy (all terminals, all new processes, GUI apps)
-eval $(bastion proxy on)
+eval $(bastion proxy on)          # bash/zsh
+bastion proxy on | Invoke-Expression  # PowerShell
 ```
 
 ## OpenClaw Integration
@@ -106,15 +119,17 @@ bastion stop
 Global proxy mode — routes **all** AI traffic through Bastion, including background processes and GUI apps.
 
 ```bash
-eval $(bastion proxy on)       # Enable: shell profile + system proxy + current shell
-eval $(bastion proxy off)      # Disable: undo everything
-bastion proxy status           # Check current proxy state
+eval $(bastion proxy on)              # bash/zsh: enable
+eval $(bastion proxy off)             # bash/zsh: disable
+bastion proxy on | Invoke-Expression  # PowerShell: enable
+bastion proxy off | Invoke-Expression # PowerShell: disable
+bastion proxy status                  # Check current proxy state
 ```
 
 What `bastion proxy on` does:
-1. Writes proxy exports to shell profile (`~/.zshrc` / `~/.bashrc`) — new terminals auto-inherit
-2. Sets system HTTPS proxy (macOS `networksetup`, Linux GNOME `gsettings`) — GUI apps also route through Bastion
-3. Outputs `export` commands to stdout — current shell takes effect immediately via `eval`
+1. Writes proxy exports to shell profile (`~/.zshrc` / `~/.bashrc` / PowerShell `$PROFILE`) — new terminals auto-inherit
+2. Sets system HTTPS proxy (macOS `networksetup`, Linux GNOME `gsettings`, Windows registry) — GUI apps also route through Bastion
+3. Outputs shell-appropriate commands to stdout — current shell takes effect immediately via `eval` / `Invoke-Expression`
 
 Environment variables set:
 
@@ -133,7 +148,7 @@ Options:
 
 > **Note:** `bastion stop` automatically removes the system proxy if it points to Bastion, preventing network disruption.
 
-Supported platforms: macOS, Linux (GNOME desktop for system proxy; headless servers use `HTTPS_PROXY` env var directly).
+Supported platforms: macOS, Linux (GNOME desktop for system proxy; headless servers use `HTTPS_PROXY` env var directly), Windows (system proxy via registry; PowerShell profile auto-configured).
 
 ### `bastion wrap <command>`
 
@@ -154,8 +169,10 @@ Options:
 Print shell exports for manual proxy setup.
 
 ```bash
-eval $(bastion env)          # Set proxy vars in current shell
-eval $(bastion env --unset)  # Remove all proxy vars
+eval $(bastion env)                        # bash/zsh
+bastion env --powershell | Invoke-Expression  # PowerShell
+eval $(bastion env --unset)                # bash/zsh: unset
+bastion env --powershell --unset | Invoke-Expression  # PowerShell: unset
 ```
 
 ### `bastion stats`

@@ -53,6 +53,8 @@ export function spawnDaemon(): number {
     detached: true,
     stdio: 'ignore',
     env: { ...process.env, BASTION_DAEMON: '1' },
+    // Prevent a console window from popping up on Windows
+    ...(process.platform === 'win32' ? { windowsHide: true } : {}),
   });
 
   child.unref();

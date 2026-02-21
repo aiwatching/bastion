@@ -60,13 +60,15 @@ bastion wrap --label "data-pipeline" python etl.py
 所有终端、所有新进程、GUI 应用都经过 Bastion：
 
 ```bash
-eval $(bastion proxy on)
+eval $(bastion proxy on)              # bash/zsh
+bastion proxy on | Invoke-Expression  # PowerShell
 ```
 
 关闭：
 
 ```bash
-eval $(bastion proxy off)
+eval $(bastion proxy off)             # bash/zsh
+bastion proxy off | Invoke-Expression # PowerShell
 ```
 
 适合：同时运行多个 AI 工具，希望统一监控。
@@ -289,7 +291,7 @@ export NODE_EXTRA_CA_CERTS="$HOME/.bastion/ca.crt"
 export SSL_CERT_FILE="$HOME/.bastion/ca.crt"
 export REQUESTS_CA_BUNDLE="$HOME/.bastion/ca.crt"
 
-# 系统级信任（macOS / Linux）
+# 系统级信任（macOS / Linux / Windows）
 bastion proxy on --trust-ca
 ```
 

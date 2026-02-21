@@ -1,0 +1,96 @@
+# install.ps1 — PowerShell installer for Bastion AI Gateway
+# Usage: powershell -ExecutionPolicy Bypass -File install.ps1
+$ErrorActionPreference = "Stop"
+
+$InstallDir = if ($env:BASTION_INSTALL_DIR) { $env:BASTION_INSTALL_DIR } else { "$env:USERPROFILE\.bastion\app" }
+$RepoUrl = if ($env:BASTION_REPO_URL) { $env:BASTION_REPO_URL } else { "https://github.com/your-org/bastion.git" }
+
+function Info($msg) { Write-Host "==> $msg" -ForegroundColor Green }
+function Warn($msg) { Write-Host "==> $msg" -ForegroundColor Yellow }
+function Err($msg) { Write-Host "==> $msg" -ForegroundColor Red; exit 1 }
+
+# --- Pre-checks ---
+if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+    Err "Node.js is required. Install it first: https://nodejs.org"
+}
+if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+    Err "npm is required. Install it with Node.js."
+}
+
+$nodeMajor = (node -p "process.versions.node.split('.')[0]") -as [int]
+if ($nodeMajor -lt 18) {
+    Err "Node.js 18+ required (found v$(node -v))"
+}
+
+Info "Installing Bastion AI Gateway..."
+
+# --- Download / Update ---
+if (Test-Path "$InstallDir\.git") {
+    Info "Updating existing installation..."
+    Push-Location $InstallDir
+    git pull --ff-only
+} elseif (Test-Path "$InstallDir\package.json") {
+    Info "Using existing source at $InstallDir"
+    Push-Location $InstallDir
+} else {
+    # Check if running from repo directory
+    $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+    if ((Test-Path "$ScriptDir\package.json") -and (Select-String -Path "$ScriptDir\package.json" -Pattern "bastion-ai-gateway" -Quiet)) {
+        Info "Installing from local source: $ScriptDir"
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $InstallDir) | Out-Null
+        Copy-Item -Path $ScriptDir -Destination $InstallDir -Recurse -Force
+        Push-Location $InstallDir
+    } else {
+        Info "Cloning repository..."
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $InstallDir) | Out-Null
+        git clone $RepoUrl $InstallDir
+        Push-Location $InstallDir
+    }
+}
+
+# --- Install & Build ---
+Info "Installing dependencies..."
+npm install --production=false 2>&1 | Select-Object -Last 1
+
+Info "Building..."
+npm run build 2>&1 | Select-Object -Last 1
+
+# --- Create wrapper batch file ---
+$BinDir = "$InstallDir\bin"
+New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
+
+$WrapperContent = @"
+@echo off
+node "%~dp0\..\dist\cli\index.js" %*
+"@
+Set-Content -Path "$BinDir\bastion.cmd" -Value $WrapperContent -Encoding ASCII
+
+Pop-Location
+
+# --- Add to user PATH ---
+$UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
+if ($UserPath -notlike "*$BinDir*") {
+    [Environment]::SetEnvironmentVariable("Path", "$UserPath;$BinDir", "User")
+    $env:Path = "$env:Path;$BinDir"
+    Info "Added $BinDir to user PATH"
+}
+
+# --- Verify ---
+if (Get-Command bastion -ErrorAction SilentlyContinue) {
+    Write-Host ""
+    Info "Bastion AI Gateway installed successfully!"
+    Write-Host ""
+    Write-Host "  Quick start:"
+    Write-Host "    bastion start          # Start the gateway"
+    Write-Host "    bastion wrap claude     # Run Claude Code through Bastion"
+    Write-Host "    bastion wrap <cmd>      # Run any tool through Bastion"
+    Write-Host ""
+    Write-Host "  PowerShell proxy setup:"
+    Write-Host "    bastion proxy on | Invoke-Expression"
+    Write-Host ""
+    Write-Host "  Dashboard: http://127.0.0.1:8420/dashboard"
+    Write-Host ""
+} else {
+    Warn "Installed but 'bastion' not found in PATH."
+    Warn "Restart your terminal or run directly: $BinDir\bastion.cmd"
+}
