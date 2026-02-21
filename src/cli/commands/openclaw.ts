@@ -3,7 +3,9 @@ import { spawn, execSync, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, unlinkSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { homedir } from 'node:os';
+import { homedir, platform } from 'node:os';
+
+const IS_WIN = platform() === 'win32';
 import { loadConfig } from '../../config/index.js';
 import { getCACertPath } from '../../proxy/certs.js';
 import { getDaemonStatus } from '../daemon.js';
@@ -286,15 +288,18 @@ function isProcessRunning(pid: number): boolean {
 
 function findOpenclawBin(): string | null {
   try {
-    return execSync('which openclaw', { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+    const cmd = IS_WIN ? 'where openclaw' : 'which openclaw';
+    return execSync(cmd, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }).trim().split('\n')[0];
   } catch {
     // not in PATH
   }
   // Common install locations
-  const candidates = [
-    join(homedir(), '.openclaw', 'bin', 'openclaw'),
-    '/usr/local/bin/openclaw',
-  ];
+  const candidates = IS_WIN
+    ? [join(homedir(), '.openclaw', 'bin', 'openclaw.cmd')]
+    : [
+        join(homedir(), '.openclaw', 'bin', 'openclaw'),
+        '/usr/local/bin/openclaw',
+      ];
   return candidates.find((p) => existsSync(p)) ?? null;
 }
 
@@ -326,8 +331,9 @@ export function registerOpenclawCommand(program: Command): void {
 
       // Verify container exists and is running
       try {
+        const fmt = IS_WIN ? '"{{.State.Status}}"' : "'{{.State.Status}}'";
         const state = execSync(
-          `docker inspect --format '{{.State.Status}}' "${container}"`,
+          `docker inspect --format ${fmt} "${container}"`,
           { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] },
         ).trim();
         if (state !== 'running') {
@@ -354,8 +360,9 @@ export function registerOpenclawCommand(program: Command): void {
 
       if (options.restart) {
         console.log('Restarting container with proxy env vars...');
+        const imgFmt = IS_WIN ? '"{{.Config.Image}}"' : "'{{.Config.Image}}'";
         const imageName = execSync(
-          `docker inspect --format '{{.Config.Image}}' "${container}"`,
+          `docker inspect --format ${imgFmt} "${container}"`,
           { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] },
         ).trim();
 
@@ -794,6 +801,7 @@ export function registerOpenclawCommand(program: Command): void {
           stdio: 'inherit',
           env,
           cwd: workspaceDir,
+          ...(IS_WIN ? { shell: true } : {}),
         });
 
         // Write PID
@@ -822,6 +830,7 @@ export function registerOpenclawCommand(program: Command): void {
           stdio: ['ignore', logFd, logFd],
           env,
           cwd: workspaceDir,
+          ...(IS_WIN ? { shell: true, windowsHide: true } : {}),
         });
 
         child.unref();
@@ -959,11 +968,19 @@ export function registerOpenclawCommand(program: Command): void {
         process.exit(1);
       }
 
-      const args = options.follow
-        ? ['-f', logFile]
-        : ['-100', logFile];
-
-      const child = spawn('tail', args, { stdio: 'inherit' });
+      let child: ReturnType<typeof spawn>;
+      if (IS_WIN) {
+        // PowerShell Get-Content as replacement for tail
+        const psArgs = options.follow
+          ? ['-Command', `Get-Content -Path "${logFile}" -Tail 100 -Wait`]
+          : ['-Command', `Get-Content -Path "${logFile}" -Tail 100`];
+        child = spawn('powershell', psArgs, { stdio: 'inherit' });
+      } else {
+        const tailArgs = options.follow
+          ? ['-f', logFile]
+          : ['-100', logFile];
+        child = spawn('tail', tailArgs, { stdio: 'inherit' });
+      }
       child.on('close', (code) => {
         process.exitCode = code ?? 0;
       });

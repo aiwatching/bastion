@@ -60,13 +60,15 @@ Each `bastion wrap` invocation generates a unique session ID. Sessions are group
 All terminals, all new processes, and GUI applications go through Bastion:
 
 ```bash
-eval $(bastion proxy on)
+eval $(bastion proxy on)              # bash/zsh
+bastion proxy on | Invoke-Expression  # PowerShell
 ```
 
 To disable:
 
 ```bash
-eval $(bastion proxy off)
+eval $(bastion proxy off)             # bash/zsh
+bastion proxy off | Invoke-Expression # PowerShell
 ```
 
 Best for: running multiple AI tools simultaneously with unified monitoring.
@@ -289,7 +291,7 @@ export NODE_EXTRA_CA_CERTS="$HOME/.bastion/ca.crt"
 export SSL_CERT_FILE="$HOME/.bastion/ca.crt"
 export REQUESTS_CA_BUNDLE="$HOME/.bastion/ca.crt"
 
-# System-level trust (macOS / Linux)
+# System-level trust (macOS / Linux / Windows)
 bastion proxy on --trust-ca
 ```
 

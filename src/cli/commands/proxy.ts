@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { execSync } from 'node:child_process';
 import { loadConfig } from '../../config/index.js';
 import { getCACertPath, ensureCA } from '../../proxy/certs.js';
@@ -13,12 +13,38 @@ const IS_MAC = platform() === 'darwin';
 const IS_LINUX = platform() === 'linux';
 const IS_WIN = platform() === 'win32';
 
+type ShellType = 'fish' | 'powershell' | 'posix';
+
+/** Detect current shell type for syntax generation */
+function shellType(): ShellType {
+  // Windows without a Unix-like shell (Git Bash sets SHELL)
+  if (IS_WIN && !process.env.SHELL) return 'powershell';
+  if ((process.env.SHELL ?? '').endsWith('fish')) return 'fish';
+  return 'posix';
+}
+
+/** Generate a "set env var" command for the detected shell */
+function emitSet(key: string, value: string, shell?: ShellType): string {
+  const s = shell ?? shellType();
+  if (s === 'powershell') return `$env:${key}="${value}";`;
+  if (s === 'fish') return `set -gx ${key} "${value}";`;
+  return `export ${key}="${value}";`;
+}
+
+/** Generate an "unset env var" command for the detected shell */
+function emitUnset(key: string, shell?: ShellType): string {
+  const s = shell ?? shellType();
+  if (s === 'powershell') return `Remove-Item Env:\\${key} -ErrorAction SilentlyContinue;`;
+  if (s === 'fish') return `set -e ${key};`;
+  return `unset ${key};`;
+}
+
 function getShellProfile(): string {
-  if (IS_WIN) {
-    // PowerShell profile
+  if (IS_WIN && !process.env.SHELL) {
+    // PowerShell 7+ profile
     const psProfile = join(homedir(), 'Documents', 'PowerShell', 'Microsoft.PowerShell_profile.ps1');
     if (existsSync(psProfile)) return psProfile;
-    // Fallback to WindowsPowerShell
+    // Fallback to Windows PowerShell 5.x
     return join(homedir(), 'Documents', 'WindowsPowerShell', 'Microsoft.PowerShell_profile.ps1');
   }
   const shell = process.env.SHELL ?? '/bin/zsh';
@@ -32,10 +58,6 @@ function getShellProfile(): string {
   return join(homedir(), '.zshrc');
 }
 
-function isFish(): boolean {
-  return (process.env.SHELL ?? '').endsWith('fish');
-}
-
 // All env vars set by bastion proxy on
 const BASE_URL_VARS = ['ANTHROPIC_BASE_URL', 'OPENAI_BASE_URL', 'GOOGLE_AI_BASE_URL'];
 const ALL_PROXY_VARS = [
@@ -44,18 +66,18 @@ const ALL_PROXY_VARS = [
 ];
 
 function buildProxyBlock(baseUrl: string, caCertPath: string, noProxy: string): string {
+  const shell = shellType();
   const lines = [BASTION_MARKER_START];
-  const setCmd = isFish() ? 'set -gx' : 'export';
-  const eq = isFish() ? ' ' : '=';
 
-  // Standard proxy (for tools that respect HTTPS_PROXY)
-  lines.push(`${setCmd} HTTPS_PROXY${eq}"${baseUrl}";`);
-  lines.push(`${setCmd} NO_PROXY${eq}"${noProxy}";`);
-  lines.push(`${setCmd} NODE_EXTRA_CA_CERTS${eq}"${caCertPath}";`);
+  const vars: [string, string][] = [
+    ['HTTPS_PROXY', baseUrl],
+    ['NO_PROXY', noProxy],
+    ['NODE_EXTRA_CA_CERTS', caCertPath],
+    ...BASE_URL_VARS.map((v): [string, string] => [v, baseUrl]),
+  ];
 
-  // SDK-specific base URLs (for tools that only check their own env var)
-  for (const v of BASE_URL_VARS) {
-    lines.push(`${setCmd} ${v}${eq}"${baseUrl}";`);
+  for (const [key, value] of vars) {
+    lines.push(emitSet(key, value, shell));
   }
 
   lines.push(BASTION_MARKER_END);
@@ -89,6 +111,8 @@ function insertProxyBlock(profilePath: string, block: string): void {
     if (!content.endsWith('\n')) content += '\n';
   }
   content += '\n' + block + '\n';
+  // Ensure parent directory exists (e.g. PowerShell profile dir on Windows)
+  mkdirSync(dirname(profilePath), { recursive: true });
   writeFileSync(profilePath, content, 'utf-8');
 }
 
@@ -140,7 +164,23 @@ function getSystemProxyState(): { enabled: boolean; host: string; port: string }
     return { enabled: false, host: '', port: '' };
   }
 
-  // Windows / other — not yet supported
+  if (IS_WIN) {
+    try {
+      const regKey = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings';
+      const output = execSync(`reg query "${regKey}" /v ProxyEnable`, { encoding: 'utf-8' });
+      const enabled = /ProxyEnable\s+REG_DWORD\s+0x0*1\b/.test(output);
+      if (enabled) {
+        const serverOut = execSync(`reg query "${regKey}" /v ProxyServer`, { encoding: 'utf-8' });
+        const match = serverOut.match(/ProxyServer\s+REG_SZ\s+(\S+)/);
+        if (match) {
+          const parts = match[1].trim().split(':');
+          return { enabled: true, host: parts[0], port: parts[1] ?? '' };
+        }
+      }
+    } catch { /* registry access failed */ }
+    return { enabled: false, host: '', port: '' };
+  }
+
   return { enabled: false, host: '', port: '' };
 }
 
@@ -167,6 +207,17 @@ function setSystemProxy(host: string, port: number): boolean {
     }
   }
 
+  if (IS_WIN) {
+    const regKey = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings';
+    try {
+      execSync(`reg add "${regKey}" /v ProxyEnable /t REG_DWORD /d 1 /f`, { stdio: 'pipe' });
+      execSync(`reg add "${regKey}" /v ProxyServer /t REG_SZ /d "${host}:${port}" /f`, { stdio: 'pipe' });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   return false;
 }
 
@@ -184,6 +235,16 @@ function clearSystemProxy(): boolean {
   if (IS_LINUX) {
     try {
       execSync(`gsettings set org.gnome.system.proxy mode 'none'`, { stdio: 'pipe' });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  if (IS_WIN) {
+    const regKey = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings';
+    try {
+      execSync(`reg add "${regKey}" /v ProxyEnable /t REG_DWORD /d 0 /f`, { stdio: 'pipe' });
       return true;
     } catch {
       return false;
@@ -232,6 +293,15 @@ function trustCACert(caCertPath: string): boolean {
     try {
       execSync(`sudo cp "${caCertPath}" /usr/local/share/ca-certificates/bastion-ca.crt`, { stdio: 'inherit' });
       execSync('sudo update-ca-certificates', { stdio: 'inherit' });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  if (IS_WIN) {
+    try {
+      execSync(`certutil -addstore -user Root "${caCertPath}"`, { stdio: 'inherit' });
       return true;
     } catch {
       return false;
@@ -287,6 +357,8 @@ export function registerProxyCommand(program: Command): void {
         } else {
           if (IS_LINUX) {
             info('System proxy: skipped (no desktop environment or gsettings not available)');
+          } else if (IS_WIN) {
+            info('System proxy: failed (registry write error)');
           } else {
             info('System proxy: failed (may need admin privileges)');
           }
@@ -313,13 +385,11 @@ export function registerProxyCommand(program: Command): void {
       info('Global proxy enabled. Already-running processes need to be restarted.');
 
       // stdout: eval-able commands for current shell
-      const setCmd = isFish() ? 'set -gx' : 'export';
-      const eq = isFish() ? ' ' : '=';
-      console.log(`${setCmd} HTTPS_PROXY${eq}"${baseUrl}";`);
-      console.log(`${setCmd} NO_PROXY${eq}"${noProxy}";`);
-      console.log(`${setCmd} NODE_EXTRA_CA_CERTS${eq}"${caCertPath}";`);
+      console.log(emitSet('HTTPS_PROXY', baseUrl));
+      console.log(emitSet('NO_PROXY', noProxy));
+      console.log(emitSet('NODE_EXTRA_CA_CERTS', caCertPath));
       for (const v of BASE_URL_VARS) {
-        console.log(`${setCmd} ${v}${eq}"${baseUrl}";`);
+        console.log(emitSet(v, baseUrl));
       }
     });
 
@@ -349,7 +419,7 @@ export function registerProxyCommand(program: Command): void {
 
       // stdout: eval-able unset for current shell
       for (const v of ALL_PROXY_VARS) {
-        console.log(isFish() ? `set -e ${v};` : `unset ${v};`);
+        console.log(emitUnset(v));
       }
     });
 
