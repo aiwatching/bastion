@@ -41,6 +41,48 @@ bastion wrap python my_app.py
 eval $(bastion proxy on)
 ```
 
+## OpenClaw 集成
+
+Bastion 可以代理 [OpenClaw](https://github.com/openclaw/openclaw) 实例的所有 AI 流量（Docker 和本地均支持），提供 DLP 扫描、费用追踪和审计日志。
+
+### Docker
+
+```bash
+# 创建并启动 OpenClaw 实例，自动配置 Bastion 代理
+bastion openclaw docker up mywork \
+  --port 18789 \
+  --image openclaw:local \
+  --config-dir ~/openclaw-data/mywork/config \
+  --workspace ~/openclaw-data/mywork/workspace
+
+# 管理实例
+bastion openclaw docker status        # 查看所有实例
+bastion openclaw docker stop mywork   # 停止
+bastion openclaw docker logs mywork -f  # 实时日志
+```
+
+完整指南：[OpenClaw Docker 集成](docs/openclaw-docker.zh.md) | [English](docs/openclaw-docker.md)
+
+### 本地运行
+
+```bash
+# 本地启动 OpenClaw 并通过 Bastion 代理
+bastion openclaw local start mywork --port 18789
+
+# 管理
+bastion openclaw local status
+bastion openclaw local stop mywork
+```
+
+完整指南：[OpenClaw 本地安装](docs/openclaw-local.zh.md) | [English](docs/openclaw-local.md)
+
+### 接入已有容器
+
+```bash
+# 将 Bastion 代理注入到运行中的 Docker 容器
+bastion openclaw docker attach <container-name>
+```
+
 ## 使用方法
 
 ### `bastion start`
