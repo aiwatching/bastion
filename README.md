@@ -37,7 +37,7 @@ Or from local source:
 cd bastion; powershell -ExecutionPolicy Bypass -File install.ps1
 ```
 
-Requires Node.js 18+. Installs to `~/.bastion/app/`.
+Requires **Node.js 22 LTS** (recommended). Node.js 18+ is supported but non-LTS versions may require [additional setup](docs/windows-troubleshooting.md#1-better-sqlite3-build-failure-non-lts-nodejs). Installs to `~/.bastion/app/`.
 
 ## Quick Start
 
@@ -391,6 +391,7 @@ All endpoints are available at `http://127.0.0.1:8420` while the gateway is runn
 - [OpenClaw Local Installation](docs/openclaw-local.md) | [中文](docs/openclaw-local.zh.md) — Run OpenClaw natively with Bastion proxy
 - [AI Agent Monitoring](docs/agent-monitoring.md) | [中文](docs/agent-monitoring.zh.md) — Monitor any local AI agent (Claude Code, Cursor, custom apps)
 - [Remote Signatures](docs/remote-signatures.md) | [中文](docs/remote-signatures.zh.md) — Remote DLP pattern sync from Git repo
+- [Windows Troubleshooting](docs/windows-troubleshooting.md) | [中文](docs/windows-troubleshooting.zh.md) — Common issues and solutions for Windows
 
 ## Data Storage
 

@@ -37,7 +37,7 @@ powershell -ExecutionPolicy Bypass -File install.ps1
 cd bastion; powershell -ExecutionPolicy Bypass -File install.ps1
 ```
 
-需要 Node.js 18+。安装至 `~/.bastion/app/`。
+需要 **Node.js 22 LTS**（推荐）。Node.js 18+ 可用，但非 LTS 版本可能需要[额外配置](docs/windows-troubleshooting.zh.md#1-better-sqlite3-编译失败非-lts-nodejs)。安装至 `~/.bastion/app/`。
 
 ## 快速开始
 
@@ -391,6 +391,7 @@ BASTION_LOG_LEVEL=debug bastion start
 - [OpenClaw 本地安装](docs/openclaw-local.zh.md) — 使用 Bastion 代理原生运行 OpenClaw
 - [AI Agent 监控](docs/agent-monitoring.zh.md) — 监控任何本地 AI Agent（Claude Code、Cursor、自定义应用）
 - [远程签名库](docs/remote-signatures.zh.md) — 从 Git 仓库远程同步 DLP 模式
+- [Windows 故障排除](docs/windows-troubleshooting.zh.md) — Windows 常见问题及解决方案
 
 ## 数据存储
 
