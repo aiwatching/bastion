@@ -289,7 +289,7 @@ export NODE_EXTRA_CA_CERTS="$HOME/.bastion/ca.crt"
 export SSL_CERT_FILE="$HOME/.bastion/ca.crt"
 export REQUESTS_CA_BUNDLE="$HOME/.bastion/ca.crt"
 
-# 系统级信任（macOS）
+# 系统级信任（macOS / Linux）
 bastion proxy on --trust-ca
 ```
 
