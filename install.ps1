@@ -49,11 +49,18 @@ if (Test-Path "$InstallDir\.git") {
 }
 
 # --- Install & Build ---
+# Temporarily allow non-terminating errors so npm/tsc stderr warnings don't abort
+$ErrorActionPreference = "Continue"
+
 Info "Installing dependencies..."
-npm install --production=false 2>&1 | Select-Object -Last 1
+npm install 2>&1 | Select-Object -Last 1
+if ($LASTEXITCODE -ne 0) { $ErrorActionPreference = "Stop"; Err "npm install failed (exit code $LASTEXITCODE)" }
 
 Info "Building..."
 npm run build 2>&1 | Select-Object -Last 1
+if ($LASTEXITCODE -ne 0) { $ErrorActionPreference = "Stop"; Err "npm run build failed (exit code $LASTEXITCODE)" }
+
+$ErrorActionPreference = "Stop"
 
 # --- Create wrapper batch file ---
 $BinDir = "$InstallDir\bin"
