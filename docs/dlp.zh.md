@@ -248,6 +248,22 @@ dlp-scanner plugin
   └─ 返回 DlpResult { action, findings, redactedBody? }
 ```
 
+## 实际效果示例
+
+### Web 聊天（OpenClaw）
+
+DLP 扫描 Web 聊天会话 — 对话中嵌入的 API Key 被检测并标记：
+
+![OpenClaw Web DLP 检测](openclaw-web.png "OpenClaw Web 聊天中的 DLP 检测")
+
+### Telegram 机器人
+
+DLP 扫描 Telegram 机器人消息 — 消息体中的敏感凭据在转发前被捕获：
+
+![Telegram DLP 检测](telegram.png "Telegram 机器人消息中的 DLP 检测")
+
+---
+
 ## 文件清单
 
 | 文件 | 层级 | 职责 |
