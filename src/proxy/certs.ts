@@ -1,7 +1,8 @@
-import { execSync } from 'node:child_process';
+import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync, mkdirSync, chmodSync } from 'node:fs';
 import { join } from 'node:path';
 import { platform } from 'node:os';
+import forge from 'node-forge';
 import { paths } from '../config/paths.js';
 import { createLogger } from '../utils/logger.js';
 
@@ -11,17 +12,6 @@ const CA_KEY_PATH = join(paths.bastionDir, 'ca.key');
 const CA_CERT_PATH = join(paths.bastionDir, 'ca.crt');
 const CERTS_DIR = join(paths.bastionDir, 'certs');
 const IS_WIN = platform() === 'win32';
-
-/** Suppress stderr: use NUL on Windows, /dev/null on Unix */
-const DEVNULL = IS_WIN ? '2>NUL' : '2>/dev/null';
-
-/**
- * OpenSSL -subj on Windows needs "//CN=..." (double slash prefix)
- * because MSYS/MinGW git-bundled openssl converts /CN= to C:\CN=
- */
-function subj(s: string): string {
-  return IS_WIN ? `"/${s}"` : `"${s}"`;
-}
 
 export function getCACertPath(): string {
   return CA_CERT_PATH;
@@ -39,26 +29,47 @@ export function ensureCA(): { key: string; cert: string } {
 
   log.info('Generating local CA certificate');
 
-  // Generate CA private key
-  execSync(`openssl genrsa -out "${CA_KEY_PATH}" 2048 ${DEVNULL}`);
+  // Use Node's native crypto for fast RSA key generation
+  const { privateKey: keyPem, publicKey: pubPem } = generateKeyPairSync('rsa', {
+    modulusLength: 2048,
+    publicKeyEncoding: { type: 'spki', format: 'pem' },
+    privateKeyEncoding: { type: 'pkcs1', format: 'pem' },
+  });
 
-  // Set restrictive permissions (Unix only; Windows ACL doesn't use chmod)
-  if (!IS_WIN) {
-    chmodSync(CA_KEY_PATH, 0o600);
-  }
+  // Use node-forge to create the X.509 CA certificate
+  const privateKey = forge.pki.privateKeyFromPem(keyPem);
+  const publicKey = forge.pki.publicKeyFromPem(pubPem);
 
-  // Generate CA certificate
-  execSync(
-    `openssl req -new -x509 -key "${CA_KEY_PATH}" -out "${CA_CERT_PATH}" ` +
-    `-days 825 -subj ${subj('/CN=Bastion Local CA/O=Bastion AI Gateway')} ${DEVNULL}`
-  );
+  const cert = forge.pki.createCertificate();
+  cert.publicKey = publicKey;
+  cert.serialNumber = randomBytes(16).toString('hex');
+  cert.validity.notBefore = new Date();
+  cert.validity.notAfter = new Date();
+  cert.validity.notAfter.setDate(cert.validity.notAfter.getDate() + 825);
+
+  const attrs = [
+    { name: 'commonName', value: 'Bastion Local CA' },
+    { name: 'organizationName', value: 'Bastion AI Gateway' },
+  ];
+  cert.setSubject(attrs);
+  cert.setIssuer(attrs);
+
+  cert.setExtensions([
+    { name: 'basicConstraints', cA: true },
+    { name: 'keyUsage', keyCertSign: true, digitalSignature: true, cRLSign: true },
+  ]);
+
+  cert.sign(privateKey, forge.md.sha256.create());
+
+  const certPem = forge.pki.certificateToPem(cert);
+
+  writeFileSync(CA_KEY_PATH, keyPem);
+  if (!IS_WIN) chmodSync(CA_KEY_PATH, 0o600);
+  writeFileSync(CA_CERT_PATH, certPem);
 
   log.info('CA certificate created', { path: CA_CERT_PATH });
 
-  return {
-    key: readFileSync(CA_KEY_PATH, 'utf-8'),
-    cert: readFileSync(CA_CERT_PATH, 'utf-8'),
-  };
+  return { key: keyPem, cert: certPem };
 }
 
 // In-memory cache for generated host certs
@@ -69,33 +80,46 @@ export function getHostCert(hostname: string): { key: string; cert: string } {
   if (cached) return cached;
 
   mkdirSync(CERTS_DIR, { recursive: true });
-  const keyPath = join(CERTS_DIR, `${hostname}.key`);
-  const certPath = join(CERTS_DIR, `${hostname}.crt`);
-  const csrPath = join(CERTS_DIR, `${hostname}.csr`);
-  const extPath = join(CERTS_DIR, `${hostname}.ext`);
 
-  // Generate host key
-  execSync(`openssl genrsa -out "${keyPath}" 2048 ${DEVNULL}`);
+  // Generate host key pair (native crypto — fast)
+  const { privateKey: hostKeyPem, publicKey: hostPubPem } = generateKeyPairSync('rsa', {
+    modulusLength: 2048,
+    publicKeyEncoding: { type: 'spki', format: 'pem' },
+    privateKeyEncoding: { type: 'pkcs1', format: 'pem' },
+  });
 
-  // Generate CSR
-  execSync(
-    `openssl req -new -key "${keyPath}" -out "${csrPath}" ` +
-    `-subj ${subj(`/CN=${hostname}`)} ${DEVNULL}`
-  );
+  // Load CA key + cert
+  const caKey = forge.pki.privateKeyFromPem(readFileSync(CA_KEY_PATH, 'utf-8'));
+  const caCert = forge.pki.certificateFromPem(readFileSync(CA_CERT_PATH, 'utf-8'));
 
-  // Write extension file for SAN
-  writeFileSync(extPath, `subjectAltName=DNS:${hostname}\n`);
+  // Create host certificate signed by CA
+  const hostKey = forge.pki.publicKeyFromPem(hostPubPem);
+  const cert = forge.pki.createCertificate();
+  cert.publicKey = hostKey;
+  cert.serialNumber = randomBytes(16).toString('hex');
+  cert.validity.notBefore = new Date();
+  cert.validity.notAfter = new Date();
+  cert.validity.notAfter.setDate(cert.validity.notAfter.getDate() + 825);
 
-  // Sign with CA
-  execSync(
-    `openssl x509 -req -in "${csrPath}" -CA "${CA_CERT_PATH}" -CAkey "${CA_KEY_PATH}" ` +
-    `-CAcreateserial -out "${certPath}" -days 825 -extfile "${extPath}" ${DEVNULL}`
-  );
+  cert.setSubject([{ name: 'commonName', value: hostname }]);
+  cert.setIssuer(caCert.subject.attributes);
+
+  cert.setExtensions([
+    { name: 'subjectAltName', altNames: [{ type: 2, value: hostname }] },
+  ]);
+
+  cert.sign(caKey, forge.md.sha256.create());
 
   const result = {
-    key: readFileSync(keyPath, 'utf-8'),
-    cert: readFileSync(certPath, 'utf-8'),
+    key: hostKeyPem,
+    cert: forge.pki.certificateToPem(cert),
   };
+
+  // Optionally cache to disk (for debugging), always cache in memory
+  const keyPath = join(CERTS_DIR, `${hostname}.key`);
+  const certPath = join(CERTS_DIR, `${hostname}.crt`);
+  writeFileSync(keyPath, result.key);
+  writeFileSync(certPath, result.cert);
 
   certCache.set(hostname, result);
   log.debug('Generated host certificate', { hostname });
