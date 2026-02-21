@@ -106,14 +106,14 @@ bastion stop
 Global proxy mode — routes **all** AI traffic through Bastion, including background processes and GUI apps.
 
 ```bash
-eval $(bastion proxy on)       # Enable: shell profile + macOS system proxy + current shell
+eval $(bastion proxy on)       # Enable: shell profile + system proxy + current shell
 eval $(bastion proxy off)      # Disable: undo everything
 bastion proxy status           # Check current proxy state
 ```
 
 What `bastion proxy on` does:
-1. Writes proxy exports to shell profile (`~/.zshrc`) — new terminals auto-inherit
-2. Sets macOS system HTTPS proxy — GUI apps also route through Bastion
+1. Writes proxy exports to shell profile (`~/.zshrc` / `~/.bashrc`) — new terminals auto-inherit
+2. Sets system HTTPS proxy (macOS `networksetup`, Linux GNOME `gsettings`) — GUI apps also route through Bastion
 3. Outputs `export` commands to stdout — current shell takes effect immediately via `eval`
 
 Environment variables set:
@@ -128,10 +128,12 @@ Environment variables set:
 | `GOOGLE_AI_BASE_URL` | Google AI SDK direct connection |
 
 Options:
-- `--no-system` — Skip setting macOS system proxy
-- `--trust-ca` — Add CA cert to macOS system keychain (requires sudo)
+- `--no-system` — Skip setting system proxy
+- `--trust-ca` — Add CA cert to system trust store (requires sudo)
 
-> **Note:** `bastion stop` automatically removes the macOS system proxy if it points to Bastion, preventing network disruption.
+> **Note:** `bastion stop` automatically removes the system proxy if it points to Bastion, preventing network disruption.
+
+Supported platforms: macOS, Linux (GNOME desktop for system proxy; headless servers use `HTTPS_PROXY` env var directly).
 
 ### `bastion wrap <command>`
 

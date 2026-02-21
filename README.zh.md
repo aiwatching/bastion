@@ -106,14 +106,14 @@ bastion stop
 全局代理模式——将**所有** AI 流量通过 Bastion 路由，包括后台进程和 GUI 应用。
 
 ```bash
-eval $(bastion proxy on)       # 启用：shell 配置 + macOS 系统代理 + 当前 shell
+eval $(bastion proxy on)       # 启用：shell 配置 + 系统代理 + 当前 shell
 eval $(bastion proxy off)      # 禁用：撤销所有设置
 bastion proxy status           # 检查当前代理状态
 ```
 
 `bastion proxy on` 做了什么：
 1. 将代理环境变量写入 shell 配置文件（`~/.zshrc`）——新终端自动继承
-2. 设置 macOS 系统 HTTPS 代理——GUI 应用也通过 Bastion 路由
+2. 设置系统 HTTPS 代理（macOS `networksetup`、Linux GNOME `gsettings`）——GUI 应用也通过 Bastion 路由
 3. 向 stdout 输出 `export` 命令——通过 `eval` 使当前 shell 立即生效
 
 设置的环境变量：
@@ -128,10 +128,12 @@ bastion proxy status           # 检查当前代理状态
 | `GOOGLE_AI_BASE_URL` | Google AI SDK direct connection |
 
 选项：
-- `--no-system` — 跳过设置 macOS 系统代理
-- `--trust-ca` — 将 CA 证书添加到 macOS 系统钥匙串（需要 sudo）
+- `--no-system` — 跳过设置系统代理
+- `--trust-ca` — 将 CA 证书添加到系统信任存储（需要 sudo）
 
-> **注意：** `bastion stop` 会自动移除指向 Bastion 的 macOS 系统代理设置，防止网络中断。
+> **注意：** `bastion stop` 会自动移除指向 Bastion 的系统代理设置，防止网络中断。
+
+支持平台：macOS、Linux（GNOME 桌面支持系统代理；无桌面服务器直接使用 `HTTPS_PROXY` 环境变量）。
 
 ### `bastion wrap <command>`
 

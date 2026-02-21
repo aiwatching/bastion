@@ -1,6 +1,6 @@
 import type { Command } from 'commander';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
 import { execSync } from 'node:child_process';
 import { loadConfig } from '../../config/index.js';
@@ -9,8 +9,18 @@ import { getDaemonStatus } from '../daemon.js';
 
 const BASTION_MARKER_START = '# >>> bastion proxy >>>';
 const BASTION_MARKER_END = '# <<< bastion proxy <<<';
+const IS_MAC = platform() === 'darwin';
+const IS_LINUX = platform() === 'linux';
+const IS_WIN = platform() === 'win32';
 
 function getShellProfile(): string {
+  if (IS_WIN) {
+    // PowerShell profile
+    const psProfile = join(homedir(), 'Documents', 'PowerShell', 'Microsoft.PowerShell_profile.ps1');
+    if (existsSync(psProfile)) return psProfile;
+    // Fallback to WindowsPowerShell
+    return join(homedir(), 'Documents', 'WindowsPowerShell', 'Microsoft.PowerShell_profile.ps1');
+  }
   const shell = process.env.SHELL ?? '/bin/zsh';
   if (shell.endsWith('zsh')) return join(homedir(), '.zshrc');
   if (shell.endsWith('bash')) {
@@ -82,7 +92,9 @@ function insertProxyBlock(profilePath: string, block: string): void {
   writeFileSync(profilePath, content, 'utf-8');
 }
 
-function getNetworkService(): string {
+// ── macOS system proxy helpers ──
+
+function macGetNetworkService(): string {
   try {
     const output = execSync('networksetup -listallnetworkservices', { encoding: 'utf-8' });
     const services = output.split('\n').filter((l) => l && !l.startsWith('*') && !l.startsWith('An asterisk'));
@@ -95,35 +107,94 @@ function getNetworkService(): string {
   }
 }
 
+// ── Cross-platform system proxy ──
+
 function getSystemProxyState(): { enabled: boolean; host: string; port: string } {
-  try {
-    const service = getNetworkService();
-    const output = execSync(`networksetup -getsecurewebproxy "${service}"`, { encoding: 'utf-8' });
-    const enabled = /Enabled:\s*Yes/i.test(output);
-    const hostMatch = output.match(/Server:\s*(.+)/);
-    const portMatch = output.match(/Port:\s*(\d+)/);
-    return {
-      enabled,
-      host: hostMatch?.[1]?.trim() ?? '',
-      port: portMatch?.[1]?.trim() ?? '',
-    };
-  } catch {
+  if (IS_MAC) {
+    try {
+      const service = macGetNetworkService();
+      const output = execSync(`networksetup -getsecurewebproxy "${service}"`, { encoding: 'utf-8' });
+      const enabled = /Enabled:\s*Yes/i.test(output);
+      const hostMatch = output.match(/Server:\s*(.+)/);
+      const portMatch = output.match(/Port:\s*(\d+)/);
+      return {
+        enabled,
+        host: hostMatch?.[1]?.trim() ?? '',
+        port: portMatch?.[1]?.trim() ?? '',
+      };
+    } catch {
+      return { enabled: false, host: '', port: '' };
+    }
+  }
+
+  if (IS_LINUX) {
+    // GNOME desktop
+    try {
+      const mode = execSync("gsettings get org.gnome.system.proxy mode", { encoding: 'utf-8' }).trim().replace(/'/g, '');
+      if (mode === 'manual') {
+        const host = execSync("gsettings get org.gnome.system.proxy.https host", { encoding: 'utf-8' }).trim().replace(/'/g, '');
+        const port = execSync("gsettings get org.gnome.system.proxy.https port", { encoding: 'utf-8' }).trim();
+        return { enabled: true, host, port };
+      }
+    } catch { /* gsettings not available (headless / non-GNOME) */ }
     return { enabled: false, host: '', port: '' };
   }
+
+  // Windows / other — not yet supported
+  return { enabled: false, host: '', port: '' };
 }
 
 function setSystemProxy(host: string, port: number): boolean {
-  const service = getNetworkService();
-  try {
-    execSync(`networksetup -setsecurewebproxy "${service}" ${host} ${port}`, { stdio: 'pipe' });
-    return true;
-  } catch {
-    return false;
+  if (IS_MAC) {
+    const service = macGetNetworkService();
+    try {
+      execSync(`networksetup -setsecurewebproxy "${service}" ${host} ${port}`, { stdio: 'pipe' });
+      return true;
+    } catch {
+      return false;
+    }
   }
+
+  if (IS_LINUX) {
+    try {
+      execSync(`gsettings set org.gnome.system.proxy mode 'manual'`, { stdio: 'pipe' });
+      execSync(`gsettings set org.gnome.system.proxy.https host '${host}'`, { stdio: 'pipe' });
+      execSync(`gsettings set org.gnome.system.proxy.https port ${port}`, { stdio: 'pipe' });
+      return true;
+    } catch {
+      // gsettings not available — headless server, no system proxy needed
+      return false;
+    }
+  }
+
+  return false;
+}
+
+function clearSystemProxy(): boolean {
+  if (IS_MAC) {
+    try {
+      const service = macGetNetworkService();
+      execSync(`networksetup -setsecurewebproxystate "${service}" off`, { stdio: 'pipe' });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  if (IS_LINUX) {
+    try {
+      execSync(`gsettings set org.gnome.system.proxy mode 'none'`, { stdio: 'pipe' });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  return false;
 }
 
 /**
- * Remove macOS system proxy if it was set by Bastion.
+ * Remove system proxy if it was set by Bastion.
  * Safe to call from `bastion stop` — only clears if it points to Bastion.
  */
 export function clearSystemProxyIfBastion(): void {
@@ -135,12 +206,46 @@ export function clearSystemProxyIfBastion(): void {
       state.host === config.server.host &&
       state.port === String(config.server.port)
     ) {
-      const service = getNetworkService();
-      execSync(`networksetup -setsecurewebproxystate "${service}" off`, { stdio: 'pipe' });
+      clearSystemProxy();
     }
   } catch {
     // Best-effort cleanup
   }
+}
+
+// ── CA trust helpers ──
+
+function trustCACert(caCertPath: string): boolean {
+  if (IS_MAC) {
+    try {
+      execSync(
+        `sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "${caCertPath}"`,
+        { stdio: 'inherit' },
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  if (IS_LINUX) {
+    try {
+      execSync(`sudo cp "${caCertPath}" /usr/local/share/ca-certificates/bastion-ca.crt`, { stdio: 'inherit' });
+      execSync('sudo update-ca-certificates', { stdio: 'inherit' });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  return false;
+}
+
+function platformLabel(): string {
+  if (IS_MAC) return 'macOS';
+  if (IS_LINUX) return 'Linux';
+  if (IS_WIN) return 'Windows';
+  return process.platform;
 }
 
 export function registerProxyCommand(program: Command): void {
@@ -151,9 +256,9 @@ export function registerProxyCommand(program: Command): void {
   // bastion proxy on
   proxy
     .command('on')
-    .description('Enable global proxy — shell profile + macOS system proxy')
-    .option('--no-system', 'Skip setting macOS system proxy')
-    .option('--trust-ca', 'Also add CA cert to macOS system keychain (requires sudo)')
+    .description('Enable global proxy — shell profile + system proxy')
+    .option('--no-system', 'Skip setting system proxy')
+    .option('--trust-ca', 'Also add CA cert to system trust store (requires sudo)')
     .action((options) => {
       const config = loadConfig();
       ensureCA();
@@ -175,25 +280,25 @@ export function registerProxyCommand(program: Command): void {
       insertProxyBlock(profilePath, block);
       info(`Shell profile: ${profilePath} ✓`);
 
-      // 2. macOS system proxy (default on)
+      // 2. System proxy (default on)
       if (options.system !== false) {
         if (setSystemProxy(config.server.host, config.server.port)) {
-          info(`macOS system proxy → ${baseUrl} ✓`);
+          info(`${platformLabel()} system proxy → ${baseUrl} ✓`);
         } else {
-          info('macOS system proxy: failed (may need admin privileges)');
+          if (IS_LINUX) {
+            info('System proxy: skipped (no desktop environment or gsettings not available)');
+          } else {
+            info('System proxy: failed (may need admin privileges)');
+          }
         }
       }
 
-      // 3. Trust CA in system keychain
+      // 3. Trust CA in system store
       if (options.trustCa) {
-        try {
-          execSync(
-            `sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "${caCertPath}"`,
-            { stdio: 'inherit' },
-          );
-          info(`CA cert trusted in system keychain ✓`);
-        } catch {
-          info('CA cert: failed to add to system keychain');
+        if (trustCACert(caCertPath)) {
+          info(`CA cert trusted in system store ✓`);
+        } else {
+          info('CA cert: failed to add to system trust store');
         }
       }
 
@@ -221,8 +326,8 @@ export function registerProxyCommand(program: Command): void {
   // bastion proxy off
   proxy
     .command('off')
-    .description('Disable global proxy — remove shell profile + macOS system proxy')
-    .option('--no-system', 'Skip removing macOS system proxy')
+    .description('Disable global proxy — remove shell profile + system proxy')
+    .option('--no-system', 'Skip removing system proxy')
     .action((options) => {
       const info = (msg: string) => process.stderr.write(msg + '\n');
 
@@ -233,10 +338,10 @@ export function registerProxyCommand(program: Command): void {
         ? `Shell profile: ${profilePath} cleaned ✓`
         : `Shell profile: no Bastion block found in ${profilePath}`);
 
-      // 2. macOS system proxy (default on)
+      // 2. System proxy (default on)
       if (options.system !== false) {
         clearSystemProxyIfBastion();
-        info('macOS system proxy: disabled ✓');
+        info('System proxy: disabled ✓');
       }
 
       info('');
