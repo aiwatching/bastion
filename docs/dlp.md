@@ -248,6 +248,22 @@ dlp-scanner plugin
   └─ Return DlpResult { action, findings, redactedBody? }
 ```
 
+## Real-world Examples
+
+### Web chat (OpenClaw)
+
+DLP scanning a web chat session — an API key embedded in the conversation is detected and flagged:
+
+![OpenClaw Web DLP Detection](openclaw-web.png "DLP detection in OpenClaw web chat")
+
+### Telegram bot
+
+DLP scanning a Telegram bot message — sensitive credentials in the message body are caught before forwarding:
+
+![Telegram DLP Detection](telegram.png "DLP detection in Telegram bot messages")
+
+---
+
 ## File Index
 
 | File | Layer | Responsibility |
