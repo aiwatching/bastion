@@ -23,6 +23,11 @@ NODE_MAJOR=$(node -p 'process.versions.node.split(".")[0]')
 if [ "$NODE_MAJOR" -lt 18 ]; then
   error "Node.js 18+ required (found v$(node -v))"
 fi
+if [ $(( NODE_MAJOR % 2 )) -ne 0 ]; then
+  warn "Node.js v${NODE_MAJOR} is an odd-numbered (non-LTS) release."
+  warn "Native modules like better-sqlite3 may lack prebuilt binaries."
+  warn "Recommended: use Node.js 22 LTS from https://nodejs.org"
+fi
 
 info "Installing Bastion AI Gateway..."
 
