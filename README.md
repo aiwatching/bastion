@@ -41,6 +41,48 @@ bastion wrap python my_app.py
 eval $(bastion proxy on)
 ```
 
+## OpenClaw Integration
+
+Bastion can proxy all AI traffic from [OpenClaw](https://github.com/openclaw/openclaw) instances — both Docker and local — providing DLP scanning, cost tracking, and audit logging for every LLM request.
+
+### Docker
+
+```bash
+# Create and start an OpenClaw instance with Bastion proxy
+bastion openclaw docker up mywork \
+  --port 18789 \
+  --image openclaw:local \
+  --config-dir ~/openclaw-data/mywork/config \
+  --workspace ~/openclaw-data/mywork/workspace
+
+# Manage instances
+bastion openclaw docker status        # List all instances
+bastion openclaw docker stop mywork   # Stop
+bastion openclaw docker logs mywork -f  # Tail logs
+```
+
+See [OpenClaw Docker Integration](docs/openclaw-docker.md) | [中文](docs/openclaw-docker.zh.md) for full guide (fresh install, existing setup, multi-instance).
+
+### Local
+
+```bash
+# Start OpenClaw natively with Bastion proxy
+bastion openclaw local start mywork --port 18789
+
+# Manage
+bastion openclaw local status
+bastion openclaw local stop mywork
+```
+
+See [OpenClaw Local Installation](docs/openclaw-local.md) | [中文](docs/openclaw-local.zh.md) for details.
+
+### Attach to Existing Container
+
+```bash
+# Inject Bastion proxy into a running Docker container
+bastion openclaw docker attach <container-name>
+```
+
 ## Usage
 
 ### `bastion start`
