@@ -4,6 +4,13 @@
 
 Local-first proxy for LLM providers (Anthropic, OpenAI, Gemini). Provides DLP scanning, usage metrics, cost tracking, and response caching — all running on your machine.
 
+![Overview](docs/overview.png "Overview")
+
+![DLP Findings](docs/dlp-finding.jpeg "DLP Findings")
+
+![Audit Log](docs/auditlog.png "Audit Log")
+
+
 ## Install
 
 One-liner:

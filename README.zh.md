@@ -4,6 +4,13 @@
 
 本地优先的 LLM 提供商代理（Anthropic、OpenAI、Gemini）。提供 DLP 扫描、使用量统计、费用追踪和响应缓存——全部在本机运行。
 
+![Overview](docs/overview.png "Overview")
+
+![DLP Findings](docs/dlp-finding.jpeg "DLP Findings")
+
+![Audit Log](docs/auditlog.png "Audit Log")
+
+
 ## 安装
 
 一行命令安装：
