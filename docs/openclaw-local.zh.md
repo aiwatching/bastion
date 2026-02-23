@@ -232,4 +232,4 @@ GET http://127.0.0.1:<bastion-port>/api/dlp/recent?since=<iso-timestamp>&limit=1
 curl http://127.0.0.1:8420/api/dlp/recent?limit=3
 ```
 
-完整的 skill 提示词和配置说明请参见 [OpenClaw DLP 告警 Skill](openclaw-dlp-skill.zh.md)。
+将集成 prompt [`docs/openclaw-integration.md`](openclaw-integration.md) 输入 OpenClaw 即可自动配置告警。完整说明请参见 [OpenClaw DLP 告警集成](openclaw-dlp-skill.zh.md)。

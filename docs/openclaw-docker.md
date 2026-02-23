@@ -468,4 +468,6 @@ curl http://127.0.0.1:8420/api/dlp/recent?limit=3
 
 ### Setup
 
-Configure an OpenClaw skill with the DLP monitoring prompt. See [OpenClaw DLP Alert Skill](openclaw-dlp-skill.md) for the complete skill prompt and setup instructions.
+Feed the integration prompt [`docs/openclaw-integration.md`](openclaw-integration.md) into an OpenClaw chat session. It will automatically create the DLP alert skill, add a cron job (polls every minute), and set up cursor persistence.
+
+See [OpenClaw DLP Alert Integration](openclaw-dlp-skill.md) for full details, customization options, and alert message format.

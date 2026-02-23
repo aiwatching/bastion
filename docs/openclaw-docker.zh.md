@@ -468,4 +468,6 @@ curl http://127.0.0.1:8420/api/dlp/recent?limit=3
 
 ### 配置方法
 
-在 OpenClaw 中配置一个带有 DLP 监控提示词的 skill。完整的 skill 提示词和配置说明请参见 [OpenClaw DLP 告警 Skill](openclaw-dlp-skill.zh.md)。
+将集成 prompt [`docs/openclaw-integration.md`](openclaw-integration.md) 输入 OpenClaw 聊天会话。它会自动创建 DLP 告警 skill、添加 cron 任务（每分钟轮询）并设置游标持久化。
+
+完整说明、自定义选项和告警消息格式请参见 [OpenClaw DLP 告警集成](openclaw-dlp-skill.zh.md)。
