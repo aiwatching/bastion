@@ -421,3 +421,51 @@ A `404: Not Found` from the Telegram API usually means the bot token is invalid 
 bastion start
 ls ~/.bastion/ca.crt
 ```
+
+---
+
+## DLP Alert Notifications
+
+Bastion can detect sensitive data (API keys, credentials, PII) in AI traffic and OpenClaw can notify you in real time through its messaging channels (Telegram, Discord, Slack, etc.).
+
+### How It Works
+
+```
+OpenClaw (container)                    Bastion (host)
+    │                                      │
+    │  GET /api/dlp/recent?since=...  ────►│
+    │  ◄──── new DLP findings              │
+    │                                      │
+    ├─→ Telegram alert                     │
+    ├─→ Discord alert                      │
+    └─→ Slack alert                        │
+```
+
+OpenClaw polls Bastion's DLP API every 60 seconds via a skill/prompt. When new findings are detected, it formats an alert and sends it through configured channels.
+
+### API Endpoint
+
+```
+GET http://host.docker.internal:<bastion-port>/api/dlp/recent?since=<iso-timestamp>&limit=100
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `since` | ISO 8601 timestamp — only return findings after this time |
+| `limit` | Max results (default: 50) |
+
+The response includes `pattern_name`, `action` (block/redact/warn), `direction`, `provider`, `model`, `session_id`, `session_label`, and `original_snippet` for each finding.
+
+### Quick Test
+
+```bash
+# From inside the OpenClaw container
+curl http://host.docker.internal:8420/api/dlp/recent?limit=3
+
+# From the host
+curl http://127.0.0.1:8420/api/dlp/recent?limit=3
+```
+
+### Setup
+
+Configure an OpenClaw skill with the DLP monitoring prompt. See [OpenClaw DLP Alert Skill](openclaw-dlp-skill.md) for the complete skill prompt and setup instructions.

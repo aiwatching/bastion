@@ -214,3 +214,22 @@ bastion openclaw local status
 # 或手动删除
 rm ~/.bastion/openclaw/local/mywork.pid
 ```
+
+---
+
+## DLP 告警通知
+
+OpenClaw 可以轮询 Bastion 的 DLP API，当检测到 AI 流量中的敏感数据时，通过消息频道（Telegram、Discord、Slack）通知你。
+
+本地模式下，API 端点为：
+
+```
+GET http://127.0.0.1:<bastion-port>/api/dlp/recent?since=<iso-timestamp>&limit=100
+```
+
+```bash
+# 快速测试
+curl http://127.0.0.1:8420/api/dlp/recent?limit=3
+```
+
+完整的 skill 提示词和配置说明请参见 [OpenClaw DLP 告警 Skill](openclaw-dlp-skill.zh.md)。

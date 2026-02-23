@@ -152,6 +152,35 @@ $env:Path += ";$env:USERPROFILE\.bastion\app\bin"
 bastion --version
 ```
 
+### 7. PowerShell 禁止运行脚本
+
+**现象：**
+
+```
+.\install.ps1 : 无法加载文件 I:\...\install.ps1，因为在此系统上禁止运行脚本。
+    + CategoryInfo          : SecurityError: (:) []，PSSecurityException
+    + FullyQualifiedErrorId : UnauthorizedAccess
+```
+
+**原因：** Windows PowerShell 的默认执行策略（`Restricted`）禁止运行所有脚本文件。
+
+**解决方案（二选一）：**
+
+**方案 A — 单次绕过（推荐）**
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install.ps1
+```
+
+**方案 B — 修改当前用户策略（永久生效）**
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+.\install.ps1
+```
+
+`RemoteSigned` 允许运行本地脚本，同时仍然阻止从互联网下载的未签名脚本。
+
 ## 推荐安装步骤
 
 ```powershell
