@@ -152,6 +152,35 @@ $env:Path += ";$env:USERPROFILE\.bastion\app\bin"
 bastion --version
 ```
 
+### 7. PowerShell script execution is disabled
+
+**Symptom:**
+
+```
+.\install.ps1 : File I:\...\install.ps1 cannot be loaded because running scripts is disabled on this system.
+    + CategoryInfo          : SecurityError: (:) [], PSSecurityException
+    + FullyQualifiedErrorId : UnauthorizedAccess
+```
+
+**Cause:** Windows PowerShell's default execution policy (`Restricted`) blocks all script files.
+
+**Solutions (choose one):**
+
+**Option A — Bypass for a single command (recommended)**
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install.ps1
+```
+
+**Option B — Change policy for current user (permanent)**
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+.\install.ps1
+```
+
+`RemoteSigned` allows local scripts to run while still blocking unsigned scripts downloaded from the internet.
+
 ## Recommended Setup
 
 ```powershell

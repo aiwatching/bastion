@@ -421,3 +421,51 @@ Telegram API 返回 `404: Not Found` 通常表示 bot token 无效或不完整�
 bastion start
 ls ~/.bastion/ca.crt
 ```
+
+---
+
+## DLP 告警通知
+
+Bastion 可以检测 AI 流量中的敏感数据（API 密钥、凭证、PII），OpenClaw 可以通过社交媒体渠道（Telegram、Discord、Slack 等）实时通知你。
+
+### 工作原理
+
+```
+OpenClaw (容器内)                       Bastion (宿主机)
+    │                                      │
+    │  GET /api/dlp/recent?since=...  ────►│
+    │  ◄──── 新的 DLP findings             │
+    │                                      │
+    ├─→ Telegram 告警                      │
+    ├─→ Discord 告警                       │
+    └─→ Slack 告警                         │
+```
+
+OpenClaw 通过 skill/提示词每 60 秒轮询 Bastion 的 DLP API。当检测到新的 findings 时，格式化告警消息并通过已配置的频道发送。
+
+### API 端点
+
+```
+GET http://host.docker.internal:<bastion-port>/api/dlp/recent?since=<iso-timestamp>&limit=100
+```
+
+| 参数 | 说明 |
+|------|------|
+| `since` | ISO 8601 时间戳 — 只返回此时间之后的 findings |
+| `limit` | 最大返回数量（默认 50） |
+
+响应包含每条 finding 的 `pattern_name`、`action`（block/redact/warn）、`direction`、`provider`、`model`、`session_id`、`session_label` 和 `original_snippet`。
+
+### 快速测试
+
+```bash
+# 从 OpenClaw 容器内
+curl http://host.docker.internal:8420/api/dlp/recent?limit=3
+
+# 从宿主机
+curl http://127.0.0.1:8420/api/dlp/recent?limit=3
+```
+
+### 配置方法
+
+在 OpenClaw 中配置一个带有 DLP 监控提示词的 skill。完整的 skill 提示词和配置说明请参见 [OpenClaw DLP 告警 Skill](openclaw-dlp-skill.zh.md)。

@@ -214,3 +214,22 @@ bastion openclaw local status
 # Or remove manually
 rm ~/.bastion/openclaw/local/mywork.pid
 ```
+
+---
+
+## DLP Alert Notifications
+
+OpenClaw can poll Bastion's DLP API and notify you through messaging channels (Telegram, Discord, Slack) when sensitive data is detected in AI traffic.
+
+In local mode, the API endpoint is:
+
+```
+GET http://127.0.0.1:<bastion-port>/api/dlp/recent?since=<iso-timestamp>&limit=100
+```
+
+```bash
+# Quick test
+curl http://127.0.0.1:8420/api/dlp/recent?limit=3
+```
+
+See [OpenClaw DLP Alert Skill](openclaw-dlp-skill.md) for the complete skill prompt and setup instructions.
