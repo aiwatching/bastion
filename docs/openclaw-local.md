@@ -232,4 +232,4 @@ GET http://127.0.0.1:<bastion-port>/api/dlp/recent?since=<iso-timestamp>&limit=1
 curl http://127.0.0.1:8420/api/dlp/recent?limit=3
 ```
 
-See [OpenClaw DLP Alert Skill](openclaw-dlp-skill.md) for the complete skill prompt and setup instructions.
+Feed the integration prompt [`docs/openclaw-integration.md`](openclaw-integration.md) into OpenClaw to set up automatic alerts. See [OpenClaw DLP Alert Integration](openclaw-dlp-skill.md) for full details.

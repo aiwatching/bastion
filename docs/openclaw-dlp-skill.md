@@ -1,8 +1,8 @@
-k**English** | [中文](openclaw-dlp-skill.zh.md)
+**English** | [中文](openclaw-dlp-skill.zh.md)
 
-# OpenClaw DLP Alert Skill
+# OpenClaw DLP Alert Integration
 
-This document provides a ready-to-use skill/prompt for OpenClaw to periodically poll Bastion's DLP findings API and notify users through social media channels (Telegram, Discord, Slack, etc.).
+Let OpenClaw periodically poll Bastion's DLP findings API and notify users through social media channels (Telegram, Discord, Slack, etc.).
 
 ---
 
@@ -15,7 +15,7 @@ Bastion (host)                         OpenClaw (Docker / local)
     │  DLP scanner detects findings        │
     │  Stores in SQLite                    │
     │                                      │
-    │  GET /api/dlp/recent?since=...  ◄────│  Polls every 60s
+    │  GET /api/dlp/recent?since=...  ◄────│  Polls every 60s (cron)
     │  Returns new findings                │
     │                                      │
     │                                      ├─→ Telegram
@@ -23,14 +23,53 @@ Bastion (host)                         OpenClaw (Docker / local)
     │                                      └─→ Slack / other channels
 ```
 
-OpenClaw runs a scheduled skill that:
-1. Calls Bastion's `/api/dlp/recent?since=<last_check>` API
+OpenClaw runs a cron job that:
+1. Calls Bastion's `/api/dlp/recent?since=<last_check>` API every minute
 2. If new findings exist, formats them into a human-readable alert
 3. Sends the alert through configured messaging channels
 
 ---
 
-## API Endpoint
+## Quick Setup
+
+Bastion provides a ready-to-use integration prompt at [`docs/openclaw-integration.md`](openclaw-integration.md). Feed this prompt to OpenClaw and it will automatically:
+
+1. **Create the DLP alert skill** — writes `SKILL.md` to the OpenClaw workspace
+2. **Add a cron job** — appends a job to `cron/jobs.json` that polls every minute
+3. **Set up cursor persistence** — uses a cursor file to track `lastChecked` timestamp
+
+### Docker Mode
+
+```bash
+# Copy the prompt into the OpenClaw container and execute it
+docker exec -it <container> cat /path/to/openclaw-integration.md
+# Or paste the prompt content directly into an OpenClaw chat session
+```
+
+The prompt expects Bastion at `http://host.docker.internal:8420`. If your Bastion port differs, edit the prompt before applying.
+
+### Local Mode
+
+For local OpenClaw instances, change the Bastion URL in the prompt from `host.docker.internal` to `127.0.0.1`:
+
+```
+http://127.0.0.1:<bastion-port>
+```
+
+### Customization
+
+Before feeding the prompt to OpenClaw, you can adjust:
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `expr` in cron job | `*/1 * * * *` | Polling frequency (e.g., `*/5 * * * *` for every 5 min) |
+| `channel` in delivery | `telegram` | Target channel (`telegram`, `discord`, `slack`, etc.) |
+| `to` in delivery | `<TELEGRAM_USER_ID_HERE>` | Recipient ID for the target channel |
+| Bastion port | `8420` | Change if Bastion runs on a different port |
+
+---
+
+## API Reference
 
 ```
 GET http://host.docker.internal:<bastion-port>/api/dlp/recent?since=<iso-timestamp>&limit=100
@@ -40,7 +79,7 @@ GET http://host.docker.internal:<bastion-port>/api/dlp/recent?since=<iso-timesta
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `since` | ISO 8601 timestamp | Only return findings after this time (e.g., `2026-02-22T10:00:00.000Z`) |
+| `since` | ISO 8601 timestamp | Only return findings after this time |
 | `limit` | number | Max results to return (default: 50) |
 
 **Response:**
@@ -65,57 +104,27 @@ GET http://host.docker.internal:<bastion-port>/api/dlp/recent?since=<iso-timesta
 ]
 ```
 
-**Note:** When using `since`, results are sorted ascending (oldest first) so you can use the last item's `created_at` as the next `since` value.
+When using `since`, results are sorted ascending (oldest first) so you can use the last item's `created_at` as the next `since` value.
 
 ---
 
-## Skill Prompt
+## What Gets Created
 
-Copy the following prompt into your OpenClaw skill configuration. Adjust the `BASTION_URL` and polling interval as needed.
+After OpenClaw processes the integration prompt, the following files are created:
 
 ```
-You are a DLP (Data Loss Prevention) alert monitor. Your job is to periodically check the Bastion AI Gateway for new sensitive data findings and alert the user immediately.
+~/.openclaw/
+  ├── workspace/
+  │   ├── skills/dlp-alert/SKILL.md     # DLP alert skill definition
+  │   └── memory/dlp-cursor.json        # Polling cursor (auto-managed)
+  └── cron/jobs.json                    # Cron job added (polls every minute)
+```
 
-## Configuration
+---
 
-- Bastion API: http://host.docker.internal:8420/api/dlp/recent
-- Poll interval: every 60 seconds
-- Alert threshold: all findings with action "block", "redact", or "warn"
+## Alert Message Format
 
-## Behavior
-
-1. Every 60 seconds, call:
-   GET http://host.docker.internal:8420/api/dlp/recent?since=<last_checked_timestamp>&limit=100
-
-   On the first run, use the current time minus 5 minutes as the initial "since" value.
-
-2. If the response is an empty array [], do nothing — no new findings.
-
-3. If findings exist, send an alert message with this format:
-
-   🚨 DLP Alert — <count> finding(s) detected
-
-   For each finding:
-   - Type: <pattern_name> (<pattern_category>)
-   - Action: <action>
-   - Direction: <direction> (request = outgoing, response = incoming)
-   - Session: <session_label or session_id>
-   - Provider: <provider> / <model>
-   - Time: <created_at>
-   - Snippet: <original_snippet> (first 40 chars, masked)
-
-   Footer:
-   Dashboard: http://127.0.0.1:8420/dashboard → DLP tab for details.
-
-4. Update your "since" timestamp to the created_at of the last finding received.
-
-5. Severity mapping for message formatting:
-   - "block" → 🔴 BLOCKED — request was rejected
-   - "redact" → 🟡 REDACTED — sensitive data was masked
-   - "warn" → 🟠 WARNING — detected but allowed through
-
-## Example Alert Message
-
+```
 🚨 DLP Alert — 2 finding(s) detected
 
 🔴 [BLOCKED] aws-access-key (high-confidence)
@@ -132,32 +141,17 @@ You are a DLP (Data Loss Prevention) alert monitor. Your job is to periodically 
    Time: 2026-02-22 10:31:15 UTC
    Snippet: ...user@exam****...
 
-📊 Dashboard: http://127.0.0.1:8420/dashboard
+📊 Dashboard: http://127.0.0.1:8420/dashboard → DLP tab
 ```
+
+Severity mapping:
+- `block` → 🔴 BLOCKED — request was rejected
+- `redact` → 🟡 REDACTED — sensitive data was masked
+- `warn` → 🟠 WARNING — detected but allowed through
 
 ---
 
-## Setup Guide
-
-### Docker Mode
-
-If OpenClaw runs in a Docker container managed by Bastion (`bastion openclaw docker up`), the Bastion API is accessible at:
-
-```
-http://host.docker.internal:<bastion-port>
-```
-
-The Bastion port is injected as `BASTION_PORT` env var (default: 8420).
-
-### Local Mode
-
-If OpenClaw runs locally (`bastion openclaw local start`), Bastion is at:
-
-```
-http://127.0.0.1:<bastion-port>
-```
-
-### Verify Connectivity
+## Verify Connectivity
 
 ```bash
 # From inside Docker container
@@ -171,30 +165,8 @@ curl http://127.0.0.1:8420/api/dlp/recent?limit=1
 
 ## Advanced: Filter by Session
 
-If you want alerts only for a specific session/project, filter client-side by `session_id` or `session_label` in the response:
+To receive alerts only for a specific project, filter by `session_label` or `session_id` in the response. Add a filter instruction to the cron job's `message` field:
 
 ```
-GET /api/dlp/recent?since=...&limit=100
-→ filter where session_label == "my-project"
+Only alert on findings where session_label is "my-project". Ignore all others.
 ```
-
----
-
-## Advanced: Webhook-Style (Reverse Direction)
-
-If you prefer OpenClaw to receive push notifications instead of polling, you can set up a simple bridge:
-
-```bash
-# Run as a cron job or background loop
-while true; do
-  findings=$(curl -s "http://127.0.0.1:8420/api/dlp/recent?since=$(date -u -v-1M +%Y-%m-%dT%H:%M:%S.000Z)&limit=100")
-  if [ "$(echo "$findings" | jq length)" -gt 0 ]; then
-    echo "$findings" | curl -s -X POST http://localhost:18789/api/notify \
-      -H "Content-Type: application/json" \
-      -d @-
-  fi
-  sleep 60
-done
-```
-
-This approach is only needed if OpenClaw has a `/api/notify` endpoint. The skill-based polling approach above is simpler and recommended.
