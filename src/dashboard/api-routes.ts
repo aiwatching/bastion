@@ -86,7 +86,8 @@ export function createApiRouter(
     // GET /api/dlp/recent
     if (req.method === 'GET' && path === '/api/dlp/recent') {
       const limit = parseInt(url.searchParams.get('limit') ?? '50', 10);
-      sendJson(res, dlpRepo.getRecent(limit));
+      const since = url.searchParams.get('since') ?? undefined;
+      sendJson(res, dlpRepo.getRecent(limit, since));
       return true;
     }
 
