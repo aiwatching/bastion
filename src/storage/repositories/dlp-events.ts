@@ -33,13 +33,24 @@ export class DlpEventsRepository {
     return this.db.prepare('SELECT * FROM dlp_events WHERE request_id = ?').all(requestId) as DlpEventRecord[];
   }
 
-  getRecent(limit: number = 20): (DlpEventRecord & { provider?: string; model?: string; session_id?: string })[] {
+  getRecent(limit: number = 20, since?: string): (DlpEventRecord & { provider?: string; model?: string; session_id?: string; session_label?: string })[] {
+    if (since) {
+      return this.db.prepare(`
+        SELECT d.*, r.provider, r.model, r.session_id, s.label as session_label
+        FROM dlp_events d
+        LEFT JOIN requests r ON r.id = d.request_id
+        LEFT JOIN sessions s ON s.id = r.session_id
+        WHERE d.created_at > ?
+        ORDER BY d.created_at ASC LIMIT ?
+      `).all(since, limit) as (DlpEventRecord & { provider?: string; model?: string; session_id?: string; session_label?: string })[];
+    }
     return this.db.prepare(`
-      SELECT d.*, r.provider, r.model, r.session_id
+      SELECT d.*, r.provider, r.model, r.session_id, s.label as session_label
       FROM dlp_events d
       LEFT JOIN requests r ON r.id = d.request_id
+      LEFT JOIN sessions s ON s.id = r.session_id
       ORDER BY d.created_at DESC LIMIT ?
-    `).all(limit) as (DlpEventRecord & { provider?: string; model?: string; session_id?: string })[];
+    `).all(limit) as (DlpEventRecord & { provider?: string; model?: string; session_id?: string; session_label?: string })[];
   }
 
   getStats(): { total_events: number; by_action: Record<string, number>; by_pattern: Record<string, number> } {

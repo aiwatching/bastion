@@ -363,7 +363,7 @@ BASTION_LOG_LEVEL=debug bastion start
 |--------|----------|-------------|
 | `GET` | `/api/stats` | Usage statistics (requests, tokens, cost). Query params: `session_id`, `api_key_hash`, `hours` |
 | `GET` | `/api/sessions` | List tracked sessions |
-| `GET` | `/api/dlp/recent?limit=50` | Recent DLP findings (joined with request metadata) |
+| `GET` | `/api/dlp/recent?limit=50&since=ISO` | Recent DLP findings. `since` returns only newer findings (for polling) |
 | `POST` | `/api/dlp/scan` | Standalone DLP scan (body: `{"text": "...", "action": "warn", "trace": true}`) |
 | `GET` | `/api/dlp/patterns` | List all DLP patterns |
 | `POST` | `/api/dlp/patterns` | Add custom pattern |
@@ -391,6 +391,7 @@ BASTION_LOG_LEVEL=debug bastion start
 - [OpenClaw 本地安装](docs/openclaw-local.zh.md) — 使用 Bastion 代理原生运行 OpenClaw
 - [AI Agent 监控](docs/agent-monitoring.zh.md) — 监控任何本地 AI Agent（Claude Code、Cursor、自定义应用）
 - [远程签名库](docs/remote-signatures.zh.md) — 从 Git 仓库远程同步 DLP 模式
+- [OpenClaw DLP 告警 Skill](docs/openclaw-dlp-skill.zh.md) — 让 OpenClaw 通过 Telegram/Discord 通知 DLP 发现
 - [Windows 故障排除](docs/windows-troubleshooting.zh.md) — Windows 常见问题及解决方案
 
 ## 数据存储

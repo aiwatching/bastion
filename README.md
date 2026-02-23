@@ -363,7 +363,7 @@ All endpoints are available at `http://127.0.0.1:8420` while the gateway is runn
 |--------|----------|-------------|
 | `GET` | `/api/stats` | Usage statistics (requests, tokens, cost). Query params: `session_id`, `api_key_hash`, `hours` |
 | `GET` | `/api/sessions` | List tracked sessions |
-| `GET` | `/api/dlp/recent?limit=50` | Recent DLP findings (joined with request metadata) |
+| `GET` | `/api/dlp/recent?limit=50&since=ISO` | Recent DLP findings. `since` returns only newer findings (for polling) |
 | `POST` | `/api/dlp/scan` | Standalone DLP scan (body: `{"text": "...", "action": "warn", "trace": true}`) |
 | `GET` | `/api/dlp/patterns` | List all DLP patterns |
 | `POST` | `/api/dlp/patterns` | Add custom pattern |
@@ -391,6 +391,7 @@ All endpoints are available at `http://127.0.0.1:8420` while the gateway is runn
 - [OpenClaw Local Installation](docs/openclaw-local.md) | [中文](docs/openclaw-local.zh.md) — Run OpenClaw natively with Bastion proxy
 - [AI Agent Monitoring](docs/agent-monitoring.md) | [中文](docs/agent-monitoring.zh.md) — Monitor any local AI agent (Claude Code, Cursor, custom apps)
 - [Remote Signatures](docs/remote-signatures.md) | [中文](docs/remote-signatures.zh.md) — Remote DLP pattern sync from Git repo
+- [OpenClaw DLP Alert Skill](docs/openclaw-dlp-skill.md) | [中文](docs/openclaw-dlp-skill.zh.md) — Let OpenClaw notify you of DLP findings via Telegram/Discord
 - [Windows Troubleshooting](docs/windows-troubleshooting.md) | [中文](docs/windows-troubleshooting.zh.md) — Common issues and solutions for Windows
 
 ## Data Storage
