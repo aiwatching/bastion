@@ -16,38 +16,29 @@ const DEFAULT_PORT = 18789;
 const DEFAULT_IMAGE = 'openclaw:local';
 
 /** Proxy bootstrap script content — mounted into Docker containers via NODE_OPTIONS="--import ..." */
-const PROXY_BOOTSTRAP_CONTENT = `// proxy-bootstrap.mjs — forces all Node.js HTTP/HTTPS traffic through the proxy
-// Key insight: Node.js built-in fetch uses an INTERNAL undici copy.
-// import('undici') from node_modules is a DIFFERENT copy.
-// setGlobalDispatcher on node_modules undici does NOT affect built-in fetch.
-// Fix: replace globalThis.fetch with undici.fetch from node_modules.
+const PROXY_BOOTSTRAP_CONTENT = `// proxy-bootstrap.mjs — forces all Node.js HTTP/HTTPS through the proxy
+// Replace globalThis.fetch with undici.fetch (built-in fetch uses separate internal undici)
+// Set BASTION_PROXY_DEBUG=1 for diagnostic output
 const proxyUrl = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || process.env.https_proxy || process.env.http_proxy;
+const D = !!process.env.BASTION_PROXY_DEBUG, L = (...a) => D && console.error('[proxy-bootstrap]', ...a);
 if (proxyUrl) {
+  L('proxy:', proxyUrl);
   const noProxyList = (process.env.NO_PROXY || process.env.no_proxy || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
   const shouldBypass = (h) => { h = (h || '').toLowerCase(); return noProxyList.some(np => h === np || h.endsWith('.' + np)); };
   const getHost = (i) => { try { if (typeof i==='string') return new URL(i).hostname; if (i instanceof URL) return i.hostname; if (i instanceof Request) return new URL(i.url).hostname; } catch {} return null; };
   const _bf = globalThis.fetch;
-  let fp = false;
   try {
     const u = await import('undici');
-    if (typeof u.EnvHttpProxyAgent === 'function') {
-      u.setGlobalDispatcher(new u.EnvHttpProxyAgent());
-      globalThis.fetch = u.fetch; fp = true;
-    } else if (typeof u.ProxyAgent === 'function' && typeof u.fetch === 'function') {
-      u.setGlobalDispatcher(new u.ProxyAgent(proxyUrl));
+    let d = null;
+    if (typeof u.EnvHttpProxyAgent === 'function') { d = new u.EnvHttpProxyAgent(); L('EnvHttpProxyAgent'); }
+    else if (typeof u.ProxyAgent === 'function') { d = new u.ProxyAgent(proxyUrl); L('ProxyAgent'); }
+    if (d && typeof u.fetch === 'function') {
+      u.setGlobalDispatcher(d);
       const _uf = u.fetch;
       globalThis.fetch = function(i, o) { const h = getHost(i); if (h && shouldBypass(h)) return _bf.call(globalThis, i, o); return _uf.call(globalThis, i, o); };
-      fp = true;
+      L('fetch patched');
     }
-  } catch {}
-  if (!fp && typeof _bf === 'function') {
-    const px = new URL(proxyUrl), base = 'http://'+px.hostname+':'+(px.port||80);
-    globalThis.fetch = function(i, o) {
-      try { let url; if (typeof i==='string') url=new URL(i); else if (i instanceof URL) url=new URL(i.href); else if (i instanceof Request) url=new URL(i.url);
-        if (url && url.protocol==='https:' && !shouldBypass(url.hostname)) { const rw=base+url.pathname+url.search; const h=new Headers(o?.headers||(i instanceof Request?i.headers:undefined)); h.set('X-Forwarded-Host',url.host); h.set('X-Forwarded-Proto','https'); const mi={...o,headers:h}; if(i instanceof Request){if(!mi.method)mi.method=i.method;if(mi.body===undefined)mi.body=i.body;} return _bf.call(globalThis,rw,mi); }
-      } catch {} return _bf.call(globalThis, i, o);
-    };
-  }
+  } catch (e) { L('undici failed:', e.message); }
   try {
     const http = await import('node:http');
     const https = await import('node:https');
@@ -65,7 +56,8 @@ if (proxyUrl) {
       }
     }
     https.globalAgent = new T({ keepAlive: true });
-  } catch {}
+    L('https.globalAgent patched');
+  } catch (e) { L('tunnel failed:', e.message); }
 }
 `;
 
@@ -152,10 +144,6 @@ function generateComposeFile(caPath: string, image: string): string {
       NODE_EXTRA_CA_CERTS: "/etc/ssl/certs/bastion-ca.crt"
       NO_PROXY: "localhost,127.0.0.1,host.docker.internal"
       NODE_OPTIONS: "--import /opt/bastion/proxy-bootstrap.mjs"
-      # LLM SDK direct base URLs (some SDKs ignore HTTPS_PROXY)
-      ANTHROPIC_BASE_URL: "http://host.docker.internal:\${BASTION_PORT:-8420}"
-      OPENAI_BASE_URL: "http://host.docker.internal:\${BASTION_PORT:-8420}"
-      GOOGLE_AI_BASE_URL: "http://host.docker.internal:\${BASTION_PORT:-8420}"
     volumes:
       - \${OPENCLAW_CONFIG_DIR}:/home/node/.openclaw
       - \${OPENCLAW_WORKSPACE_DIR}:/home/node/.openclaw/workspace
@@ -187,10 +175,6 @@ function generateComposeFile(caPath: string, image: string): string {
       NODE_EXTRA_CA_CERTS: "/etc/ssl/certs/bastion-ca.crt"
       NO_PROXY: "localhost,127.0.0.1,host.docker.internal"
       NODE_OPTIONS: "--import /opt/bastion/proxy-bootstrap.mjs"
-      # LLM SDK direct base URLs
-      ANTHROPIC_BASE_URL: "http://host.docker.internal:\${BASTION_PORT:-8420}"
-      OPENAI_BASE_URL: "http://host.docker.internal:\${BASTION_PORT:-8420}"
-      GOOGLE_AI_BASE_URL: "http://host.docker.internal:\${BASTION_PORT:-8420}"
     volumes:
       - \${OPENCLAW_CONFIG_DIR}:/home/node/.openclaw
       - \${OPENCLAW_WORKSPACE_DIR}:/home/node/.openclaw/workspace
