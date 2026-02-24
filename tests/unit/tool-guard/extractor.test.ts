@@ -42,6 +42,38 @@ describe('extractToolCallsFromJSON', () => {
     expect(calls[0].provider).toBe('openai');
   });
 
+  it('extracts Gemini functionCall from candidates', () => {
+    const body = JSON.stringify({
+      candidates: [{
+        content: {
+          parts: [
+            { functionCall: { name: 'get_weather', args: { city: 'Tokyo' } } },
+            { functionCall: { name: 'get_time', args: { timezone: 'JST' } } },
+          ],
+          role: 'model',
+        },
+      }],
+    });
+    const calls = extractToolCallsFromJSON(body);
+    expect(calls).toHaveLength(2);
+    expect(calls[0].toolName).toBe('get_weather');
+    expect(calls[0].toolInput).toEqual({ city: 'Tokyo' });
+    expect(calls[0].provider).toBe('gemini');
+    expect(calls[1].toolName).toBe('get_time');
+  });
+
+  it('returns empty for Gemini response without functionCall', () => {
+    const body = JSON.stringify({
+      candidates: [{
+        content: {
+          parts: [{ text: 'Hello!' }],
+          role: 'model',
+        },
+      }],
+    });
+    expect(extractToolCallsFromJSON(body)).toHaveLength(0);
+  });
+
   it('returns empty for responses without tool calls', () => {
     const body = JSON.stringify({
       content: [{ type: 'text', text: 'Hello!' }],
@@ -125,6 +157,22 @@ describe('extractToolCallsFromSSE', () => {
     expect(calls).toHaveLength(2);
     expect(calls[0].toolName).toBe('bash');
     expect(calls[1].toolName).toBe('write_file');
+  });
+
+  it('extracts Gemini SSE tool calls', () => {
+    const sse = [
+      'data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"bash","args":{"command":"rm -rf /"}}}],"role":"model"}}]}',
+      '',
+      'data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"read_file","args":{"path":"/etc/passwd"}}}],"role":"model"}}]}',
+      '',
+    ].join('\n');
+
+    const calls = extractToolCallsFromSSE(sse);
+    expect(calls).toHaveLength(2);
+    expect(calls[0].toolName).toBe('bash');
+    expect(calls[0].toolInput).toEqual({ command: 'rm -rf /' });
+    expect(calls[0].provider).toBe('gemini');
+    expect(calls[1].toolName).toBe('read_file');
   });
 
   it('returns empty for non-tool SSE', () => {
