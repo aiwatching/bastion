@@ -16,6 +16,9 @@ export interface RequestContext {
   dlpHit?: boolean;
   dlpAction?: string;
   dlpFindings?: number;
+  /** Set by tool-guard plugin during onResponseComplete */
+  toolGuardHit?: boolean;
+  toolGuardFindings?: number;
 }
 
 export interface ResponseCompleteContext {

@@ -8,6 +8,7 @@ import { CacheRepository } from '../storage/repositories/cache.js';
 import { SessionsRepository } from '../storage/repositories/sessions.js';
 import { DlpPatternsRepository } from '../storage/repositories/dlp-patterns.js';
 import { DlpConfigHistoryRepository } from '../storage/repositories/dlp-config-history.js';
+import { ToolCallsRepository } from '../storage/repositories/tool-calls.js';
 import { scanText, type DlpTrace } from '../dlp/engine.js';
 import type { DlpAction } from '../dlp/actions.js';
 import { getBuiltinSensitivePatterns, getBuiltinNonSensitiveNames } from '../dlp/semantics.js';
@@ -49,6 +50,7 @@ export function createApiRouter(
   const sessionsRepo = new SessionsRepository(db);
   const dlpPatternsRepo = new DlpPatternsRepository(db);
   const dlpConfigHistory = new DlpConfigHistoryRepository(db);
+  const toolCallsRepo = new ToolCallsRepository(db);
 
   return (req: IncomingMessage, res: ServerResponse): boolean => {
     const url = parseUrl(req);
@@ -474,6 +476,30 @@ export function createApiRouter(
       } catch (err) {
         sendJson(res, { error: (err as Error).message }, 400);
       }
+      return true;
+    }
+
+    // GET /api/tool-guard/recent — recent tool calls
+    if (req.method === 'GET' && path === '/api/tool-guard/recent') {
+      const limit = parseInt(url.searchParams.get('limit') ?? '50', 10);
+      sendJson(res, toolCallsRepo.getRecent(limit));
+      return true;
+    }
+
+    // GET /api/tool-guard/stats — counts by severity, category, top tool names
+    if (req.method === 'GET' && path === '/api/tool-guard/stats') {
+      sendJson(res, toolCallsRepo.getStats());
+      return true;
+    }
+
+    // GET /api/tool-guard/session/:id — tool calls for a specific session
+    if (req.method === 'GET' && path.startsWith('/api/tool-guard/session/')) {
+      const sessionId = path.slice('/api/tool-guard/session/'.length);
+      if (!sessionId) {
+        sendJson(res, { error: 'Missing session ID' }, 400);
+        return true;
+      }
+      sendJson(res, toolCallsRepo.getBySession(sessionId));
       return true;
     }
 

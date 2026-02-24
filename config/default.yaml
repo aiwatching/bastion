@@ -43,6 +43,9 @@ plugins:
     rawMaxBytes: 524288
     summaryMaxBytes: 1024
 
+  toolGuard:
+    enabled: true
+
 timeouts:
   upstream: 120000
   plugin: 50

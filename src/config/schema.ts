@@ -47,6 +47,9 @@ export interface BastionConfig {
       rawMaxBytes: number;
       summaryMaxBytes: number;
     };
+    toolGuard: {
+      enabled: boolean;
+    };
   };
   timeouts: {
     upstream: number;

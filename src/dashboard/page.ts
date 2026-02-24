@@ -91,6 +91,7 @@ tr:hover{background:#1c2128}
   <button class="tab" data-tab="dlp">DLP</button>
   <button class="tab" data-tab="optimizer">Optimizer</button>
   <button class="tab" data-tab="audit">Audit</button>
+  <button class="tab" data-tab="toolguard">Tool Guard</button>
   <button class="tab" data-tab="settings">Settings</button>
 </div>
 
@@ -419,6 +420,23 @@ tr:hover{background:#1c2128}
   </div>
 </div>
 
+<!-- TOOL GUARD TAB -->
+<div class="tab-content" id="tab-toolguard">
+  <div class="grid" id="tg-cards"></div>
+  <div class="section">
+    <h2>Recent Tool Calls</h2>
+    <table><thead><tr><th>Time</th><th>Session</th><th>Tool Name</th><th>Severity</th><th>Category</th><th>Input</th></tr></thead><tbody id="tg-table"></tbody></table>
+    <p class="empty" id="no-tg">No tool calls recorded yet.</p>
+  </div>
+  <div id="tg-detail" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <h2 style="margin:0">Tool Call Detail</h2>
+      <button id="tg-back" style="padding:4px 12px;font-size:12px;cursor:pointer;color:#58a6ff;background:none;border:1px solid #30363d;border-radius:6px">Back</button>
+    </div>
+    <div id="tg-detail-content" class="card" style="font-size:12px"></div>
+  </div>
+</div>
+
 <!-- SETTINGS TAB -->
 <div class="tab-content" id="tab-settings">
   <div class="section">
@@ -457,6 +475,7 @@ document.querySelectorAll('.tab').forEach(t=>{
     if(t.dataset.tab==='dlp')refreshDlp();
     if(t.dataset.tab==='optimizer')refreshOptimizer();
     if(t.dataset.tab==='audit')refreshAudit();
+    if(t.dataset.tab==='toolguard')refreshToolGuard();
     if(t.dataset.tab==='settings')refreshSettings();
   });
 });
@@ -1478,6 +1497,71 @@ function renderParsedAudit(data){
     outEl.innerHTML='<div class="empty">No response content</div>';
   }
 }
+
+// Tool Guard tab
+function severityTag(s){
+  if(!s)return '<span class="tag" style="background:#21262d;color:#484f58">none</span>';
+  const colors={critical:'background:#3d1a1a;color:#f85149',high:'background:#3d2e1a;color:#d29922',medium:'background:#2a2a1a;color:#ffd43b',low:'background:#1a2a3d;color:#58a6ff'};
+  return '<span class="tag" style="'+(colors[s]||'')+'">'+(s||'none')+'</span>';
+}
+
+async function refreshToolGuard(){
+  try{
+    const [statsR,recentR]=await Promise.all([fetch('/api/tool-guard/stats'),fetch('/api/tool-guard/recent?limit=100')]);
+    const stats=await statsR.json();
+    const recent=await recentR.json();
+
+    document.getElementById('tg-cards').innerHTML=
+      card('Total Tool Calls',fmt(stats.total))+
+      card('Flagged',fmt(stats.flagged),'warn')+
+      card('Critical',(stats.bySeverity?.critical||0).toString(),'warn')+
+      card('High',(stats.bySeverity?.high||0).toString(),'warn');
+
+    document.getElementById('no-tg').style.display=recent.length?'none':'';
+    document.getElementById('tg-table').innerHTML=recent.map(e=>{
+      const inputPreview=e.tool_input?(e.tool_input.length>80?esc(e.tool_input.slice(0,80))+'...':esc(e.tool_input)):'';
+      const sid=e.session_id?e.session_id.slice(0,8)+'...':'-';
+      return '<tr style="cursor:pointer" data-tg-idx="'+esc(e.id)+'">'+
+        '<td>'+ago(e.created_at)+'</td>'+
+        '<td class="mono" style="font-size:11px">'+esc(sid)+'</td>'+
+        '<td><strong>'+esc(e.tool_name)+'</strong></td>'+
+        '<td>'+severityTag(e.severity)+'</td>'+
+        '<td>'+(e.category?'<span style="color:#7d8590">'+esc(e.category)+'</span>':'-')+'</td>'+
+        '<td class="mono" style="font-size:11px;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(e.tool_input||'')+'">'+inputPreview+'</td></tr>';
+    }).join('');
+
+    // Click to expand detail
+    document.querySelectorAll('#tg-table tr[data-tg-idx]').forEach(row=>{
+      row.addEventListener('click',()=>{
+        const entry=recent.find(e=>e.id===row.dataset.tgIdx);
+        if(!entry)return;
+        document.querySelector('#tab-toolguard .section').style.display='none';
+        document.getElementById('tg-cards').style.display='none';
+        document.getElementById('tg-detail').style.display='block';
+
+        let inputFormatted=entry.tool_input||'';
+        try{inputFormatted=JSON.stringify(JSON.parse(inputFormatted),null,2)}catch{}
+
+        document.getElementById('tg-detail-content').innerHTML=
+          '<div class="audit-kv"><span class="k">Tool</span><span class="v">'+esc(entry.tool_name)+'</span></div>'+
+          '<div class="audit-kv"><span class="k">Provider</span><span class="v">'+esc(entry.provider||'unknown')+'</span></div>'+
+          '<div class="audit-kv"><span class="k">Severity</span><span class="v">'+severityTag(entry.severity)+'</span></div>'+
+          '<div class="audit-kv"><span class="k">Rule</span><span class="v">'+(entry.rule_name?esc(entry.rule_name)+' ('+esc(entry.rule_id)+')':'<span style="color:#484f58">none</span>')+'</span></div>'+
+          '<div class="audit-kv"><span class="k">Category</span><span class="v">'+(entry.category?esc(entry.category):'-')+'</span></div>'+
+          '<div class="audit-kv"><span class="k">Request ID</span><span class="v">'+esc(entry.request_id)+'</span></div>'+
+          '<div class="audit-kv"><span class="k">Session</span><span class="v">'+esc(entry.session_id||'-')+'</span></div>'+
+          '<div class="audit-kv"><span class="k">Time</span><span class="v">'+esc(entry.created_at)+'</span></div>'+
+          '<div style="margin-top:12px"><div class="label">Input</div><pre class="snippet" style="max-height:400px;overflow:auto">'+esc(inputFormatted)+'</pre></div>';
+      });
+    });
+  }catch(e){console.error('Tool Guard refresh error',e)}
+}
+
+document.getElementById('tg-back').addEventListener('click',()=>{
+  document.getElementById('tg-detail').style.display='none';
+  document.querySelector('#tab-toolguard .section').style.display='';
+  document.getElementById('tg-cards').style.display='';
+});
 
 // Settings tab
 async function refreshSettings(){
