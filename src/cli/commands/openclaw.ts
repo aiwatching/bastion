@@ -15,50 +15,66 @@ const OPENCLAW_DIR = join(paths.bastionDir, 'openclaw');
 const DEFAULT_PORT = 18789;
 const DEFAULT_IMAGE = 'openclaw:local';
 
-/** Proxy bootstrap script content — mounted into Docker containers via NODE_OPTIONS="--import ..." */
+/** Proxy bootstrap script content — mounted into containers / local via NODE_OPTIONS="--import ..." */
 const PROXY_BOOTSTRAP_CONTENT = `// proxy-bootstrap.mjs — forces all Node.js HTTP/HTTPS through the proxy
-// Replace globalThis.fetch with undici.fetch (built-in fetch uses separate internal undici)
-// Set BASTION_PROXY_DEBUG=1 for diagnostic output
+// Uses createRequire for writable CJS refs (ESM namespaces are read-only). No undici dependency.
+// Set BASTION_PROXY_DEBUG=1 for diagnostic output.
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
+const http = require('node:http');
+const https = require('node:https');
+const tls = require('node:tls');
 const proxyUrl = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || process.env.https_proxy || process.env.http_proxy;
 const D = !!process.env.BASTION_PROXY_DEBUG, L = (...a) => D && console.error('[proxy-bootstrap]', ...a);
 if (proxyUrl) {
   L('proxy:', proxyUrl);
   const noProxyList = (process.env.NO_PROXY || process.env.no_proxy || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+  L('no_proxy:', noProxyList.join(', '));
   const shouldBypass = (h) => { h = (h || '').toLowerCase(); return noProxyList.some(np => h === np || h.endsWith('.' + np)); };
-  const getHost = (i) => { try { if (typeof i==='string') return new URL(i).hostname; if (i instanceof URL) return i.hostname; if (i instanceof Request) return new URL(i.url).hostname; } catch {} return null; };
-  const _bf = globalThis.fetch;
+  const proxy = new URL(proxyUrl), pH = proxy.hostname, pP = parseInt(proxy.port, 10) || 80;
   try {
-    const u = await import('undici');
-    let d = null;
-    if (typeof u.EnvHttpProxyAgent === 'function') { d = new u.EnvHttpProxyAgent(); L('EnvHttpProxyAgent'); }
-    else if (typeof u.ProxyAgent === 'function') { d = new u.ProxyAgent(proxyUrl); L('ProxyAgent'); }
-    if (d && typeof u.fetch === 'function') {
-      u.setGlobalDispatcher(d);
-      const _uf = u.fetch;
-      globalThis.fetch = function(i, o) { const h = getHost(i); if (h && shouldBypass(h)) return _bf.call(globalThis, i, o); return _uf.call(globalThis, i, o); };
-      L('fetch patched');
-    }
-  } catch (e) { L('undici failed:', e.message); }
-  try {
-    const http = await import('node:http');
-    const https = await import('node:https');
-    const tls = await import('node:tls');
-    const proxy = new URL(proxyUrl);
-    const pH = proxy.hostname, pP = parseInt(proxy.port, 10) || 80;
     const _cc = https.Agent.prototype.createConnection;
     class T extends https.Agent {
       createConnection(o, cb) {
         const h = o.hostname || o.host || o.servername, p = o.port || 443;
         if (!h || shouldBypass(h)) return _cc.call(this, o, cb);
+        L('tunnel:', h + ':' + p);
         const r = http.request({ hostname: pH, port: pP, method: 'CONNECT', path: h+':'+p, headers: { Host: h+':'+p } });
-        r.on('connect', (res, sock) => { if (res.statusCode !== 200) { sock.destroy(); cb?.(new Error('CONNECT '+h+':'+p+' -> '+res.statusCode)); return; } cb?.(null, tls.connect({ socket: sock, servername: h })); });
+        r.on('connect', (res, sock) => { if (res.statusCode !== 200) { sock.destroy(); cb?.(new Error('CONNECT '+h+':'+p+' failed: '+res.statusCode)); return; } cb?.(null, tls.connect({ socket: sock, servername: h })); });
         r.on('error', e => cb?.(e)); r.end();
       }
     }
     https.globalAgent = new T({ keepAlive: true });
     L('https.globalAgent patched');
-  } catch (e) { L('tunnel failed:', e.message); }
-}
+  } catch (e) { L('WARN: https.globalAgent patch failed:', e.message); }
+  const _origFetch = globalThis.fetch;
+  if (typeof _origFetch === 'function') {
+    globalThis.fetch = async function(input, init) {
+      let url;
+      try { if (typeof input === 'string') url = new URL(input); else if (input instanceof URL) url = new URL(input.href); else if (input instanceof Request) url = new URL(input.url); } catch {}
+      if (!url || url.protocol !== 'https:' || shouldBypass(url.hostname)) return _origFetch.call(globalThis, input, init);
+      L('fetch proxy:', url.hostname + url.pathname);
+      const hdrs = {}; const h = new Headers(init?.headers || (input instanceof Request ? input.headers : undefined)); for (const [k, v] of h) hdrs[k] = v;
+      const method = init?.method || (input instanceof Request ? input.method : 'GET');
+      let body = init?.body; if (body === undefined && input instanceof Request) body = input.body;
+      return new Promise((resolve, reject) => {
+        const req = https.request({ hostname: url.hostname, port: url.port || 443, path: url.pathname + url.search, method, headers: hdrs }, (res) => {
+          const stream = new ReadableStream({ start(ctrl) { res.on('data', c => ctrl.enqueue(new Uint8Array(c))); res.on('end', () => ctrl.close()); res.on('error', e => ctrl.error(e)); } });
+          const rh = new Headers(); for (const [k, v] of Object.entries(res.headers)) { if (v == null) continue; if (Array.isArray(v)) v.forEach(x => rh.append(k, x)); else rh.set(k, v); }
+          resolve(new Response(stream, { status: res.statusCode, statusText: res.statusMessage, headers: rh }));
+        });
+        if (init?.signal) { if (init.signal.aborted) { req.destroy(); reject(new DOMException('The operation was aborted.', 'AbortError')); return; } init.signal.addEventListener('abort', () => { req.destroy(); reject(new DOMException('The operation was aborted.', 'AbortError')); }); }
+        req.on('error', reject);
+        if (body == null) { req.end(); }
+        else if (typeof body === 'string') { req.end(body); }
+        else if (body instanceof Uint8Array || body instanceof ArrayBuffer) { req.end(Buffer.from(body)); }
+        else if (body instanceof ReadableStream) { const reader = body.getReader(); const pump = () => reader.read().then(({done, value}) => { if (done) { req.end(); return; } req.write(value); return pump(); }); pump().catch(e => { req.destroy(e); reject(e); }); }
+        else { req.end(body); }
+      });
+    };
+    L('fetch wrapped');
+  }
+} else { L('no proxy URL found, skipping'); }
 `;
 
 // ── shared helpers ───────────────────────────────────────────────────────────
