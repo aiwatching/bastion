@@ -144,6 +144,28 @@ const MIGRATIONS: string[] = [
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   `,
+
+  // Migration 8: Tool Guard — tool_calls table for audit
+  `
+  CREATE TABLE IF NOT EXISTS tool_calls (
+    id TEXT PRIMARY KEY,
+    request_id TEXT NOT NULL,
+    tool_name TEXT NOT NULL,
+    tool_input TEXT,
+    rule_id TEXT,
+    rule_name TEXT,
+    severity TEXT,
+    category TEXT,
+    provider TEXT,
+    session_id TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_tool_calls_request ON tool_calls(request_id);
+  CREATE INDEX IF NOT EXISTS idx_tool_calls_session ON tool_calls(session_id);
+  CREATE INDEX IF NOT EXISTS idx_tool_calls_severity ON tool_calls(severity);
+  CREATE INDEX IF NOT EXISTS idx_tool_calls_created ON tool_calls(created_at);
+  `,
 ];
 
 export function runMigrations(db: Database.Database): void {

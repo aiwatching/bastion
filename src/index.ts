@@ -8,6 +8,7 @@ import { createMetricsCollectorPlugin } from './plugins/builtin/metrics-collecto
 import { createDlpScannerPlugin } from './plugins/builtin/dlp-scanner.js';
 import { createTokenOptimizerPlugin } from './plugins/builtin/token-optimizer.js';
 import { createAuditLoggerPlugin } from './plugins/builtin/audit-logger.js';
+import { createToolGuardPlugin } from './plugins/builtin/tool-guard.js';
 import { registerAnthropicProvider } from './proxy/providers/anthropic.js';
 import { registerOpenAIProvider } from './proxy/providers/openai.js';
 import { registerGeminiProvider } from './proxy/providers/gemini.js';
@@ -78,6 +79,11 @@ export async function startGateway(): Promise<void> {
     summaryMaxBytes: config.plugins.audit?.summaryMaxBytes ?? 1024,
   }));
   if (!config.plugins.audit?.enabled) pluginManager.disable('audit-logger');
+
+  pluginManager.register(createToolGuardPlugin(db, {
+    enabled: config.plugins.toolGuard?.enabled ?? true,
+  }));
+  if (!config.plugins.toolGuard?.enabled) pluginManager.disable('tool-guard');
 
   // Create and start server
   const server = createProxyServer(config, pluginManager, () => {
