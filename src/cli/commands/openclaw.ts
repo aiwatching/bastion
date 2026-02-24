@@ -15,6 +15,38 @@ const OPENCLAW_DIR = join(paths.bastionDir, 'openclaw');
 const DEFAULT_PORT = 18789;
 const DEFAULT_IMAGE = 'openclaw:local';
 
+/** Proxy bootstrap script content — mounted into Docker containers via NODE_OPTIONS="--import ..." */
+const PROXY_BOOTSTRAP_CONTENT = `// proxy-bootstrap.mjs — forces all Node.js HTTP/HTTPS traffic through the proxy
+const proxyUrl = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || process.env.https_proxy || process.env.http_proxy;
+if (proxyUrl) {
+  const noProxyList = (process.env.NO_PROXY || process.env.no_proxy || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+  const shouldBypass = (h) => { h = (h || '').toLowerCase(); return noProxyList.some(np => h === np || h.endsWith('.' + np)); };
+  try {
+    const { EnvHttpProxyAgent, ProxyAgent, setGlobalDispatcher } = await import('undici');
+    if (typeof EnvHttpProxyAgent === 'function') setGlobalDispatcher(new EnvHttpProxyAgent());
+    else if (typeof ProxyAgent === 'function') setGlobalDispatcher(new ProxyAgent(proxyUrl));
+  } catch {}
+  try {
+    const http = await import('node:http');
+    const https = await import('node:https');
+    const tls = await import('node:tls');
+    const proxy = new URL(proxyUrl);
+    const pH = proxy.hostname, pP = parseInt(proxy.port, 10) || 80;
+    const _cc = https.Agent.prototype.createConnection;
+    class T extends https.Agent {
+      createConnection(o, cb) {
+        const h = o.hostname || o.host || o.servername, p = o.port || 443;
+        if (!h || shouldBypass(h)) return _cc.call(this, o, cb);
+        const r = http.request({ hostname: pH, port: pP, method: 'CONNECT', path: h+':'+p, headers: { Host: h+':'+p } });
+        r.on('connect', (res, sock) => { if (res.statusCode !== 200) { sock.destroy(); cb?.(new Error('CONNECT '+h+':'+p+' -> '+res.statusCode)); return; } cb?.(null, tls.connect({ socket: sock, servername: h })); });
+        r.on('error', e => cb?.(e)); r.end();
+      }
+    }
+    https.globalAgent = new T({ keepAlive: true });
+  } catch {}
+}
+`;
+
 // ── shared helpers ───────────────────────────────────────────────────────────
 
 function generateToken(): string {
@@ -97,6 +129,7 @@ function generateComposeFile(caPath: string, image: string): string {
       HTTPS_PROXY: "http://openclaw-gw@host.docker.internal:\${BASTION_PORT:-8420}"
       NODE_EXTRA_CA_CERTS: "/etc/ssl/certs/bastion-ca.crt"
       NO_PROXY: "localhost,127.0.0.1,host.docker.internal"
+      NODE_OPTIONS: "--import /opt/bastion/proxy-bootstrap.mjs"
       # LLM SDK direct base URLs (some SDKs ignore HTTPS_PROXY)
       ANTHROPIC_BASE_URL: "http://host.docker.internal:\${BASTION_PORT:-8420}"
       OPENAI_BASE_URL: "http://host.docker.internal:\${BASTION_PORT:-8420}"
@@ -105,6 +138,7 @@ function generateComposeFile(caPath: string, image: string): string {
       - \${OPENCLAW_CONFIG_DIR}:/home/node/.openclaw
       - \${OPENCLAW_WORKSPACE_DIR}:/home/node/.openclaw/workspace
       - ${caPath}:/etc/ssl/certs/bastion-ca.crt:ro
+      - ./proxy-bootstrap.mjs:/opt/bastion/proxy-bootstrap.mjs:ro
     ports:
       - "\${OPENCLAW_GATEWAY_PORT:-18789}:18789"
       - "\${OPENCLAW_BRIDGE_PORT:-18790}:18790"
@@ -130,6 +164,7 @@ function generateComposeFile(caPath: string, image: string): string {
       HTTPS_PROXY: "http://openclaw-cli@host.docker.internal:\${BASTION_PORT:-8420}"
       NODE_EXTRA_CA_CERTS: "/etc/ssl/certs/bastion-ca.crt"
       NO_PROXY: "localhost,127.0.0.1,host.docker.internal"
+      NODE_OPTIONS: "--import /opt/bastion/proxy-bootstrap.mjs"
       # LLM SDK direct base URLs
       ANTHROPIC_BASE_URL: "http://host.docker.internal:\${BASTION_PORT:-8420}"
       OPENAI_BASE_URL: "http://host.docker.internal:\${BASTION_PORT:-8420}"
@@ -138,6 +173,7 @@ function generateComposeFile(caPath: string, image: string): string {
       - \${OPENCLAW_CONFIG_DIR}:/home/node/.openclaw
       - \${OPENCLAW_WORKSPACE_DIR}:/home/node/.openclaw/workspace
       - ${caPath}:/etc/ssl/certs/bastion-ca.crt:ro
+      - ./proxy-bootstrap.mjs:/opt/bastion/proxy-bootstrap.mjs:ro
     stdin_open: true
     tty: true
     init: true
@@ -421,9 +457,15 @@ export function registerOpenclawCommand(program: Command): void {
       const bridgePort = port + 1;
       const dir = instanceDir(name);
 
-      // If instance already exists, just docker compose up
+      // If instance already exists, update compose + bootstrap and start
       if (existsSync(dir)) {
         console.log(`Instance '${name}' exists, starting...`);
+
+        // Ensure proxy bootstrap and compose template are up-to-date
+        writeFileSync(join(dir, 'proxy-bootstrap.mjs'), PROXY_BOOTSTRAP_CONTENT, 'utf-8');
+        const composeContent = generateComposeFile(caPath, options.image);
+        writeFileSync(join(dir, 'docker-compose.yml'), composeContent, 'utf-8');
+
         syncToken(name);
         fixBind(name);
         const code = await dc(name, ['up', '-d', 'openclaw-gateway']);
@@ -465,6 +507,7 @@ export function registerOpenclawCommand(program: Command): void {
 
       const composeContent = generateComposeFile(caPath, options.image);
       writeFileSync(join(dir, 'docker-compose.yml'), composeContent, 'utf-8');
+      writeFileSync(join(dir, 'proxy-bootstrap.mjs'), PROXY_BOOTSTRAP_CONTENT, 'utf-8');
 
       console.log(`==> Instance '${name}' created (gateway: ${port}, bridge: ${bridgePort})`);
 
