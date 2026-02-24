@@ -3,17 +3,11 @@
 //
 // Usage: NODE_OPTIONS="--import /opt/bastion/proxy-bootstrap.mjs"
 //
-// Three layers:
-//   1. Replace globalThis.fetch with undici.fetch + ProxyAgent
-//   1b. Wrap globalThis.fetch with URL rewriting (fallback if undici unavailable)
+// Two layers:
+//   1. Replace globalThis.fetch with undici.fetch + ProxyAgent (CONNECT tunnel)
 //   2. Patch https.globalAgent — covers https.request(), node-fetch, axios, got
 //
-// Why replacing fetch is needed:
-//   Node.js built-in fetch() uses an INTERNAL undici copy.
-//   import('undici') resolves to node_modules — a DIFFERENT copy.
-//   setGlobalDispatcher() on node_modules undici does NOT affect the built-in fetch.
-//   The fix: replace globalThis.fetch with undici.fetch from node_modules,
-//   which DOES respect our dispatcher.
+// Set BASTION_PROXY_DEBUG=1 to see diagnostic output.
 
 const proxyUrl =
   process.env.HTTPS_PROXY ||
@@ -21,19 +15,24 @@ const proxyUrl =
   process.env.https_proxy ||
   process.env.http_proxy;
 
+const DEBUG = !!process.env.BASTION_PROXY_DEBUG;
+const log = (...args) => DEBUG && console.error('[proxy-bootstrap]', ...args);
+
 if (proxyUrl) {
+  log('proxy:', proxyUrl);
+
   const noProxyList = (process.env.NO_PROXY || process.env.no_proxy || '')
     .split(',')
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
 
-  /** Returns true if the hostname should bypass the proxy. */
+  log('no_proxy:', noProxyList.join(', '));
+
   const shouldBypass = (hostname) => {
     const h = (hostname || '').toLowerCase();
     return noProxyList.some((np) => h === np || h.endsWith('.' + np));
   };
 
-  /** Extract hostname from a fetch input. */
   const getHostname = (input) => {
     try {
       if (typeof input === 'string') return new URL(input).hostname;
@@ -46,72 +45,54 @@ if (proxyUrl) {
   const _builtinFetch = globalThis.fetch;
 
   // ── Layer 1: Replace fetch() with undici.fetch + ProxyAgent ─────────────
-  let fetchPatched = false;
+  // Why replacement is needed:
+  //   Node.js built-in fetch() uses an INTERNAL undici copy.
+  //   import('undici') from node_modules gives a DIFFERENT copy.
+  //   setGlobalDispatcher() on node_modules undici does NOT affect built-in fetch.
+  //   Fix: replace globalThis.fetch with undici.fetch which respects our dispatcher.
   try {
     const undici = await import('undici');
+    log('undici imported, exports:', Object.keys(undici).filter(k =>
+      ['EnvHttpProxyAgent', 'ProxyAgent', 'fetch', 'setGlobalDispatcher'].includes(k)
+    ).join(', '));
+
+    let dispatcher = null;
 
     if (typeof undici.EnvHttpProxyAgent === 'function') {
-      // Node 20.10+ — reads HTTP_PROXY / HTTPS_PROXY / NO_PROXY automatically
-      undici.setGlobalDispatcher(new undici.EnvHttpProxyAgent());
-      globalThis.fetch = undici.fetch;
-      fetchPatched = true;
-    } else if (
-      typeof undici.ProxyAgent === 'function' &&
-      typeof undici.fetch === 'function'
-    ) {
-      // Older undici — manual NO_PROXY check
-      undici.setGlobalDispatcher(new undici.ProxyAgent(proxyUrl));
+      dispatcher = new undici.EnvHttpProxyAgent();
+      log('using EnvHttpProxyAgent (auto NO_PROXY)');
+    } else if (typeof undici.ProxyAgent === 'function') {
+      dispatcher = new undici.ProxyAgent(proxyUrl);
+      log('using ProxyAgent (manual NO_PROXY)');
+    } else {
+      log('WARN: no ProxyAgent available in undici');
+    }
+
+    if (dispatcher && typeof undici.fetch === 'function') {
+      undici.setGlobalDispatcher(dispatcher);
       const _uf = undici.fetch;
+
+      // Wrap with NO_PROXY check (EnvHttpProxyAgent handles it, but be safe)
       globalThis.fetch = function (input, init) {
         const host = getHostname(input);
         if (host && shouldBypass(host)) {
+          log('fetch bypass:', host);
           return _builtinFetch.call(globalThis, input, init);
         }
+        log('fetch proxy:', host);
         return _uf.call(globalThis, input, init);
       };
-      fetchPatched = true;
+      log('fetch patched OK');
+    } else {
+      log('WARN: could not patch fetch (dispatcher:', !!dispatcher, ', undici.fetch:', typeof undici.fetch, ')');
     }
-  } catch {
-    // undici not resolvable — fall through to Layer 1b
-  }
-
-  // ── Layer 1b: Wrap fetch() with URL rewriting (fallback) ────────────────
-  // Rewrites https:// URLs to http://proxy:port/ so Bastion routes by path.
-  // Only used when undici is not available in node_modules.
-  if (!fetchPatched && typeof _builtinFetch === 'function') {
-    const proxy = new URL(proxyUrl);
-    const proxyBase = `http://${proxy.hostname}:${proxy.port || 80}`;
-
-    globalThis.fetch = function (input, init) {
-      try {
-        let url;
-        if (typeof input === 'string') url = new URL(input);
-        else if (input instanceof URL) url = new URL(input.href);
-        else if (input instanceof Request) url = new URL(input.url);
-
-        if (url && url.protocol === 'https:' && !shouldBypass(url.hostname)) {
-          const rewritten = `${proxyBase}${url.pathname}${url.search}`;
-          const h = new Headers(
-            init?.headers ||
-              (input instanceof Request ? input.headers : undefined),
-          );
-          h.set('X-Forwarded-Host', url.host);
-          h.set('X-Forwarded-Proto', 'https');
-          const mergedInit = { ...init, headers: h };
-          if (input instanceof Request) {
-            if (!mergedInit.method) mergedInit.method = input.method;
-            if (mergedInit.body === undefined) mergedInit.body = input.body;
-          }
-          return _builtinFetch.call(globalThis, rewritten, mergedInit);
-        }
-      } catch {
-        // Fall through to original on any error
-      }
-      return _builtinFetch.call(globalThis, input, init);
-    };
+  } catch (e) {
+    log('WARN: undici layer failed:', e.message);
+    // fetch remains unpatched — BASE_URL env vars are the fallback
   }
 
   // ── Layer 2: Patch https.globalAgent (CONNECT tunnel) ──────────────────
+  // Covers: https.request(), https.get(), node-fetch, axios, got, etc.
   try {
     const http = await import('node:http');
     const https = await import('node:https');
@@ -132,6 +113,8 @@ if (proxyUrl) {
           return _origCreateConn.call(this, options, oncreate);
         }
 
+        log('tunnel:', host + ':' + port);
+
         const req = http.request({
           hostname: proxyHost,
           port: proxyPort,
@@ -150,7 +133,6 @@ if (proxyUrl) {
             );
             return;
           }
-          // NODE_EXTRA_CA_CERTS ensures Bastion's MITM cert is trusted
           oncreate?.(null, tls.connect({ socket, servername: host }));
         });
 
@@ -160,7 +142,10 @@ if (proxyUrl) {
     }
 
     https.globalAgent = new TunnelAgent({ keepAlive: true });
-  } catch {
-    // If this fails, only fetch-based traffic will be proxied.
+    log('https.globalAgent patched OK');
+  } catch (e) {
+    log('WARN: https.globalAgent patch failed:', e.message);
   }
+} else {
+  log('no proxy URL found, skipping');
 }
