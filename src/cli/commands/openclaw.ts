@@ -467,10 +467,16 @@ export function registerOpenclawCommand(program: Command): void {
       if (existsSync(dir)) {
         console.log(`Instance '${name}' exists, starting...`);
 
-        // Ensure proxy bootstrap and compose template are up-to-date
+        // Ensure proxy bootstrap exists (always update, it's idempotent)
         writeFileSync(join(dir, 'proxy-bootstrap.mjs'), PROXY_BOOTSTRAP_CONTENT, 'utf-8');
-        const composeContent = generateComposeFile(caPath, options.image);
-        writeFileSync(join(dir, 'docker-compose.yml'), composeContent, 'utf-8');
+
+        // Only regenerate compose if it lacks bootstrap config (preserve user edits)
+        const existingCompose = readFileSync(join(dir, 'docker-compose.yml'), 'utf-8');
+        if (!existingCompose.includes('proxy-bootstrap.mjs')) {
+          const composeContent = generateComposeFile(caPath, options.image);
+          writeFileSync(join(dir, 'docker-compose.yml'), composeContent, 'utf-8');
+          console.log('    (updated docker-compose.yml with proxy bootstrap)');
+        }
 
         syncToken(name);
         fixBind(name);
@@ -826,12 +832,17 @@ export function registerOpenclawCommand(program: Command): void {
       mkdirSync(configDir, { recursive: true });
       mkdirSync(workspaceDir, { recursive: true });
 
+      // Ensure proxy bootstrap script exists
+      const bootstrapPath = join(paths.bastionDir, 'proxy-bootstrap.mjs');
+      writeFileSync(bootstrapPath, PROXY_BOOTSTRAP_CONTENT, 'utf-8');
+
       // Build env with Bastion proxy
       const env: Record<string, string | undefined> = {
         ...process.env,
         HTTPS_PROXY: `http://openclaw-local-${name}@${bastionHost}:${bastionPort}`,
         NODE_EXTRA_CA_CERTS: caPath,
         NO_PROXY: `${bastionHost},localhost,127.0.0.1`,
+        NODE_OPTIONS: `--import ${bootstrapPath}`,
         HOME: homedir(),
       };
 
