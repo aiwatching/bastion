@@ -12,6 +12,10 @@ services:
       HTTPS_PROXY: "http://openclaw-gw@host.docker.internal:${BASTION_PORT:-8420}"
       NODE_EXTRA_CA_CERTS: "/etc/ssl/certs/bastion-ca.crt"
       NO_PROXY: "localhost,127.0.0.1,host.docker.internal"
+      # LLM SDK direct base URLs (some SDKs ignore HTTPS_PROXY)
+      ANTHROPIC_BASE_URL: "http://host.docker.internal:${BASTION_PORT:-8420}"
+      OPENAI_BASE_URL: "http://host.docker.internal:${BASTION_PORT:-8420}"
+      GOOGLE_AI_BASE_URL: "http://host.docker.internal:${BASTION_PORT:-8420}"
     volumes:
       - ${OPENCLAW_CONFIG_DIR}:/home/node/.openclaw
       - ${OPENCLAW_WORKSPACE_DIR}:/home/node/.openclaw/workspace
@@ -41,6 +45,10 @@ services:
       HTTPS_PROXY: "http://openclaw-cli@host.docker.internal:${BASTION_PORT:-8420}"
       NODE_EXTRA_CA_CERTS: "/etc/ssl/certs/bastion-ca.crt"
       NO_PROXY: "localhost,127.0.0.1,host.docker.internal"
+      # LLM SDK direct base URLs
+      ANTHROPIC_BASE_URL: "http://host.docker.internal:${BASTION_PORT:-8420}"
+      OPENAI_BASE_URL: "http://host.docker.internal:${BASTION_PORT:-8420}"
+      GOOGLE_AI_BASE_URL: "http://host.docker.internal:${BASTION_PORT:-8420}"
     volumes:
       - ${OPENCLAW_CONFIG_DIR}:/home/node/.openclaw
       - ${OPENCLAW_WORKSPACE_DIR}:/home/node/.openclaw/workspace
