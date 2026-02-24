@@ -1,7 +1,7 @@
 export interface ExtractedToolCall {
   toolName: string;
   toolInput: Record<string, unknown> | string;
-  provider: 'anthropic' | 'openai' | 'unknown';
+  provider: 'anthropic' | 'openai' | 'gemini' | 'unknown';
 }
 
 // ---------- Buffered JSON extraction ----------
@@ -46,6 +46,28 @@ function extractOpenAIJSON(body: Record<string, unknown>): ExtractedToolCall[] {
   return results;
 }
 
+function extractGeminiJSON(body: Record<string, unknown>): ExtractedToolCall[] {
+  const candidates = body.candidates;
+  if (!Array.isArray(candidates)) return [];
+  const results: ExtractedToolCall[] = [];
+  for (const candidate of candidates) {
+    const content = (candidate as Record<string, unknown>).content as Record<string, unknown> | undefined;
+    if (!content) continue;
+    const parts = content.parts;
+    if (!Array.isArray(parts)) continue;
+    for (const part of parts) {
+      const fc = (part as Record<string, unknown>).functionCall as Record<string, unknown> | undefined;
+      if (!fc) continue;
+      results.push({
+        toolName: (fc.name as string) ?? 'unknown',
+        toolInput: (fc.args as Record<string, unknown>) ?? {},
+        provider: 'gemini' as const,
+      });
+    }
+  }
+  return results;
+}
+
 export function extractToolCallsFromJSON(body: string): ExtractedToolCall[] {
   try {
     const parsed = JSON.parse(body) as Record<string, unknown>;
@@ -59,6 +81,12 @@ export function extractToolCallsFromJSON(body: string): ExtractedToolCall[] {
     // OpenAI format: choices[].message.tool_calls[]
     if (Array.isArray(parsed.choices)) {
       const results = extractOpenAIJSON(parsed);
+      if (results.length > 0) return results;
+    }
+
+    // Gemini format: candidates[].content.parts[].functionCall
+    if (Array.isArray(parsed.candidates)) {
+      const results = extractGeminiJSON(parsed);
       if (results.length > 0) return results;
     }
 
@@ -160,6 +188,16 @@ function extractOpenAISSE(events: Record<string, unknown>[]): ExtractedToolCall[
   return results;
 }
 
+function extractGeminiSSE(events: Record<string, unknown>[]): ExtractedToolCall[] {
+  // Each Gemini SSE event has the same candidates[] structure as the JSON response
+  const results: ExtractedToolCall[] = [];
+  for (const d of events) {
+    const extracted = extractGeminiJSON(d);
+    results.push(...extracted);
+  }
+  return results;
+}
+
 export function extractToolCallsFromSSE(body: string): ExtractedToolCall[] {
   const events = parseSSEEvents(body);
   if (events.length === 0) return [];
@@ -170,6 +208,9 @@ export function extractToolCallsFromSSE(body: string): ExtractedToolCall[] {
 
   const hasOpenAIEvents = events.some(e => Array.isArray((e as Record<string, unknown>).choices));
   if (hasOpenAIEvents) return extractOpenAISSE(events);
+
+  const hasGeminiEvents = events.some(e => Array.isArray((e as Record<string, unknown>).candidates));
+  if (hasGeminiEvents) return extractGeminiSSE(events);
 
   return [];
 }
