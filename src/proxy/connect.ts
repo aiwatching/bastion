@@ -7,12 +7,12 @@ import type { BastionConfig } from '../config/schema.js';
 import { ensureCA, getHostCert, getCACertPath } from './certs.js';
 import { resolveRoute, sendError } from './router.js';
 import { forwardRequest } from './forwarder.js';
+import type { ProviderConfig } from './providers/index.js';
 import { isMessagingProvider } from './providers/classify.js';
 import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('connect');
 
-// API domains to MITM intercept — only these get decrypted
 // API domains to MITM intercept — only these get decrypted
 // LLM providers + messaging platforms (for OpenClaw integration)
 const INTERCEPT_HOSTS = new Set([
@@ -21,6 +21,7 @@ const INTERCEPT_HOSTS = new Set([
   'api.openai.com',
   'generativelanguage.googleapis.com',
   'claude.ai',
+  'chatgpt.com',              // ChatGPT Web (OpenAI OAuth mode)
   // Messaging platforms
   'api.telegram.org',
   'discord.com',
@@ -194,6 +195,33 @@ function handleMITM(
  * Create a request handler for MITM-intercepted connections.
  * Knows the target hostname, so non-provider paths are forwarded directly.
  */
+/**
+ * Create a fallback ProviderConfig for intercepted hosts where no
+ * registered provider prefix matches. Ensures all POST traffic from
+ * MITM'd hosts still flows through the plugin pipeline (DLP, audit).
+ */
+function createFallbackProvider(hostname: string): ProviderConfig {
+  return {
+    name: hostname.replace(/\./g, '-'),
+    baseUrl: `https://${hostname}`,
+    authHeader: '',
+    transformHeaders(headers: Record<string, string>): Record<string, string> {
+      const result: Record<string, string> = {};
+      for (const [key, value] of Object.entries(headers)) {
+        const lower = key.toLowerCase();
+        if (lower !== 'host' && lower !== 'connection' && lower !== 'transfer-encoding') {
+          result[key] = value;
+        }
+      }
+      return result;
+    },
+    extractModel(): string { return hostname; },
+    extractUsage(): { inputTokens: number; outputTokens: number } {
+      return { inputTokens: 0, outputTokens: 0 };
+    },
+  };
+}
+
 function createMITMRequestHandler(
   hostname: string,
   config: BastionConfig,
@@ -209,12 +237,17 @@ function createMITMRequestHandler(
     // Try to match a known provider route
     const route = resolveRoute(req);
 
-    if (route && req.method === 'POST') {
-      // Known API endpoint — run through plugin pipeline
+    if (req.method === 'POST') {
+      // POST requests always go through plugin pipeline (DLP, audit)
+      const provider = route?.provider ?? createFallbackProvider(hostname);
+      const upstreamUrl = route
+        ? route.upstreamUrl
+        : `https://${hostname}${req.url ?? '/'}`;
+
       try {
         await forwardRequest(req, res, {
-          provider: route.provider,
-          upstreamUrl: route.upstreamUrl,
+          provider,
+          upstreamUrl,
           upstreamTimeout: config.timeouts.upstream,
           pluginManager,
           sessionId,
@@ -227,7 +260,7 @@ function createMITMRequestHandler(
         }
       }
     } else {
-      // Not a known provider path — forward directly to the real host
+      // GET/OPTIONS/etc — forward directly (health checks, model listing, etc.)
       directForward(req, res, hostname, config.timeouts.upstream);
     }
   };
