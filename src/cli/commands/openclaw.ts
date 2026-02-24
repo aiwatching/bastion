@@ -17,15 +17,37 @@ const DEFAULT_IMAGE = 'openclaw:local';
 
 /** Proxy bootstrap script content — mounted into Docker containers via NODE_OPTIONS="--import ..." */
 const PROXY_BOOTSTRAP_CONTENT = `// proxy-bootstrap.mjs — forces all Node.js HTTP/HTTPS traffic through the proxy
+// Key insight: Node.js built-in fetch uses an INTERNAL undici copy.
+// import('undici') from node_modules is a DIFFERENT copy.
+// setGlobalDispatcher on node_modules undici does NOT affect built-in fetch.
+// Fix: replace globalThis.fetch with undici.fetch from node_modules.
 const proxyUrl = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || process.env.https_proxy || process.env.http_proxy;
 if (proxyUrl) {
   const noProxyList = (process.env.NO_PROXY || process.env.no_proxy || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
   const shouldBypass = (h) => { h = (h || '').toLowerCase(); return noProxyList.some(np => h === np || h.endsWith('.' + np)); };
+  const getHost = (i) => { try { if (typeof i==='string') return new URL(i).hostname; if (i instanceof URL) return i.hostname; if (i instanceof Request) return new URL(i.url).hostname; } catch {} return null; };
+  const _bf = globalThis.fetch;
+  let fp = false;
   try {
-    const { EnvHttpProxyAgent, ProxyAgent, setGlobalDispatcher } = await import('undici');
-    if (typeof EnvHttpProxyAgent === 'function') setGlobalDispatcher(new EnvHttpProxyAgent());
-    else if (typeof ProxyAgent === 'function') setGlobalDispatcher(new ProxyAgent(proxyUrl));
+    const u = await import('undici');
+    if (typeof u.EnvHttpProxyAgent === 'function') {
+      u.setGlobalDispatcher(new u.EnvHttpProxyAgent());
+      globalThis.fetch = u.fetch; fp = true;
+    } else if (typeof u.ProxyAgent === 'function' && typeof u.fetch === 'function') {
+      u.setGlobalDispatcher(new u.ProxyAgent(proxyUrl));
+      const _uf = u.fetch;
+      globalThis.fetch = function(i, o) { const h = getHost(i); if (h && shouldBypass(h)) return _bf.call(globalThis, i, o); return _uf.call(globalThis, i, o); };
+      fp = true;
+    }
   } catch {}
+  if (!fp && typeof _bf === 'function') {
+    const px = new URL(proxyUrl), base = 'http://'+px.hostname+':'+(px.port||80);
+    globalThis.fetch = function(i, o) {
+      try { let url; if (typeof i==='string') url=new URL(i); else if (i instanceof URL) url=new URL(i.href); else if (i instanceof Request) url=new URL(i.url);
+        if (url && url.protocol==='https:' && !shouldBypass(url.hostname)) { const rw=base+url.pathname+url.search; const h=new Headers(o?.headers||(i instanceof Request?i.headers:undefined)); h.set('X-Forwarded-Host',url.host); h.set('X-Forwarded-Proto','https'); const mi={...o,headers:h}; if(i instanceof Request){if(!mi.method)mi.method=i.method;if(mi.body===undefined)mi.body=i.body;} return _bf.call(globalThis,rw,mi); }
+      } catch {} return _bf.call(globalThis, i, o);
+    };
+  }
   try {
     const http = await import('node:http');
     const https = await import('node:https');
