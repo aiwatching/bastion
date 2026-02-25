@@ -90,6 +90,7 @@ export async function startGateway(): Promise<void> {
   pluginManager.register(createToolGuardPlugin(db, {
     enabled: config.plugins.toolGuard?.enabled ?? true,
     action: config.plugins.toolGuard?.action ?? 'audit',
+    recordAll: config.plugins.toolGuard?.recordAll ?? true,
     blockMinSeverity: config.plugins.toolGuard?.blockMinSeverity ?? 'critical',
     alertMinSeverity: config.plugins.toolGuard?.alertMinSeverity ?? 'high',
     alertDesktop: config.plugins.toolGuard?.alertDesktop ?? true,
@@ -98,6 +99,7 @@ export async function startGateway(): Promise<void> {
       const tg = configManager.get().plugins.toolGuard;
       return {
         action: tg?.action ?? 'audit',
+        recordAll: tg?.recordAll ?? true,
         blockMinSeverity: tg?.blockMinSeverity ?? 'critical',
         alertMinSeverity: tg?.alertMinSeverity ?? 'high',
       };

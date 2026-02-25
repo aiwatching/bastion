@@ -20,7 +20,7 @@ export function createAuditLoggerPlugin(db: Database.Database, config: AuditLogg
 
   return {
     name: 'audit-logger',
-    priority: 5,
+    priority: 25,
 
     async onRequest(context: RequestContext): Promise<PluginRequestResult | void> {
       // Capture request body for later storage
@@ -38,8 +38,9 @@ export function createAuditLoggerPlugin(db: Database.Database, config: AuditLogg
         // Avoid duplicates — DLP auto-audit may have already stored this request
         if (auditRepo.hasEntry(context.request.id)) return;
 
-        // Read DLP flag set by upstream dlp-scanner plugin during onRequest/onResponse
+        // Read flags set by upstream plugins during onRequest/onResponse/onResponseComplete
         const dlpHit = Boolean(context.request.dlpHit);
+        const toolGuardHit = Boolean(context.request.toolGuardHit);
 
         auditRepo.insert({
           id: crypto.randomUUID(),
@@ -47,6 +48,7 @@ export function createAuditLoggerPlugin(db: Database.Database, config: AuditLogg
           requestBody,
           responseBody: context.body,
           dlpHit,
+          toolGuardHit,
           rawData: config.rawData,
           rawMaxBytes: config.rawMaxBytes,
           summaryMaxBytes: config.summaryMaxBytes,

@@ -128,6 +128,7 @@ describe('Integration: Tool Guard Pipeline', () => {
     pluginManager.register(createToolGuardPlugin(db, {
       enabled: true,
       action: 'block',
+      recordAll: true,
       blockMinSeverity: 'critical',
       alertMinSeverity: 'high',
       alertDesktop: false,
@@ -211,13 +212,14 @@ describe('Integration: Tool Guard Pipeline', () => {
     expect(body.content[1].name).toBe('read_file');
   });
 
-  it('records safe tool calls in DB (no severity)', async () => {
+  it('records safe tool calls with info severity (recordAll=true)', async () => {
     await new Promise((r) => setTimeout(r, 100));
     const toolCallsRepo = new ToolCallsRepository(db);
     const recent = toolCallsRepo.getRecent(10);
     const safe = recent.find(tc => tc.tool_name === 'read_file');
     expect(safe).toBeDefined();
-    expect(safe!.severity).toBeNull();
+    expect(safe!.severity).toBe('info');
+    expect(safe!.action).toBe('pass');
   });
 
   // ── Rules API tests ──

@@ -19,12 +19,13 @@ const log = createLogger('tool-guard');
 export interface ToolGuardConfig {
   enabled: boolean;
   action: 'audit' | 'block';
+  recordAll: boolean;
   blockMinSeverity: string;
   alertMinSeverity: string;
   alertDesktop: boolean;
   alertWebhookUrl: string;
   /** Live getter — when provided, overrides static fields for hot-reload */
-  getLiveConfig?: () => { action: string; blockMinSeverity: string; alertMinSeverity: string };
+  getLiveConfig?: () => { action: string; recordAll: boolean; blockMinSeverity: string; alertMinSeverity: string };
 }
 
 interface MatchedToolCall {
@@ -49,6 +50,7 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
 
   // Live config readers — support hot-reload from Dashboard
   const getAction = () => config.getLiveConfig ? config.getLiveConfig().action : config.action;
+  const getRecordAll = () => config.getLiveConfig ? config.getLiveConfig().recordAll : config.recordAll;
   const getBlockMinSeverity = () => config.getLiveConfig ? config.getLiveConfig().blockMinSeverity : config.blockMinSeverity;
   const getAlertMinSeverity = () => config.getLiveConfig ? config.getLiveConfig().alertMinSeverity : config.alertMinSeverity;
 
@@ -80,8 +82,11 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
     requestId: string,
     sessionId?: string,
   ): number {
+    const recordAll = getRecordAll() !== false;
     let flaggedCount = 0;
     for (const { tc, ruleMatch } of matches) {
+      if (!ruleMatch && !recordAll) continue;
+
       const inputStr = typeof tc.toolInput === 'string'
         ? tc.toolInput
         : JSON.stringify(tc.toolInput);
@@ -95,7 +100,7 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
         tool_input: inputStr,
         rule_id: ruleMatch?.rule.id ?? null,
         rule_name: ruleMatch?.rule.name ?? null,
-        severity: ruleMatch?.rule.severity ?? null,
+        severity: ruleMatch?.rule.severity ?? 'info',
         category: ruleMatch?.rule.category ?? null,
         action: actionResult,
         provider: tc.provider,
@@ -127,6 +132,7 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
     async onRequest(context: RequestContext): Promise<PluginRequestResult | void> {
       const rules = rulesRepo.getEnabled();
       context._toolGuardRules = rules;
+      log.debug('onRequest', { action: getAction(), recordAll: getRecordAll(), isStreaming: context.isStreaming });
       if (getAction() === 'block' && context.isStreaming) {
         context._toolGuardStreamBlock = getBlockMinSeverity();
       }
@@ -134,7 +140,9 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
 
     // ── Pre-send: block dangerous tool calls in non-streaming responses ──
     async onResponse(context: ResponseInterceptContext): Promise<PluginResponseResult | void> {
-      if (getAction() !== 'block') return;
+      const currentAction = getAction();
+      log.debug('onResponse action check', { action: currentAction, isStreaming: context.isStreaming });
+      if (currentAction !== 'block') return;
       if (context.isStreaming) return; // streaming handled in onResponseComplete (post-send audit only)
 
       const rules = context.request._toolGuardRules ?? rulesRepo.getEnabled();

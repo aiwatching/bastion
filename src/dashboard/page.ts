@@ -43,6 +43,7 @@ tr:hover{background:#1c2128}
 .tag.cached{background:#0d2818;color:#3fb950}
 .tag.blocked{background:#3d1a1a;color:#f85149}
 .tag.dlp{background:#3d1a3d;color:#f0a0f0}
+.tag.tg{background:#3d2e1a;color:#d29922}
 .tag.warn{background:#3d2e1a;color:#d29922}
 .tag.redact{background:#2a1f3d;color:#b388ff}
 .mono{font-family:"SF Mono",Monaco,monospace;font-size:12px}
@@ -459,6 +460,8 @@ tr:hover{background:#1c2128}
       <option value="medium">Medium</option>
       <option value="low">Low</option>
     </select>
+    <div style="font-size:13px;color:#e1e4e8;font-weight:500;margin-left:16px">Record All</div>
+    <label class="switch" style="transform:scale(0.8)"><input type="checkbox" id="tg-record-all"><span class="slider"></span></label>
     <span id="tg-cfg-status" style="margin-left:8px;font-size:12px;color:#3fb950;display:none">Saved!</span>
   </div>
   <div class="grid" id="tg-cards"></div>
@@ -969,6 +972,7 @@ function renderInlineAudit(data,rid){
   if(data.summaryOnly){
     const m=data.meta||{};
     const dlpTag=m.dlp_hit?'<span class="tag dlp">DLP</span> ':'';
+    const tgTag=m.tool_guard_hit?'<span class="tag tg">TG</span> ':'';
     return wrap(
       '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">'+
       (m.model?card('Model',esc(m.model)):'')+
@@ -977,7 +981,7 @@ function renderInlineAudit(data,rid){
       (m.latency_ms?card('Latency',m.latency_ms+'ms'):'')+
       (m.status_code?card('Status',String(m.status_code)):'')+
       '</div>'+
-      dlpTag+'<div style="color:#d29922;margin-bottom:6px;font-size:11px">Raw data not available (storage disabled). Summary only:</div>'+
+      dlpTag+tgTag+'<div style="color:#d29922;margin-bottom:6px;font-size:11px">Raw data not available (storage disabled). Summary only:</div>'+
       '<div class="msg-bubble system" style="white-space:pre-wrap;font-size:11px">'+esc(data.summary||'No summary')+'</div>'
     );
   }
@@ -1392,11 +1396,12 @@ async function refreshAudit(){
         '<tr><td colspan="6" style="color:#7d8590;font-size:11px;padding-top:12px">Requests without session:</td></tr>'+
         noSession.map(e=>{
           const dlpTag=e.dlp_hit?'<span class="tag dlp">DLP</span> ':'';
+          const tgTag=e.tool_guard_hit?'<span class="tag tg">TG</span> ':'';
           const summaryText=e.summary?'<div style="font-size:11px;color:#7d8590;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px" title="'+esc(e.summary)+'">'+esc(e.summary.slice(0,80))+'</div>':'';
           return '<tr style="cursor:pointer" data-rid="'+e.request_id+'"><td>'+ago(e.created_at)+'</td>'+
           '<td class="mono" style="font-size:11px">'+e.request_id.slice(0,12)+'...</td>'+
           '<td>'+summaryText+'</td>'+
-          '<td>'+dlpTag+(e.model?'<span class="tag" style="background:#1a2a3d;color:#58a6ff">'+esc(e.model)+'</span>':'')+'</td>'+
+          '<td>'+dlpTag+tgTag+(e.model?'<span class="tag" style="background:#1a2a3d;color:#58a6ff">'+esc(e.model)+'</span>':'')+'</td>'+
           '<td class="mono">'+bytes(e.request_length)+'</td>'+
           '<td style="color:#58a6ff">View</td></tr>';
         }).join('');
@@ -1472,12 +1477,13 @@ async function loadSessionTimeline(sessionId){
       const tokens=(usage.input_tokens||0)+(usage.output_tokens||0);
 
       const dlpTag=m.dlp_hit?'<span class="tag dlp">DLP</span>':'';
+      const tgTag=m.tool_guard_hit?'<span class="tag tg">TG</span>':'';
       html+='<div class="card timeline-card" data-rid="'+esc(m.request_id)+'">'+
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
           '<div style="display:flex;gap:8px;align-items:center">'+
             '<span style="color:#484f58;font-size:11px;font-weight:600">#'+(i+1)+'</span>'+
             '<span class="mono" style="font-size:11px;color:#7d8590">'+esc(model)+'</span>'+
-            stopTag+dlpTag+
+            stopTag+dlpTag+tgTag+
             (tokens?'<span style="font-size:11px;color:#7d8590">'+fmt(tokens)+' tok</span>':'')+
           '</div>'+
           '<span style="font-size:11px;color:#484f58">'+ago(m.created_at)+(m.latency_ms?' · '+m.latency_ms+'ms':'')+'</span>'+
@@ -1512,6 +1518,7 @@ async function loadSingleAudit(requestId){
       document.getElementById('audit-parsed').style.display='';
       const m=data.meta||{};
       const dlpTag=m.dlp_hit?'<span class="tag dlp">DLP</span> ':'';
+      const tgTag=m.tool_guard_hit?'<span class="tag tg">TG</span> ':'';
       document.getElementById('audit-meta-cards').innerHTML=
         (m.model?card('Model',esc(m.model)):'')+
         card('Request Size',bytes(m.request_length||0))+
@@ -1519,7 +1526,7 @@ async function loadSingleAudit(requestId){
         (m.latency_ms?card('Latency',m.latency_ms+'ms'):'')+
         (m.status_code?card('Status',String(m.status_code)):'');
       document.getElementById('audit-messages').innerHTML=
-        '<div class="empty" style="text-align:left">'+dlpTag+
+        '<div class="empty" style="text-align:left">'+dlpTag+tgTag+
         '<div style="margin-bottom:8px;color:#d29922">Raw data not available (storage disabled). Summary only:</div>'+
         '<div class="msg-bubble system" style="white-space:pre-wrap">'+esc(data.summary||'No summary')+'</div></div>';
       document.getElementById('audit-output').innerHTML='<div class="empty">Raw data not stored</div>';
@@ -1677,8 +1684,15 @@ document.getElementById('tg-ack-btn').addEventListener('click',async()=>{
 // Tool Guard tab
 function severityTag(s){
   if(!s)return '<span class="tag" style="background:#21262d;color:#484f58">none</span>';
-  const colors={critical:'background:#3d1a1a;color:#f85149',high:'background:#3d2e1a;color:#d29922',medium:'background:#2a2a1a;color:#ffd43b',low:'background:#1a2a3d;color:#58a6ff'};
+  const colors={critical:'background:#3d1a1a;color:#f85149',high:'background:#3d2e1a;color:#d29922',medium:'background:#2a2a1a;color:#ffd43b',low:'background:#1a2a3d;color:#58a6ff',info:'background:#1a2d1a;color:#3fb950'};
   return '<span class="tag" style="'+(colors[s]||'')+'">'+(s||'none')+'</span>';
+}
+
+function actionTag(a){
+  if(!a||a==='pass')return '<span class="tag" style="background:#1a2d1a;color:#3fb950">pass</span>';
+  if(a==='block')return '<span class="tag" style="background:#3d1a1a;color:#f85149">block</span>';
+  if(a==='flag')return '<span class="tag" style="background:#3d2e1a;color:#d29922">flag</span>';
+  return '<span class="tag" style="background:#21262d;color:#484f58">'+esc(a)+'</span>';
 }
 
 async function refreshToolGuard(){
@@ -1696,6 +1710,7 @@ async function refreshToolGuard(){
 
     // Populate config selects
     document.getElementById('tg-action-select').value=tgAction;
+    document.getElementById('tg-record-all').checked=tgCfg.recordAll!==false;
     document.getElementById('tg-block-severity').value=tgCfg.blockMinSeverity||'critical';
     document.getElementById('tg-alert-severity').value=tgCfg.alertMinSeverity||'high';
 
@@ -1716,6 +1731,7 @@ async function refreshToolGuard(){
         '<td>'+ago(e.created_at)+'</td>'+
         '<td class="mono" style="font-size:11px">'+esc(sid)+'</td>'+
         '<td><strong>'+esc(e.tool_name)+'</strong></td>'+
+        '<td>'+actionTag(e.action)+'</td>'+
         '<td>'+severityTag(e.severity)+'</td>'+
         '<td>'+(e.category?'<span style="color:#7d8590">'+esc(e.category)+'</span>':'-')+'</td>'+
         '<td class="mono" style="font-size:11px;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(e.tool_input||'')+'">'+inputPreview+'</td></tr>';
@@ -1736,6 +1752,7 @@ async function refreshToolGuard(){
         document.getElementById('tg-detail-content').innerHTML=
           '<div class="audit-kv"><span class="k">Tool</span><span class="v">'+esc(entry.tool_name)+'</span></div>'+
           '<div class="audit-kv"><span class="k">Provider</span><span class="v">'+esc(entry.provider||'unknown')+'</span></div>'+
+          '<div class="audit-kv"><span class="k">Action</span><span class="v">'+actionTag(entry.action)+'</span></div>'+
           '<div class="audit-kv"><span class="k">Severity</span><span class="v">'+severityTag(entry.severity)+'</span></div>'+
           '<div class="audit-kv"><span class="k">Rule</span><span class="v">'+(entry.rule_name?esc(entry.rule_name)+' ('+esc(entry.rule_id)+')':'<span style="color:#484f58">none</span>')+'</span></div>'+
           '<div class="audit-kv"><span class="k">Category</span><span class="v">'+(entry.category?esc(entry.category):'-')+'</span></div>'+
@@ -1852,10 +1869,11 @@ document.getElementById('tgr-save').addEventListener('click',async()=>{
 });
 
 // Tool Guard config change handlers
-['tg-action-select','tg-block-severity','tg-alert-severity'].forEach(id=>{
+['tg-action-select','tg-record-all','tg-block-severity','tg-alert-severity'].forEach(id=>{
   document.getElementById(id).addEventListener('change',async()=>{
     const payload={plugins:{toolGuard:{
       action:document.getElementById('tg-action-select').value,
+      recordAll:document.getElementById('tg-record-all').checked,
       blockMinSeverity:document.getElementById('tg-block-severity').value,
       alertMinSeverity:document.getElementById('tg-alert-severity').value,
     }}};
