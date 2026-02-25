@@ -16,6 +16,7 @@ import { getBuiltinSensitivePatterns, getBuiltinNonSensitiveNames } from '../dlp
 import { getLocalSignatureMeta, checkForUpdates, syncRemotePatterns } from '../dlp/remote-sync.js';
 import type { ConfigManager } from '../config/manager.js';
 import type { PluginManager } from '../plugins/index.js';
+import { getVersion } from '../version.js';
 import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('api-routes');
@@ -74,6 +75,7 @@ export function createApiRouter(
         recent,
         cache: cacheStats,
         dlp: dlpStats,
+        version: getVersion(),
         uptime: process.uptime(),
         memory: process.memoryUsage().rss,
       });

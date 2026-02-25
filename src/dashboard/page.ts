@@ -452,7 +452,7 @@ tr:hover{background:#1c2128}
   </div>
 </div>
 
-<p class="footer">Bastion v0.1.0 &mdash; <span id="uptime"></span> uptime &mdash; <span id="mem"></span> MB memory</p>
+<p class="footer">Bastion <span id="ver">v0.1.0</span> &mdash; <span id="uptime"></span> uptime &mdash; <span id="mem"></span> MB memory</p>
 
 <script>
 let activeTab='overview';
@@ -582,6 +582,7 @@ async function refresh(){
       }).join('');
     }
 
+    if(d.version)document.getElementById('ver').textContent='v'+d.version;
     document.getElementById('uptime').textContent=uptime(d.uptime);
     document.getElementById('mem').textContent=Math.round(d.memory/1024/1024);
   }catch(e){}
