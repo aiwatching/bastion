@@ -7,7 +7,6 @@ import type Database from 'better-sqlite3';
 const log = createLogger('audit-plugin');
 
 export interface AuditLoggerConfig {
-  retentionHours: number;
   rawData: boolean;
   rawMaxBytes: number;
   summaryMaxBytes: number;
@@ -19,24 +18,9 @@ export function createAuditLoggerPlugin(db: Database.Database, config: AuditLogg
   // Store request bodies temporarily until response is complete
   const pendingRequests = new Map<string, string>();
 
-  // Periodic purge of old audit entries
-  const purgeInterval = setInterval(() => {
-    try {
-      const purged = auditRepo.purgeOlderThan(config.retentionHours);
-      if (purged > 0) {
-        log.debug('Purged old audit entries', { purged });
-      }
-    } catch {
-      // Ignore purge errors
-    }
-  }, 60 * 60 * 1000); // Every hour
-
-  // Prevent the interval from keeping the process alive
-  purgeInterval.unref();
-
   return {
     name: 'audit-logger',
-    priority: 5,
+    priority: 25,
 
     async onRequest(context: RequestContext): Promise<PluginRequestResult | void> {
       // Capture request body for later storage
@@ -54,8 +38,9 @@ export function createAuditLoggerPlugin(db: Database.Database, config: AuditLogg
         // Avoid duplicates — DLP auto-audit may have already stored this request
         if (auditRepo.hasEntry(context.request.id)) return;
 
-        // Read DLP flag set by upstream dlp-scanner plugin during onRequest/onResponse
+        // Read flags set by upstream plugins during onRequest/onResponse/onResponseComplete
         const dlpHit = Boolean(context.request.dlpHit);
+        const toolGuardHit = Boolean(context.request.toolGuardHit);
 
         auditRepo.insert({
           id: crypto.randomUUID(),
@@ -63,6 +48,7 @@ export function createAuditLoggerPlugin(db: Database.Database, config: AuditLogg
           requestBody,
           responseBody: context.body,
           dlpHit,
+          toolGuardHit,
           rawData: config.rawData,
           rawMaxBytes: config.rawMaxBytes,
           summaryMaxBytes: config.summaryMaxBytes,

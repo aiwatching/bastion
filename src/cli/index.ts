@@ -11,13 +11,14 @@ import { registerWrapCommand } from './commands/wrap.js';
 import { registerTrustCaCommand } from './commands/trust-ca.js';
 import { registerProxyCommand } from './commands/proxy.js';
 import { registerOpenclawCommand } from './commands/openclaw.js';
+import { getVersion } from '../version.js';
 
 const program = new Command();
 
 program
   .name('bastion')
   .description('Bastion AI Gateway — Local-first proxy for LLM providers')
-  .version('0.1.0')
+  .version(getVersion())
   .enablePositionalOptions();
 
 registerStartCommand(program);

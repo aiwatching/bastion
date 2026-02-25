@@ -151,8 +151,9 @@ describe('Integration: Proxy Pipeline', () => {
         metrics: { enabled: true },
         dlp: { enabled: true, action: 'block', patterns: ['high-confidence', 'validated'] },
         optimizer: { enabled: true, cache: true, cacheTtlSeconds: 300, trimWhitespace: true, reorderForCache: false },
-        audit: { enabled: false, retentionHours: 168 },
+        audit: { enabled: false },
       },
+      retention: { requestsHours: 720, dlpEventsHours: 720, toolCallsHours: 720, optimizerEventsHours: 720, sessionsHours: 720, auditLogHours: 24 },
       timeouts: { upstream: 10000, plugin: 5000 },
     };
 

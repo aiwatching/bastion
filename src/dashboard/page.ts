@@ -43,6 +43,7 @@ tr:hover{background:#1c2128}
 .tag.cached{background:#0d2818;color:#3fb950}
 .tag.blocked{background:#3d1a1a;color:#f85149}
 .tag.dlp{background:#3d1a3d;color:#f0a0f0}
+.tag.tg{background:#3d2e1a;color:#d29922}
 .tag.warn{background:#3d2e1a;color:#d29922}
 .tag.redact{background:#2a1f3d;color:#b388ff}
 .mono{font-family:"SF Mono",Monaco,monospace;font-size:12px}
@@ -64,10 +65,10 @@ tr:hover{background:#1c2128}
 .toggle-row .toggle-desc{font-size:11px;color:#7d8590;margin-top:2px}
 .switch{position:relative;width:40px;height:22px;flex-shrink:0}
 .switch input{opacity:0;width:0;height:0}
-.slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#30363d;border-radius:11px;transition:.2s}
-.slider:before{position:absolute;content:"";height:16px;width:16px;left:3px;bottom:3px;background:#e1e4e8;border-radius:50%;transition:.2s}
-.switch input:checked+.slider{background:#3fb950}
-.switch input:checked+.slider:before{transform:translateX(18px)}
+.slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#21262d;border:1px solid #30363d;border-radius:11px;transition:.2s}
+.slider:before{position:absolute;content:"";height:16px;width:16px;left:2px;bottom:2px;background:#484f58;border-radius:50%;transition:.2s}
+.switch input:checked+.slider{background:#238636;border-color:#2ea043}
+.switch input:checked+.slider:before{transform:translateX(18px);background:#fff}
 .config-select{background:#161b22;border:1px solid #30363d;color:#e1e4e8;padding:4px 8px;border-radius:4px;font-size:12px}
 .msg-bubble{padding:8px 12px;border-radius:8px;margin-bottom:6px;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
 .msg-bubble.user{background:#1a2a3d;border:1px solid #264166}
@@ -83,14 +84,26 @@ tr:hover{background:#1c2128}
 </style>
 </head>
 <body>
-<h1><span class="status"></span>Bastion AI Gateway</h1>
-<p class="subtitle">Local-first LLM proxy &mdash; refreshes every 3s</p>
+<div style="display:flex;justify-content:space-between;align-items:center">
+<div><h1><span class="status"></span>Bastion AI Gateway</h1>
+<p class="subtitle">Local-first LLM proxy &mdash; auto-refresh</p></div>
+<div style="display:flex;align-items:center;gap:8px">
+<label style="font-size:12px;color:#7d8590">Time Range:</label>
+<select id="time-range" style="background:#161b22;border:1px solid #30363d;color:#e1e4e8;padding:6px 10px;border-radius:6px;font-size:12px">
+<option value="24h">Today (24h)</option>
+<option value="7d">7 days</option>
+<option value="30d">30 days</option>
+<option value="all">All</option>
+</select>
+</div>
+</div>
 
 <div class="tabs">
   <button class="tab active" data-tab="overview">Overview</button>
   <button class="tab" data-tab="dlp">DLP</button>
   <button class="tab" data-tab="optimizer">Optimizer</button>
   <button class="tab" data-tab="audit">Audit</button>
+  <button class="tab" data-tab="toolguard">Tool Guard <span id="tg-badge" style="display:none;background:#f85149;color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:4px;font-weight:700"></span></button>
   <button class="tab" data-tab="settings">Settings</button>
 </div>
 
@@ -277,7 +290,6 @@ tr:hover{background:#1c2128}
 
   <!-- SUB: Findings -->
   <div class="sub-content active" id="dlp-sub-findings">
-  <div class="grid" id="findings-cards"></div>
   <div class="section">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
       <h2>DLP Findings</h2>
@@ -419,17 +431,141 @@ tr:hover{background:#1c2128}
   </div>
 </div>
 
+<!-- TOOL GUARD TAB -->
+<div class="tab-content" id="tab-toolguard">
+  <div id="tg-alert-banner" style="display:none;background:#3d1a1a;border:1px solid #f85149;border-radius:8px;padding:12px 16px;margin-bottom:16px;display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div><span style="color:#f85149;font-weight:600;font-size:14px" id="tg-alert-title"></span><span style="color:#e1e4e8;font-size:12px;margin-left:8px" id="tg-alert-msg"></span></div>
+      <button id="tg-ack-btn" style="padding:4px 12px;font-size:11px;cursor:pointer;color:#f85149;background:none;border:1px solid #f85149;border-radius:6px">Acknowledge</button>
+    </div>
+    <div id="tg-alert-list" style="margin-top:8px;font-size:11px;color:#7d8590;max-height:120px;overflow:auto"></div>
+  </div>
+  <div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;padding:12px 16px;background:#161b22;border:1px solid #30363d;border-radius:8px">
+    <div style="font-size:13px;color:#e1e4e8;font-weight:500">Action Mode</div>
+    <select id="tg-action-select" class="config-select">
+      <option value="audit">Audit (log only)</option>
+      <option value="block">Block (prevent dangerous calls)</option>
+    </select>
+    <div style="font-size:13px;color:#e1e4e8;font-weight:500;margin-left:16px">Block Min Severity</div>
+    <select id="tg-block-severity" class="config-select">
+      <option value="critical">Critical</option>
+      <option value="high">High</option>
+      <option value="medium">Medium</option>
+      <option value="low">Low</option>
+    </select>
+    <div style="font-size:13px;color:#e1e4e8;font-weight:500;margin-left:16px">Alert Min Severity</div>
+    <select id="tg-alert-severity" class="config-select">
+      <option value="critical">Critical</option>
+      <option value="high">High</option>
+      <option value="medium">Medium</option>
+      <option value="low">Low</option>
+    </select>
+    <div style="font-size:13px;color:#e1e4e8;font-weight:500;margin-left:16px">Record All</div>
+    <label class="switch" style="transform:scale(0.8)"><input type="checkbox" id="tg-record-all"><span class="slider"></span></label>
+    <span id="tg-cfg-status" style="margin-left:8px;font-size:12px;color:#3fb950;display:none">Saved!</span>
+  </div>
+  <div class="grid" id="tg-cards"></div>
+
+  <div class="sub-tabs" id="tg-sub-tabs">
+    <button class="sub-tab active" data-tg-sub="calls">Calls</button>
+    <button class="sub-tab" data-tg-sub="rules">Rules</button>
+  </div>
+
+  <!-- SUB: Calls -->
+  <div class="sub-content active" id="tg-sub-calls">
+    <div class="section">
+      <h2>Recent Tool Calls</h2>
+      <table><thead><tr><th>Time</th><th>Session</th><th>Tool Name</th><th>Action</th><th>Severity</th><th>Category</th><th>Input</th></tr></thead><tbody id="tg-table"></tbody></table>
+      <p class="empty" id="no-tg">No tool calls recorded yet.</p>
+    </div>
+    <div id="tg-detail" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <h2 style="margin:0">Tool Call Detail</h2>
+        <button id="tg-back" style="padding:4px 12px;font-size:12px;cursor:pointer;color:#58a6ff;background:none;border:1px solid #30363d;border-radius:6px">Back</button>
+      </div>
+      <div id="tg-detail-content" class="card" style="font-size:12px"></div>
+    </div>
+  </div>
+
+  <!-- SUB: Rules -->
+  <div class="sub-content" id="tg-sub-rules">
+    <div class="section">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <h2 style="margin:0">Detection Rules</h2>
+        <button id="tg-add-rule-btn" style="padding:6px 16px;font-size:12px;cursor:pointer;color:#fff;background:#238636;border:1px solid #2ea043;border-radius:6px">+ Add Rule</button>
+      </div>
+      <div id="tg-rule-form" style="display:none;background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px;margin-bottom:16px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+          <div><label style="font-size:11px;color:#7d8590">Name *</label><input id="tgr-name" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px"></div>
+          <div><label style="font-size:11px;color:#7d8590">Category</label><input id="tgr-category" value="custom" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px"></div>
+        </div>
+        <div style="margin-bottom:8px"><label style="font-size:11px;color:#7d8590">Description</label><input id="tgr-description" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px"></div>
+        <div style="display:grid;grid-template-columns:3fr 1fr;gap:8px;margin-bottom:8px">
+          <div><label style="font-size:11px;color:#7d8590">Input Pattern (regex) *</label><input id="tgr-input-pattern" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px;font-family:monospace"></div>
+          <div><label style="font-size:11px;color:#7d8590">Flags</label><input id="tgr-input-flags" value="i" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px;font-family:monospace"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:3fr 1fr 1fr;gap:8px;margin-bottom:12px">
+          <div><label style="font-size:11px;color:#7d8590">Tool Name Pattern (optional regex)</label><input id="tgr-tool-pattern" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px;font-family:monospace"></div>
+          <div><label style="font-size:11px;color:#7d8590">Tool Flags</label><input id="tgr-tool-flags" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px;font-family:monospace"></div>
+          <div><label style="font-size:11px;color:#7d8590">Severity</label><select id="tgr-severity" class="config-select" style="width:100%"><option value="critical">Critical</option><option value="high">High</option><option value="medium" selected>Medium</option><option value="low">Low</option></select></div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button id="tgr-save" style="padding:6px 16px;font-size:12px;cursor:pointer;color:#fff;background:#238636;border:1px solid #2ea043;border-radius:6px">Save</button>
+          <button id="tgr-cancel" style="padding:6px 16px;font-size:12px;cursor:pointer;color:#7d8590;background:none;border:1px solid #30363d;border-radius:6px">Cancel</button>
+          <span id="tgr-error" style="color:#f85149;font-size:12px;display:none;align-self:center"></span>
+        </div>
+      </div>
+      <table><thead><tr><th style="width:40px">On</th><th>Name</th><th>Severity</th><th>Category</th><th>Input Pattern</th><th>Type</th><th style="width:60px"></th></tr></thead><tbody id="tg-rules-table"></tbody></table>
+      <p class="empty" id="no-tg-rules" style="display:none">No rules found.</p>
+    </div>
+  </div>
+</div>
+
 <!-- SETTINGS TAB -->
 <div class="tab-content" id="tab-settings">
   <div class="section">
     <h2>Plugin Controls</h2>
     <div id="plugin-toggles"></div>
   </div>
+  <div class="section">
+    <h2>Data Retention</h2>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
+      <div class="toggle-row" style="flex-direction:column;align-items:flex-start;gap:4px">
+        <div class="toggle-label" style="font-size:12px">Requests (hours)</div>
+        <input type="number" id="ret-requests" min="1" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px">
+      </div>
+      <div class="toggle-row" style="flex-direction:column;align-items:flex-start;gap:4px">
+        <div class="toggle-label" style="font-size:12px">DLP Events (hours)</div>
+        <input type="number" id="ret-dlp" min="1" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px">
+      </div>
+      <div class="toggle-row" style="flex-direction:column;align-items:flex-start;gap:4px">
+        <div class="toggle-label" style="font-size:12px">Tool Calls (hours)</div>
+        <input type="number" id="ret-tools" min="1" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px">
+      </div>
+      <div class="toggle-row" style="flex-direction:column;align-items:flex-start;gap:4px">
+        <div class="toggle-label" style="font-size:12px">Optimizer Events (hours)</div>
+        <input type="number" id="ret-optimizer" min="1" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px">
+      </div>
+      <div class="toggle-row" style="flex-direction:column;align-items:flex-start;gap:4px">
+        <div class="toggle-label" style="font-size:12px">Sessions (hours)</div>
+        <input type="number" id="ret-sessions" min="1" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px">
+      </div>
+      <div class="toggle-row" style="flex-direction:column;align-items:flex-start;gap:4px">
+        <div class="toggle-label" style="font-size:12px">Audit Log (hours)</div>
+        <input type="number" id="ret-audit" min="1" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px">
+      </div>
+    </div>
+    <button id="ret-save-btn" style="padding:6px 20px;font-size:13px;cursor:pointer;color:#fff;background:#238636;border:1px solid #2ea043;border-radius:6px;font-weight:500">Save Retention Settings</button>
+    <span id="ret-status" style="margin-left:8px;font-size:12px;color:#3fb950;display:none">Saved!</span>
+  </div>
 </div>
 
-<p class="footer">Bastion v0.1.0 &mdash; <span id="uptime"></span> uptime &mdash; <span id="mem"></span> MB memory</p>
+<p class="footer">Bastion <span id="ver">v0.1.0</span> &mdash; <span id="uptime"></span> uptime &mdash; <span id="mem"></span> MB memory</p>
 
 <script>
+let activeTab='overview';
+let _lastJson={}; // keyed by element ID — skip DOM rebuild if data unchanged
+function skipIfSame(id,json){const s=JSON.stringify(json);if(_lastJson[id]===s)return true;_lastJson[id]=s;return false}
 function fmt(n){return n.toLocaleString()}
 function cost(n){return n<0.01?'$'+n.toFixed(6):'$'+n.toFixed(4)}
 function bytes(n){if(n<1024)return n+'B';if(n<1048576)return(n/1024).toFixed(1)+'KB';return(n/1048576).toFixed(1)+'MB'}
@@ -447,19 +583,38 @@ function actionTag(a){return '<span class="tag '+(a==='block'?'blocked':a==='war
 function card(label,value,cls){return '<div class="card"><div class="label">'+label+'</div><div class="value'+(cls?' '+cls:'')+'">'+value+'</div></div>'}
 function esc(s){if(!s)return'';const d=document.createElement('div');d.textContent=s;return d.innerHTML}
 
+// Time range
+let timeRange='24h';
+function sinceForRange(r){
+  if(r==='all')return '';
+  const h=r==='24h'?24:r==='7d'?168:720;
+  return new Date(Date.now()-h*3600000).toISOString().replace('T',' ').slice(0,19);
+}
+function hoursForRange(r){return r==='24h'?24:r==='7d'?168:r==='30d'?720:0}
+document.getElementById('time-range').addEventListener('change',function(){
+  timeRange=this.value;_lastJson={};refreshActiveTab();
+});
+function sinceParam(){const s=sinceForRange(timeRange);return s?'since='+encodeURIComponent(s):'';}
+
 // Tab switching
 document.querySelectorAll('.tab').forEach(t=>{
   t.addEventListener('click',()=>{
     document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(x=>x.classList.remove('active'));
     t.classList.add('active');
-    document.getElementById('tab-'+t.dataset.tab).classList.add('active');
-    if(t.dataset.tab==='dlp')refreshDlp();
-    if(t.dataset.tab==='optimizer')refreshOptimizer();
-    if(t.dataset.tab==='audit')refreshAudit();
-    if(t.dataset.tab==='settings')refreshSettings();
+    activeTab=t.dataset.tab;
+    document.getElementById('tab-'+activeTab).classList.add('active');
+    refreshActiveTab();
   });
 });
+function refreshActiveTab(){
+  if(activeTab==='overview')refresh();
+  else if(activeTab==='dlp')refreshDlp();
+  else if(activeTab==='optimizer')refreshOptimizer();
+  else if(activeTab==='audit')refreshAudit();
+  else if(activeTab==='toolguard')refreshToolGuard();
+  else if(activeTab==='settings')refreshSettings();
+}
 
 // DLP sub-tab switching
 document.querySelectorAll('#dlp-sub-tabs .sub-tab').forEach(t=>{
@@ -496,54 +651,64 @@ document.getElementById('session-filter').addEventListener('change',()=>refresh(
 async function refresh(){
   try{
     const sid=document.getElementById('session-filter').value;
-    const params=sid?'?session_id='+encodeURIComponent(sid):'';
+    const parts=[];
+    if(sid)parts.push('session_id='+encodeURIComponent(sid));
+    const h=hoursForRange(timeRange);
+    if(h)parts.push('hours='+h);
+    const sp=sinceParam();if(sp)parts.push(sp);
+    const params=parts.length?'?'+parts.join('&'):'';
     const r=await fetch('/api/stats'+params);
     const d=await r.json();
     const s=d.stats;
 
-    document.getElementById('cards').innerHTML=
-      card('Requests',fmt(s.total_requests))+
-      card('Total Cost',cost(s.total_cost_usd),'cost')+
-      card('Input Tokens',fmt(s.total_input_tokens))+
-      card('Output Tokens',fmt(s.total_output_tokens))+
-      card('Cache Hits',fmt(s.cache_hits))+
-      card('Avg Latency',Math.round(s.avg_latency_ms)+'ms');
+    if(!skipIfSame('cards',s)){
+      document.getElementById('cards').innerHTML=
+        card('Requests',fmt(s.total_requests))+
+        card('Total Cost',cost(s.total_cost_usd),'cost')+
+        card('Input Tokens',fmt(s.total_input_tokens))+
+        card('Output Tokens',fmt(s.total_output_tokens))+
+        card('Cache Hits',fmt(s.cache_hits))+
+        card('Avg Latency',Math.round(s.avg_latency_ms)+'ms');
 
-    const providers=Object.entries(s.by_provider||{});
-    const maxReq=Math.max(...providers.map(([,v])=>v.requests),1);
-    if(providers.length){
-      document.getElementById('by-provider-section').style.display='';
-      document.getElementById('by-provider').innerHTML=providers.map(([k,v])=>
-        '<tr><td>'+providerTag(k)+'</td><td>'+fmt(v.requests)+'</td><td class="mono">'+cost(v.cost_usd)+'</td>'+
-        '<td style="width:30%"><div class="bar-container"><div class="bar blue" style="width:'+Math.round(v.requests/maxReq*100)+'%"></div></div></td></tr>'
-      ).join('');
-    }
+      const providers=Object.entries(s.by_provider||{});
+      const maxReq=Math.max(...providers.map(([,v])=>v.requests),1);
+      if(providers.length){
+        document.getElementById('by-provider-section').style.display='';
+        document.getElementById('by-provider').innerHTML=providers.map(([k,v])=>
+          '<tr><td>'+providerTag(k)+'</td><td>'+fmt(v.requests)+'</td><td class="mono">'+cost(v.cost_usd)+'</td>'+
+          '<td style="width:30%"><div class="bar-container"><div class="bar blue" style="width:'+Math.round(v.requests/maxReq*100)+'%"></div></div></td></tr>'
+        ).join('');
+      }
 
-    const models=Object.entries(s.by_model||{});
-    if(models.length){
-      document.getElementById('by-model-section').style.display='';
-      document.getElementById('by-model').innerHTML=models.map(([k,v])=>
-        '<tr><td class="mono">'+k+'</td><td>'+fmt(v.requests)+'</td><td class="mono">'+cost(v.cost_usd)+'</td></tr>'
-      ).join('');
+      const models=Object.entries(s.by_model||{});
+      if(models.length){
+        document.getElementById('by-model-section').style.display='';
+        document.getElementById('by-model').innerHTML=models.map(([k,v])=>
+          '<tr><td class="mono">'+k+'</td><td>'+fmt(v.requests)+'</td><td class="mono">'+cost(v.cost_usd)+'</td></tr>'
+        ).join('');
+      }
     }
 
     const recent=d.recent||[];
     document.getElementById('no-requests').style.display=recent.length?'none':'';
-    document.getElementById('recent').innerHTML=recent.map(r=>{
-      let flags='';
-      if(r.cached)flags+='<span class="tag cached">cached</span> ';
-      if(r.dlp_action&&r.dlp_action!=='pass')flags+=actionTag(r.dlp_action)+' ';
-      if(r.session_id){
-        const sInfo=sessions.find(s=>s.session_id===r.session_id);
-        const sLabel=sInfo?.label||r.session_id.slice(0,6);
-        flags+='<span class="tag" style="background:#1a2a3d;color:#58a6ff" title="'+esc(r.session_id)+'">'+esc(sLabel)+'</span> ';
-      }
-      return '<tr><td>'+ago(r.created_at)+'</td><td>'+providerTag(r.provider)+'</td>'+
-        '<td class="mono">'+r.model+'</td><td>'+(r.status_code||'-')+'</td>'+
-        '<td class="mono">'+fmt(r.input_tokens)+' / '+fmt(r.output_tokens)+'</td>'+
-        '<td class="mono">'+cost(r.cost_usd)+'</td><td>'+r.latency_ms+'ms</td><td>'+flags+'</td></tr>';
-    }).join('');
+    if(!skipIfSame('recent',recent)){
+      document.getElementById('recent').innerHTML=recent.map(r=>{
+        let flags='';
+        if(r.cached)flags+='<span class="tag cached">cached</span> ';
+        if(r.dlp_action&&r.dlp_action!=='pass')flags+=actionTag(r.dlp_action)+' ';
+        if(r.session_id){
+          const sInfo=sessions.find(s=>s.session_id===r.session_id);
+          const sLabel=sInfo?.label||r.session_id.slice(0,6);
+          flags+='<span class="tag" style="background:#1a2a3d;color:#58a6ff" title="'+esc(r.session_id)+'">'+esc(sLabel)+'</span> ';
+        }
+        return '<tr><td>'+ago(r.created_at)+'</td><td>'+providerTag(r.provider)+'</td>'+
+          '<td class="mono">'+r.model+'</td><td>'+(r.status_code||'-')+'</td>'+
+          '<td class="mono">'+fmt(r.input_tokens)+' / '+fmt(r.output_tokens)+'</td>'+
+          '<td class="mono">'+cost(r.cost_usd)+'</td><td>'+r.latency_ms+'ms</td><td>'+flags+'</td></tr>';
+      }).join('');
+    }
 
+    if(d.version)document.getElementById('ver').textContent='v'+d.version;
     document.getElementById('uptime').textContent=uptime(d.uptime);
     document.getElementById('mem').textContent=Math.round(d.memory/1024/1024);
   }catch(e){}
@@ -683,12 +848,14 @@ async function refreshDlp(){
   try{
     const statsR=await fetch('/api/stats');
     const stats=(await statsR.json()).dlp;
-    const ba=stats.by_action||{};
-    document.getElementById('dlp-cards').innerHTML=
-      card('Total Scans',fmt(stats.total_events))+
-      card('Blocked',fmt(ba.block||0),'warn')+
-      card('Redacted',fmt(ba.redact||0),'blue')+
-      card('Warned',fmt(ba.warn||0));
+    if(!skipIfSame('dlp-cards',stats)){
+      const ba=stats.by_action||{};
+      document.getElementById('dlp-cards').innerHTML=
+        card('Total Scans',fmt(stats.total_events))+
+        card('Blocked',fmt(ba.block||0),'warn')+
+        card('Redacted',fmt(ba.redact||0),'blue')+
+        card('Warned',fmt(ba.warn||0));
+    }
     await loadDlpConfig();
     refreshFindings();
   }catch(e){}
@@ -698,16 +865,14 @@ async function refreshDlp(){
 let findingsAll=[];
 async function refreshFindings(){
   try{
-    const [statsR,recentR]=await Promise.all([fetch('/api/stats'),fetch('/api/dlp/recent?limit=200')]);
-    const stats=(await statsR.json()).dlp;
-    const ba=stats.by_action||{};
-    document.getElementById('findings-cards').innerHTML=
-      card('Total Findings',fmt(stats.total_events))+
-      card('Blocked',fmt(ba.block||0),'warn')+
-      card('Redacted',fmt(ba.redact||0),'blue')+
-      card('Warned',fmt(ba.warn||0));
-    findingsAll=await recentR.json();
-    renderFindings();
+    const sp=sinceParam();
+    const dlpUrl='/api/dlp/recent?limit=200'+(sp?'&'+sp:'');
+    const recentR=await fetch(dlpUrl);
+    const newFindings=await recentR.json();
+    if(!skipIfSame('findings-list',newFindings)){
+      findingsAll=newFindings;
+      renderFindings();
+    }
   }catch(e){}
 }
 
@@ -807,6 +972,7 @@ function renderInlineAudit(data,rid){
   if(data.summaryOnly){
     const m=data.meta||{};
     const dlpTag=m.dlp_hit?'<span class="tag dlp">DLP</span> ':'';
+    const tgTag=m.tool_guard_hit?'<span class="tag tg">TG</span> ':'';
     return wrap(
       '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">'+
       (m.model?card('Model',esc(m.model)):'')+
@@ -815,7 +981,7 @@ function renderInlineAudit(data,rid){
       (m.latency_ms?card('Latency',m.latency_ms+'ms'):'')+
       (m.status_code?card('Status',String(m.status_code)):'')+
       '</div>'+
-      dlpTag+'<div style="color:#d29922;margin-bottom:6px;font-size:11px">Raw data not available (storage disabled). Summary only:</div>'+
+      dlpTag+tgTag+'<div style="color:#d29922;margin-bottom:6px;font-size:11px">Raw data not available (storage disabled). Summary only:</div>'+
       '<div class="msg-bubble system" style="white-space:pre-wrap;font-size:11px">'+esc(data.summary||'No summary')+'</div>'
     );
   }
@@ -1175,7 +1341,9 @@ document.getElementById('dlp-save-btn').addEventListener('click',async()=>{
 // Optimizer tab
 async function refreshOptimizer(){
   try{
-    const [statsR,recentR]=await Promise.all([fetch('/api/optimizer/stats'),fetch('/api/optimizer/recent')]);
+    const sp=sinceParam();
+    const optUrl='/api/optimizer/recent'+(sp?'?'+sp:'');
+    const [statsR,recentR]=await Promise.all([fetch('/api/optimizer/stats'),fetch(optUrl)]);
     const stats=await statsR.json();
     const recent=await recentR.json();
 
@@ -1200,7 +1368,8 @@ let auditCurrentSession=null;
 
 async function refreshAudit(){
   try{
-    const r=await fetch('/api/audit/sessions');
+    const sp=sinceParam();
+    const r=await fetch('/api/audit/sessions'+(sp?'?'+sp:''));
     const sessions=await r.json();
     document.getElementById('no-audit').style.display=sessions.length?'none':'';
     document.getElementById('audit-sessions').innerHTML=sessions.map(s=>{
@@ -1219,7 +1388,7 @@ async function refreshAudit(){
         '<td style="color:#58a6ff">View</td></tr>';
     }).join('');
     // Also show non-session entries
-    const recentR=await fetch('/api/audit/recent');
+    const recentR=await fetch('/api/audit/recent'+(sp?'?'+sp:''));
     const recent=await recentR.json();
     const noSession=recent.filter(e=>!e.session_id);
     if(noSession.length>0){
@@ -1227,11 +1396,12 @@ async function refreshAudit(){
         '<tr><td colspan="6" style="color:#7d8590;font-size:11px;padding-top:12px">Requests without session:</td></tr>'+
         noSession.map(e=>{
           const dlpTag=e.dlp_hit?'<span class="tag dlp">DLP</span> ':'';
+          const tgTag=e.tool_guard_hit?'<span class="tag tg">TG</span> ':'';
           const summaryText=e.summary?'<div style="font-size:11px;color:#7d8590;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px" title="'+esc(e.summary)+'">'+esc(e.summary.slice(0,80))+'</div>':'';
           return '<tr style="cursor:pointer" data-rid="'+e.request_id+'"><td>'+ago(e.created_at)+'</td>'+
           '<td class="mono" style="font-size:11px">'+e.request_id.slice(0,12)+'...</td>'+
           '<td>'+summaryText+'</td>'+
-          '<td>'+dlpTag+(e.model?'<span class="tag" style="background:#1a2a3d;color:#58a6ff">'+esc(e.model)+'</span>':'')+'</td>'+
+          '<td>'+dlpTag+tgTag+(e.model?'<span class="tag" style="background:#1a2a3d;color:#58a6ff">'+esc(e.model)+'</span>':'')+'</td>'+
           '<td class="mono">'+bytes(e.request_length)+'</td>'+
           '<td style="color:#58a6ff">View</td></tr>';
         }).join('');
@@ -1307,12 +1477,13 @@ async function loadSessionTimeline(sessionId){
       const tokens=(usage.input_tokens||0)+(usage.output_tokens||0);
 
       const dlpTag=m.dlp_hit?'<span class="tag dlp">DLP</span>':'';
+      const tgTag=m.tool_guard_hit?'<span class="tag tg">TG</span>':'';
       html+='<div class="card timeline-card" data-rid="'+esc(m.request_id)+'">'+
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
           '<div style="display:flex;gap:8px;align-items:center">'+
             '<span style="color:#484f58;font-size:11px;font-weight:600">#'+(i+1)+'</span>'+
             '<span class="mono" style="font-size:11px;color:#7d8590">'+esc(model)+'</span>'+
-            stopTag+dlpTag+
+            stopTag+dlpTag+tgTag+
             (tokens?'<span style="font-size:11px;color:#7d8590">'+fmt(tokens)+' tok</span>':'')+
           '</div>'+
           '<span style="font-size:11px;color:#484f58">'+ago(m.created_at)+(m.latency_ms?' · '+m.latency_ms+'ms':'')+'</span>'+
@@ -1347,6 +1518,7 @@ async function loadSingleAudit(requestId){
       document.getElementById('audit-parsed').style.display='';
       const m=data.meta||{};
       const dlpTag=m.dlp_hit?'<span class="tag dlp">DLP</span> ':'';
+      const tgTag=m.tool_guard_hit?'<span class="tag tg">TG</span> ':'';
       document.getElementById('audit-meta-cards').innerHTML=
         (m.model?card('Model',esc(m.model)):'')+
         card('Request Size',bytes(m.request_length||0))+
@@ -1354,7 +1526,7 @@ async function loadSingleAudit(requestId){
         (m.latency_ms?card('Latency',m.latency_ms+'ms'):'')+
         (m.status_code?card('Status',String(m.status_code)):'');
       document.getElementById('audit-messages').innerHTML=
-        '<div class="empty" style="text-align:left">'+dlpTag+
+        '<div class="empty" style="text-align:left">'+dlpTag+tgTag+
         '<div style="margin-bottom:8px;color:#d29922">Raw data not available (storage disabled). Summary only:</div>'+
         '<div class="msg-bubble system" style="white-space:pre-wrap">'+esc(data.summary||'No summary')+'</div></div>';
       document.getElementById('audit-output').innerHTML='<div class="empty">Raw data not stored</div>';
@@ -1479,6 +1651,246 @@ function renderParsedAudit(data){
   }
 }
 
+// Tool Guard — alert polling
+async function pollToolGuardAlerts(){
+  try{
+    const r=await fetch('/api/tool-guard/alerts');
+    const data=await r.json();
+    const badge=document.getElementById('tg-badge');
+    const banner=document.getElementById('tg-alert-banner');
+    const unack=data.unacknowledged||0;
+    if(unack>0){
+      badge.textContent=unack>99?'99+':String(unack);
+      badge.style.display='inline';
+      banner.style.display='block';
+      document.getElementById('tg-alert-title').textContent=unack+' unacknowledged alert'+(unack>1?'s':'');
+      const recent=data.alerts.filter(a=>!a.acknowledged).slice(0,5);
+      document.getElementById('tg-alert-msg').textContent=recent.length>0?recent[0].toolName+': '+recent[0].ruleName:'';
+      document.getElementById('tg-alert-list').innerHTML=recent.map(a=>
+        '<div>'+severityTag(a.severity)+' <strong>'+esc(a.toolName)+'</strong> — '+esc(a.ruleName)+' <span style="color:#484f58">'+ago(a.timestamp)+'</span></div>'
+      ).join('');
+    }else{
+      badge.style.display='none';
+      banner.style.display='none';
+    }
+  }catch(e){}
+}
+
+document.getElementById('tg-ack-btn').addEventListener('click',async()=>{
+  await fetch('/api/tool-guard/alerts/ack',{method:'POST'});
+  pollToolGuardAlerts();
+});
+
+// Tool Guard tab
+function severityTag(s){
+  if(!s)return '<span class="tag" style="background:#21262d;color:#484f58">none</span>';
+  const colors={critical:'background:#3d1a1a;color:#f85149',high:'background:#3d2e1a;color:#d29922',medium:'background:#2a2a1a;color:#ffd43b',low:'background:#1a2a3d;color:#58a6ff',info:'background:#1a2d1a;color:#3fb950'};
+  return '<span class="tag" style="'+(colors[s]||'')+'">'+(s||'none')+'</span>';
+}
+
+function actionTag(a){
+  if(!a||a==='pass')return '<span class="tag" style="background:#1a2d1a;color:#3fb950">pass</span>';
+  if(a==='block')return '<span class="tag" style="background:#3d1a1a;color:#f85149">block</span>';
+  if(a==='flag')return '<span class="tag" style="background:#3d2e1a;color:#d29922">flag</span>';
+  return '<span class="tag" style="background:#21262d;color:#484f58">'+esc(a)+'</span>';
+}
+
+async function refreshToolGuard(){
+  try{
+    const sp=sinceParam();
+    const tgUrl='/api/tool-guard/recent?limit=100'+(sp?'&'+sp:'');
+    const [statsR,recentR,cfgR]=await Promise.all([fetch('/api/tool-guard/stats'),fetch(tgUrl),fetch('/api/config')]);
+    const stats=await statsR.json();
+    const recent=await recentR.json();
+    const cfgData=await cfgR.json();
+    const tgCfg=cfgData.config?.plugins?.toolGuard||{};
+    const tgAction=tgCfg.action||'audit';
+    const modeLabel=tgAction==='block'?'BLOCK':'AUDIT';
+    const modeCls=tgAction==='block'?'warn':'blue';
+
+    // Populate config selects
+    document.getElementById('tg-action-select').value=tgAction;
+    document.getElementById('tg-record-all').checked=tgCfg.recordAll!==false;
+    document.getElementById('tg-block-severity').value=tgCfg.blockMinSeverity||'critical';
+    document.getElementById('tg-alert-severity').value=tgCfg.alertMinSeverity||'high';
+
+    if(!skipIfSame('tg-cards',{stats,tgAction})){
+      document.getElementById('tg-cards').innerHTML=
+        card('Mode',modeLabel,modeCls)+
+        card('Total Tool Calls',fmt(stats.total))+
+        card('Flagged',fmt(stats.flagged),'warn')+
+        card('Critical',(stats.bySeverity?.critical||0).toString(),'warn');
+    }
+
+    document.getElementById('no-tg').style.display=recent.length?'none':'';
+    if(skipIfSame('tg-table',recent))return;
+    document.getElementById('tg-table').innerHTML=recent.map(e=>{
+      const inputPreview=e.tool_input?(e.tool_input.length>80?esc(e.tool_input.slice(0,80))+'...':esc(e.tool_input)):'';
+      const sid=e.session_id?e.session_id.slice(0,8)+'...':'-';
+      return '<tr style="cursor:pointer" data-tg-idx="'+esc(e.id)+'">'+
+        '<td>'+ago(e.created_at)+'</td>'+
+        '<td class="mono" style="font-size:11px">'+esc(sid)+'</td>'+
+        '<td><strong>'+esc(e.tool_name)+'</strong></td>'+
+        '<td>'+actionTag(e.action)+'</td>'+
+        '<td>'+severityTag(e.severity)+'</td>'+
+        '<td>'+(e.category?'<span style="color:#7d8590">'+esc(e.category)+'</span>':'-')+'</td>'+
+        '<td class="mono" style="font-size:11px;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(e.tool_input||'')+'">'+inputPreview+'</td></tr>';
+    }).join('');
+
+    // Click to expand detail
+    document.querySelectorAll('#tg-table tr[data-tg-idx]').forEach(row=>{
+      row.addEventListener('click',()=>{
+        const entry=recent.find(e=>e.id===row.dataset.tgIdx);
+        if(!entry)return;
+        document.querySelector('#tg-sub-calls .section').style.display='none';
+        document.getElementById('tg-cards').style.display='none';
+        document.getElementById('tg-detail').style.display='block';
+
+        let inputFormatted=entry.tool_input||'';
+        try{inputFormatted=JSON.stringify(JSON.parse(inputFormatted),null,2)}catch{}
+
+        document.getElementById('tg-detail-content').innerHTML=
+          '<div class="audit-kv"><span class="k">Tool</span><span class="v">'+esc(entry.tool_name)+'</span></div>'+
+          '<div class="audit-kv"><span class="k">Provider</span><span class="v">'+esc(entry.provider||'unknown')+'</span></div>'+
+          '<div class="audit-kv"><span class="k">Action</span><span class="v">'+actionTag(entry.action)+'</span></div>'+
+          '<div class="audit-kv"><span class="k">Severity</span><span class="v">'+severityTag(entry.severity)+'</span></div>'+
+          '<div class="audit-kv"><span class="k">Rule</span><span class="v">'+(entry.rule_name?esc(entry.rule_name)+' ('+esc(entry.rule_id)+')':'<span style="color:#484f58">none</span>')+'</span></div>'+
+          '<div class="audit-kv"><span class="k">Category</span><span class="v">'+(entry.category?esc(entry.category):'-')+'</span></div>'+
+          '<div class="audit-kv"><span class="k">Request ID</span><span class="v">'+esc(entry.request_id)+'</span></div>'+
+          '<div class="audit-kv"><span class="k">Session</span><span class="v">'+esc(entry.session_id||'-')+'</span></div>'+
+          '<div class="audit-kv"><span class="k">Time</span><span class="v">'+esc(entry.created_at)+'</span></div>'+
+          '<div style="margin-top:12px"><div class="label">Input</div><pre class="snippet" style="max-height:400px;overflow:auto">'+esc(inputFormatted)+'</pre></div>';
+      });
+    });
+  }catch(e){console.error('Tool Guard refresh error',e)}
+}
+
+document.getElementById('tg-back').addEventListener('click',()=>{
+  document.getElementById('tg-detail').style.display='none';
+  document.querySelector('#tg-sub-calls .section').style.display='';
+  document.getElementById('tg-cards').style.display='';
+});
+
+// Tool Guard sub-tab switching
+document.querySelectorAll('#tg-sub-tabs .sub-tab').forEach(t=>{
+  t.addEventListener('click',()=>{
+    document.querySelectorAll('#tg-sub-tabs .sub-tab').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('#tab-toolguard .sub-content').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById('tg-sub-'+t.dataset.tgSub).classList.add('active');
+    if(t.dataset.tgSub==='rules')refreshToolGuardRules();
+  });
+});
+
+// Tool Guard Rules management
+async function refreshToolGuardRules(){
+  try{
+    const r=await fetch('/api/tool-guard/rules');
+    const rules=await r.json();
+    document.getElementById('no-tg-rules').style.display=rules.length?'none':'';
+    if(skipIfSame('tg-rules-table',rules))return;
+    document.getElementById('tg-rules-table').innerHTML=rules.map(r=>{
+      const patPreview=r.input_pattern?(r.input_pattern.length>60?esc(r.input_pattern.slice(0,60))+'...':esc(r.input_pattern)):'';
+      const typeLabel=r.is_builtin?'<span style="color:#7d8590">built-in</span>':'<span style="color:#58a6ff">custom</span>';
+      return '<tr data-rule-id="'+esc(r.id)+'">'+
+        '<td><label class="switch" style="transform:scale(0.8)"><input type="checkbox" class="tgr-toggle" data-id="'+esc(r.id)+'"'+(r.enabled?' checked':'')+'><span class="slider"></span></label></td>'+
+        '<td><strong>'+esc(r.name)+'</strong>'+(r.description?'<div style="font-size:11px;color:#7d8590">'+esc(r.description)+'</div>':'')+'</td>'+
+        '<td>'+severityTag(r.severity)+'</td>'+
+        '<td><span style="color:#7d8590">'+esc(r.category)+'</span></td>'+
+        '<td class="mono" style="font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(r.input_pattern)+'">'+patPreview+'</td>'+
+        '<td>'+typeLabel+'</td>'+
+        '<td>'+(r.is_builtin?'':'<button class="tgr-del" data-id="'+esc(r.id)+'" style="padding:2px 8px;font-size:11px;cursor:pointer;color:#f85149;background:none;border:1px solid #f85149;border-radius:4px">Del</button>')+'</td></tr>';
+    }).join('');
+
+    // Toggle handlers
+    document.querySelectorAll('.tgr-toggle').forEach(cb=>{
+      cb.addEventListener('change',async()=>{
+        await fetch('/api/tool-guard/rules/'+encodeURIComponent(cb.dataset.id),{
+          method:'PUT',headers:{'content-type':'application/json'},
+          body:JSON.stringify({enabled:cb.checked})
+        });
+      });
+    });
+    // Delete handlers
+    document.querySelectorAll('.tgr-del').forEach(btn=>{
+      btn.addEventListener('click',async(e)=>{
+        e.stopPropagation();
+        if(!confirm('Delete this custom rule?'))return;
+        await fetch('/api/tool-guard/rules/'+encodeURIComponent(btn.dataset.id),{method:'DELETE'});
+        _lastJson={};refreshToolGuardRules();
+      });
+    });
+  }catch(e){console.error('Tool Guard rules refresh error',e)}
+}
+
+// Add Rule form
+document.getElementById('tg-add-rule-btn').addEventListener('click',()=>{
+  document.getElementById('tg-rule-form').style.display='block';
+  document.getElementById('tgr-name').value='';
+  document.getElementById('tgr-description').value='';
+  document.getElementById('tgr-input-pattern').value='';
+  document.getElementById('tgr-input-flags').value='i';
+  document.getElementById('tgr-tool-pattern').value='';
+  document.getElementById('tgr-tool-flags').value='';
+  document.getElementById('tgr-severity').value='medium';
+  document.getElementById('tgr-category').value='custom';
+  document.getElementById('tgr-error').style.display='none';
+});
+document.getElementById('tgr-cancel').addEventListener('click',()=>{
+  document.getElementById('tg-rule-form').style.display='none';
+});
+document.getElementById('tgr-save').addEventListener('click',async()=>{
+  const errEl=document.getElementById('tgr-error');
+  const name=document.getElementById('tgr-name').value.trim();
+  const inputPattern=document.getElementById('tgr-input-pattern').value.trim();
+  if(!name||!inputPattern){errEl.textContent='Name and Input Pattern are required';errEl.style.display='inline';return;}
+  try{new RegExp(inputPattern,document.getElementById('tgr-input-flags').value)}catch(e){
+    errEl.textContent='Invalid regex: '+e.message;errEl.style.display='inline';return;
+  }
+  const toolPat=document.getElementById('tgr-tool-pattern').value.trim();
+  if(toolPat){try{new RegExp(toolPat,document.getElementById('tgr-tool-flags').value)}catch(e){
+    errEl.textContent='Invalid tool name regex: '+e.message;errEl.style.display='inline';return;
+  }}
+  const payload={
+    name,
+    description:document.getElementById('tgr-description').value.trim()||null,
+    input_pattern:inputPattern,
+    input_flags:document.getElementById('tgr-input-flags').value||'i',
+    tool_name_pattern:toolPat||null,
+    tool_name_flags:document.getElementById('tgr-tool-flags').value||null,
+    severity:document.getElementById('tgr-severity').value,
+    category:document.getElementById('tgr-category').value||'custom',
+  };
+  const r=await fetch('/api/tool-guard/rules',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+  const res=await r.json();
+  if(res.error){errEl.textContent=res.error;errEl.style.display='inline';return;}
+  document.getElementById('tg-rule-form').style.display='none';
+  _lastJson={};refreshToolGuardRules();
+});
+
+// Tool Guard config change handlers
+['tg-action-select','tg-record-all','tg-block-severity','tg-alert-severity'].forEach(id=>{
+  const el=document.getElementById(id);
+  if(!el){console.error('Tool Guard config element not found:',id);return;}
+  el.addEventListener('change',async()=>{
+    const payload={plugins:{toolGuard:{
+      action:document.getElementById('tg-action-select').value,
+      recordAll:document.getElementById('tg-record-all').checked,
+      blockMinSeverity:document.getElementById('tg-block-severity').value,
+      alertMinSeverity:document.getElementById('tg-alert-severity').value,
+    }}};
+    try{
+      console.log('[Bastion] Saving toolGuard config:',JSON.stringify(payload));
+      const r=await fetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+      if(!r.ok){console.error('[Bastion] Config save failed:',r.status,await r.text());return;}
+      const result=await r.json();
+      console.log('[Bastion] Config saved, effective toolGuard:',JSON.stringify(result.config?.plugins?.toolGuard));
+    }catch(e){console.error('[Bastion] Config save error:',e);return;}
+    const st=document.getElementById('tg-cfg-status');st.style.display='inline';setTimeout(()=>st.style.display='none',2000);
+    _lastJson={};refreshToolGuard();
+  });
+});
+
 // Settings tab
 async function refreshSettings(){
   try{
@@ -1501,17 +1913,46 @@ async function refreshSettings(){
         await fetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
       });
     });
+
+    // Retention settings
+    const ret=data.config?.retention||{};
+    document.getElementById('ret-requests').value=ret.requestsHours||720;
+    document.getElementById('ret-dlp').value=ret.dlpEventsHours||720;
+    document.getElementById('ret-tools').value=ret.toolCallsHours||720;
+    document.getElementById('ret-optimizer').value=ret.optimizerEventsHours||720;
+    document.getElementById('ret-sessions').value=ret.sessionsHours||720;
+    document.getElementById('ret-audit').value=ret.auditLogHours||24;
   }catch(e){}
 }
 
+document.getElementById('ret-save-btn').addEventListener('click',async()=>{
+  const retention={
+    requestsHours:parseInt(document.getElementById('ret-requests').value)||720,
+    dlpEventsHours:parseInt(document.getElementById('ret-dlp').value)||720,
+    toolCallsHours:parseInt(document.getElementById('ret-tools').value)||720,
+    optimizerEventsHours:parseInt(document.getElementById('ret-optimizer').value)||720,
+    sessionsHours:parseInt(document.getElementById('ret-sessions').value)||720,
+    auditLogHours:parseInt(document.getElementById('ret-audit').value)||24,
+  };
+  await fetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({retention})});
+  const st=document.getElementById('ret-status');st.style.display='inline';setTimeout(()=>st.style.display='none',2000);
+});
+
 loadSessions();
 refresh();
-setInterval(()=>{refresh();loadSessions()},3000);
+pollToolGuardAlerts();
+// Only refresh the active tab + alerts; sessions reload every 15s
+setInterval(()=>{refreshActiveTab();pollToolGuardAlerts()},3000);
+setInterval(loadSessions,15000);
 </script>
 </body>
 </html>`;
 
 export function serveDashboard(res: ServerResponse): void {
-  res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+  res.writeHead(200, {
+    'content-type': 'text/html; charset=utf-8',
+    'cache-control': 'no-store, no-cache, must-revalidate',
+    'pragma': 'no-cache',
+  });
   res.end(HTML);
 }

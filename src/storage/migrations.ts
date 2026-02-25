@@ -144,6 +144,70 @@ const MIGRATIONS: string[] = [
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   `,
+
+  // Migration 8: Tool Guard — tool_calls table for audit
+  `
+  CREATE TABLE IF NOT EXISTS tool_calls (
+    id TEXT PRIMARY KEY,
+    request_id TEXT NOT NULL,
+    tool_name TEXT NOT NULL,
+    tool_input TEXT,
+    rule_id TEXT,
+    rule_name TEXT,
+    severity TEXT,
+    category TEXT,
+    provider TEXT,
+    session_id TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_tool_calls_request ON tool_calls(request_id);
+  CREATE INDEX IF NOT EXISTS idx_tool_calls_session ON tool_calls(session_id);
+  CREATE INDEX IF NOT EXISTS idx_tool_calls_severity ON tool_calls(severity);
+  CREATE INDEX IF NOT EXISTS idx_tool_calls_created ON tool_calls(created_at);
+  `,
+
+  // Migration 9: Tool Guard — action result column on tool_calls
+  `
+  ALTER TABLE tool_calls ADD COLUMN action TEXT;
+  `,
+
+  // Migration 10: Tool Guard rules table for DB-backed, UI-configurable rules
+  `
+  CREATE TABLE IF NOT EXISTS tool_guard_rules (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    description TEXT,
+    severity TEXT NOT NULL DEFAULT 'medium',
+    category TEXT NOT NULL DEFAULT 'custom',
+    tool_name_pattern TEXT,
+    tool_name_flags TEXT,
+    input_pattern TEXT NOT NULL,
+    input_flags TEXT DEFAULT 'i',
+    enabled INTEGER DEFAULT 1,
+    is_builtin INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  `,
+
+  // Migration 11: Audit log — tool_guard_hit column + ensure action column exists
+  // (action column may already exist from migration 9 on fresh installs; runner handles duplicate)
+  `
+  ALTER TABLE tool_calls ADD COLUMN action TEXT;
+  ALTER TABLE audit_log ADD COLUMN tool_guard_hit INTEGER DEFAULT 0;
+  CREATE INDEX IF NOT EXISTS idx_audit_tool_guard_hit ON audit_log(tool_guard_hit);
+  `,
+
+  // Migration 12: Ensure tool_calls.action column exists (catch-up for DBs that skipped migration 9/11)
+  `
+  ALTER TABLE tool_calls ADD COLUMN action TEXT;
+  `,
+
+  // Migration 13: Backfill action + severity for existing records
+  `
+  UPDATE tool_calls SET action = 'flag' WHERE action IS NULL AND rule_id IS NOT NULL;
+  UPDATE tool_calls SET action = 'pass', severity = 'info' WHERE action IS NULL AND rule_id IS NULL;
+  `,
 ];
 
 export function runMigrations(db: Database.Database): void {
@@ -161,7 +225,26 @@ export function runMigrations(db: Database.Database): void {
   const version = currentVersion?.version ?? 0;
 
   for (let i = version; i < MIGRATIONS.length; i++) {
-    db.exec(MIGRATIONS[i]);
+    try {
+      db.exec(MIGRATIONS[i]);
+    } catch (err) {
+      // Handle duplicate column errors from idempotent ALTER TABLE statements
+      if (err instanceof Error && err.message.includes('duplicate column')) {
+        // Execute statements individually, skipping duplicate column errors
+        const statements = MIGRATIONS[i].split(';').map(s => s.trim()).filter(Boolean);
+        for (const stmt of statements) {
+          try {
+            db.exec(stmt);
+          } catch (stmtErr) {
+            if (!(stmtErr instanceof Error) || !stmtErr.message.includes('duplicate column')) {
+              throw stmtErr;
+            }
+          }
+        }
+      } else {
+        throw err;
+      }
+    }
     db.prepare('INSERT INTO schema_version (version) VALUES (?)').run(i + 1);
   }
 }

@@ -45,4 +45,11 @@ export class SessionsRepository {
   getAll(limit: number = 50): SessionRecord[] {
     return this.db.prepare('SELECT * FROM sessions ORDER BY last_seen_at DESC LIMIT ?').all(limit) as SessionRecord[];
   }
+
+  purgeOlderThan(hours: number): number {
+    const result = this.db.prepare(
+      `DELETE FROM sessions WHERE last_seen_at < datetime('now', '-' || ? || ' hours')`
+    ).run(hours);
+    return result.changes;
+  }
 }

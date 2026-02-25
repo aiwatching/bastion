@@ -2,7 +2,7 @@
 
 # Bastion AI Gateway
 
-Local-first proxy for LLM providers (Anthropic, OpenAI, Gemini). Provides DLP scanning, usage metrics, cost tracking, and response caching — all running on your machine.
+Local-first proxy for LLM providers (Anthropic, OpenAI, Gemini). Provides DLP scanning, tool call monitoring, usage metrics, cost tracking, and response caching — all running on your machine.
 
 ![Overview](docs/overview.png "Overview")
 
@@ -16,7 +16,7 @@ Local-first proxy for LLM providers (Anthropic, OpenAI, Gemini). Provides DLP sc
 ### macOS / Linux
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/your-org/bastion/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/aiwatching/bastion/main/install.sh | bash
 ```
 
 Or from local source:
@@ -203,11 +203,12 @@ bastion trust-ca
 
 Open `http://127.0.0.1:8420/dashboard` in a browser while the gateway is running.
 
-5 tabs:
+6 tabs:
 - **Overview** — Request metrics, cost, tokens, per-provider/per-model/per-session breakdown
 - **DLP** — Sub-tabs: Findings (direction, snippets, drill-into audit), Config (engine toggle, action mode, AI validation, semantics), Signatures (remote sync status, version tracking, changelog, pattern management), Test (standalone scanner with presets, trace log)
+- **Tool Guard** — Sub-tabs: Calls (recent tool call history with severity, rule match, action taken), Rules (26 built-in rules + custom rule management, enable/disable per rule)
 - **Optimizer** — Cache hit rate, tokens saved
-- **Audit** — Session-based timeline, DLP-tagged entries, summary preview, formatted request/response viewer
+- **Audit** — Session-based timeline, DLP/Tool Guard-tagged entries, summary preview, formatted request/response viewer
 - **Settings** — Toggle plugins, configure AI validation, semantic rules, runtime changes without restart
 
 ## How It Works
@@ -283,6 +284,44 @@ plugins:
       nonSensitiveNames: []   # extra field names to exclude from detection
 ```
 
+### Tool Guard
+Real-time monitoring and blocking of dangerous tool calls made by AI agents. Inspects LLM responses for tool invocations (Anthropic `tool_use`, OpenAI `tool_calls`, Gemini `functionCall`) and evaluates them against configurable rules.
+
+Two action modes:
+- **audit** — Record all tool calls and flag dangerous ones (no blocking)
+- **block** — Actively block dangerous tool calls in real-time. For streaming responses, a `StreamingToolGuard` intercepts SSE events and replaces blocked tool calls with a text warning. For non-streaming responses, the entire response is blocked before reaching the client.
+
+**Built-in rules (26):**
+
+| Category | Rules | Severity |
+|----------|-------|----------|
+| `destructive-fs` | Recursive delete root/home, recursive delete with wildcard, chmod 777, format filesystem, dd to block device | critical / high |
+| `code-execution` | curl pipe to shell, wget pipe to shell, eval() on dynamic input, base64 decode and execute | critical / high |
+| `credential-access` | Read .env file, access private key, access AWS credentials, echo secret env var | high |
+| `network-exfil` | curl POST with data, data transfer to raw IP | medium / high |
+| `git-destructive` | git force push, git reset --hard, git clean -f | high / medium |
+| `package-publish` | npm publish, pip/twine upload | medium |
+| `system-config` | sudo command, iptables modification, systemctl service control | medium |
+| `file-delete` | File/directory deletion (rm) | medium |
+| `file-write-outside` | Write to /etc/, write to /usr/ | low |
+
+Rules are stored in SQLite and can be managed from the dashboard (enable/disable, add custom rules) without restarting. Built-in rules are seeded on first start and can be individually disabled but not deleted.
+
+Desktop notifications and webhook alerts are supported for high-severity matches.
+
+Configure in `~/.bastion/config.yaml`:
+```yaml
+plugins:
+  toolGuard:
+    enabled: true
+    action: "audit"       # audit | block
+    recordAll: true       # record all tool calls (not just flagged ones)
+    blockMinSeverity: "critical"  # minimum severity to block (when action=block)
+    alertMinSeverity: "high"      # minimum severity for alerts
+    alertDesktop: true             # macOS desktop notifications
+    alertWebhookUrl: ""            # webhook URL for alerts (Slack, Discord, etc.)
+```
+
 ### Token Optimizer
 - **Response cache** — Exact-match cache for identical requests (AES-256-GCM encrypted)
 - **Whitespace trimming** — Collapses excessive whitespace to save tokens
@@ -342,6 +381,14 @@ plugins:
     rawData: true          # store full encrypted content
     rawMaxBytes: 524288    # 512KB max per entry
     summaryMaxBytes: 1024  # 1KB summary
+  toolGuard:
+    enabled: true
+    action: "audit"        # audit | block
+    recordAll: true        # record all tool calls, not just flagged
+    blockMinSeverity: "critical"  # minimum severity to block
+    alertMinSeverity: "high"      # minimum severity for alerts
+    alertDesktop: true
+    alertWebhookUrl: ""
 
 timeouts:
   upstream: 120000     # 2 minutes
@@ -379,6 +426,15 @@ All endpoints are available at `http://127.0.0.1:8420` while the gateway is runn
 | `GET` | `/api/audit/sessions` | Audit sessions list |
 | `GET` | `/api/audit/session/:id` | Parsed timeline for a session |
 | `GET` | `/api/audit/:requestId` | Single request detail (parsed or summary-only fallback) |
+| `GET` | `/api/tool-guard/recent?limit=50` | Recent tool call records |
+| `GET` | `/api/tool-guard/stats` | Tool call counts by severity, category, top tool names |
+| `GET` | `/api/tool-guard/session/:id` | Tool calls for a specific session |
+| `GET` | `/api/tool-guard/rules` | List all rules (built-in + custom) |
+| `POST` | `/api/tool-guard/rules` | Add custom rule |
+| `PUT` | `/api/tool-guard/rules/:id` | Update rule (toggle enabled, edit fields) |
+| `DELETE` | `/api/tool-guard/rules/:id` | Delete custom rule (built-ins cannot be deleted) |
+| `GET` | `/api/tool-guard/alerts` | Recent alerts with unacknowledged count |
+| `POST` | `/api/tool-guard/alerts/ack` | Acknowledge all alerts |
 | `GET` | `/api/optimizer/stats` | Cache hit rate and tokens saved |
 | `GET` | `/api/optimizer/recent?limit=50` | Recent optimizer events |
 | `GET` | `/api/config` | Current configuration + plugin status |

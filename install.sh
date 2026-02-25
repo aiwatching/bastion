@@ -3,7 +3,27 @@ set -euo pipefail
 
 INSTALL_DIR="${BASTION_INSTALL_DIR:-$HOME/.bastion/app}"
 BIN_DIR="${BASTION_BIN_DIR:-/usr/local/bin}"
-REPO_URL="${BASTION_REPO_URL:-https://github.com/your-org/bastion.git}"
+REPO_URL="${BASTION_REPO_URL:-https://github.com/aiwatching/bastion.git}"
+LOCAL_SOURCE=""
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -local|--local)
+      if [[ -n "${2:-}" && "$2" != -* ]]; then
+        LOCAL_SOURCE="$(cd "$2" && pwd)"
+        shift 2
+      else
+        # Default: use the directory where install.sh lives
+        LOCAL_SOURCE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)"
+        shift
+      fi
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
 
 # Colors
 RED='\033[0;31m'
@@ -16,6 +36,22 @@ warn()  { echo -e "${YELLOW}==>${NC} $*"; }
 error() { echo -e "${RED}==>${NC} $*" >&2; exit 1; }
 
 # --- Pre-checks ---
+
+# macOS: ensure Xcode Command Line Tools are installed (provides git, clang, etc.)
+if [ "$(uname)" = "Darwin" ]; then
+  if ! xcode-select -p >/dev/null 2>&1; then
+    info "Installing Xcode Command Line Tools (required for git)..."
+    info "A system dialog may appear — click 'Install' and wait for it to finish."
+    xcode-select --install 2>/dev/null || true
+    # Wait for installation to complete
+    until xcode-select -p >/dev/null 2>&1; do
+      sleep 5
+    done
+    info "Xcode Command Line Tools installed."
+  fi
+fi
+
+command -v git  >/dev/null 2>&1 || error "git is required. Install it first: https://git-scm.com"
 command -v node >/dev/null 2>&1 || error "Node.js is required. Install it first: https://nodejs.org"
 command -v npm  >/dev/null 2>&1 || error "npm is required. Install it with Node.js."
 
@@ -32,7 +68,21 @@ fi
 info "Installing Bastion AI Gateway..."
 
 # --- Download / Update ---
-if [ -d "$INSTALL_DIR/.git" ]; then
+if [ -n "$LOCAL_SOURCE" ]; then
+  # -local mode: use local source directory directly
+  if [ ! -f "$LOCAL_SOURCE/package.json" ]; then
+    error "Not a valid Bastion source directory: $LOCAL_SOURCE (no package.json found)"
+  fi
+  if [ "$LOCAL_SOURCE" = "$INSTALL_DIR" ]; then
+    info "Local source is already the install directory"
+  else
+    info "Installing from local source: $LOCAL_SOURCE"
+    mkdir -p "$(dirname "$INSTALL_DIR")"
+    rm -rf "$INSTALL_DIR"
+    cp -r "$LOCAL_SOURCE" "$INSTALL_DIR"
+  fi
+  cd "$INSTALL_DIR"
+elif [ -d "$INSTALL_DIR/.git" ]; then
   info "Updating existing installation..."
   cd "$INSTALL_DIR"
   git pull --ff-only

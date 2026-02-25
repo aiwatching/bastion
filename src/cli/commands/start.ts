@@ -1,5 +1,6 @@
 import type { Command } from 'commander';
 import { getDaemonStatus, spawnDaemon } from '../daemon.js';
+import { getVersion } from '../../version.js';
 
 export function registerStartCommand(program: Command): void {
   program
@@ -26,8 +27,9 @@ export function registerStartCommand(program: Command): void {
         return;
       }
 
+      const version = getVersion();
       const pid = spawnDaemon();
-      console.log(`Bastion AI Gateway started (PID: ${pid})`);
+      console.log(`Bastion AI Gateway v${version} started (PID: ${pid})`);
       console.log('Listening on http://127.0.0.1:8420');
       console.log('Dashboard: http://127.0.0.1:8420/dashboard');
       console.log('');

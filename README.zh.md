@@ -2,7 +2,7 @@
 
 # Bastion AI Gateway
 
-本地优先的 LLM 提供商代理（Anthropic、OpenAI、Gemini）。提供 DLP 扫描、使用量统计、费用追踪和响应缓存——全部在本机运行。
+本地优先的 LLM 提供商代理（Anthropic、OpenAI、Gemini）。提供 DLP 扫描、工具调用监控、使用量统计、费用追踪和响应缓存——全部在本机运行。
 
 ![Overview](docs/overview.png "Overview")
 
@@ -16,7 +16,7 @@
 ### macOS / Linux
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/your-org/bastion/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/aiwatching/bastion/main/install.sh | bash
 ```
 
 或从本地源码安装：
@@ -203,11 +203,12 @@ bastion trust-ca
 
 网关运行时，在浏览器中打开 `http://127.0.0.1:8420/dashboard`。
 
-5 个标签页：
+6 个标签页：
 - **Overview** — 请求指标、费用、token 数、按提供商/模型/会话分类的统计
 - **DLP** — 子标签：Findings（方向、片段、钻取至审计记录）、Config（引擎开关、动作模式、AI 验证、语义规则）、Signatures（远程同步状态、版本追踪、变更日志、模式管理）、Test（独立扫描器，含预设、trace 日志）
+- **Tool Guard** — 子标签：Calls（最近工具调用历史，含严重级别、规则匹配、执行动作）、Rules（26 条内置规则 + 自定义规则管理，可逐条启用/禁用）
 - **Optimizer** — 缓存命中率、节省的 token 数
-- **Audit** — 基于会话的时间线、DLP 标记条目、摘要预览、格式化请求/响应查看器
+- **Audit** — 基于会话的时间线、DLP/Tool Guard 标记条目、摘要预览、格式化请求/响应查看器
 - **Settings** — 切换 plugin、配置 AI 验证、语义规则，运行时修改无需重启
 
 ## 工作原理
@@ -283,6 +284,44 @@ plugins:
       nonSensitiveNames: []   # extra field names to exclude from detection
 ```
 
+### Tool Guard
+实时监控和阻断 AI Agent 发起的危险工具调用。检查 LLM 响应中的工具调用（Anthropic `tool_use`、OpenAI `tool_calls`、Gemini `functionCall`），并根据可配置的规则进行评估。
+
+两种动作模式：
+- **audit** — 记录所有工具调用，标记危险调用（不阻断）
+- **block** — 实时阻断危险工具调用。流式响应中，`StreamingToolGuard` 拦截 SSE 事件，将被阻断的工具调用替换为文本警告。非流式响应中，整个响应在到达客户端之前被阻止。
+
+**内置规则（26 条）：**
+
+| 类别 | 规则 | 严重级别 |
+|------|------|----------|
+| `destructive-fs` | 递归删除根目录/home、通配符递归删除、chmod 777、格式化文件系统、dd 写入块设备 | critical / high |
+| `code-execution` | curl 管道到 shell、wget 管道到 shell、eval() 动态输入、base64 解码执行 | critical / high |
+| `credential-access` | 读取 .env 文件、访问私钥、访问 AWS 凭证、输出敏感环境变量 | high |
+| `network-exfil` | curl POST 发送数据、向裸 IP 传输数据 | medium / high |
+| `git-destructive` | git force push、git reset --hard、git clean -f | high / medium |
+| `package-publish` | npm publish、pip/twine upload | medium |
+| `system-config` | sudo 命令、iptables 修改、systemctl 服务控制 | medium |
+| `file-delete` | 文件/目录删除 (rm) | medium |
+| `file-write-outside` | 写入 /etc/、写入 /usr/ | low |
+
+规则存储在 SQLite 中，可通过 Dashboard 管理（启用/禁用、添加自定义规则），无需重启。内置规则在首次启动时自动初始化，可单独禁用但不可删除。
+
+支持桌面通知和 Webhook 告警（针对高严重级别匹配）。
+
+在 `~/.bastion/config.yaml` 中配置：
+```yaml
+plugins:
+  toolGuard:
+    enabled: true
+    action: "audit"       # audit | block
+    recordAll: true       # 记录所有工具调用（不仅是标记的）
+    blockMinSeverity: "critical"  # 阻断的最低严重级别（action=block 时生效）
+    alertMinSeverity: "high"      # 告警的最低严重级别
+    alertDesktop: true             # macOS 桌面通知
+    alertWebhookUrl: ""            # Webhook URL（Slack、Discord 等）
+```
+
 ### Token Optimizer
 - **响应缓存** — 对相同请求进行精确匹配缓存（AES-256-GCM 加密）
 - **空白压缩** — 折叠多余空白以节省 token
@@ -342,6 +381,14 @@ plugins:
     rawData: true          # store full encrypted content
     rawMaxBytes: 524288    # 512KB max per entry
     summaryMaxBytes: 1024  # 1KB summary
+  toolGuard:
+    enabled: true
+    action: "audit"        # audit | block
+    recordAll: true        # 记录所有工具调用，不仅是标记的
+    blockMinSeverity: "critical"  # 阻断的最低严重级别
+    alertMinSeverity: "high"      # 告警的最低严重级别
+    alertDesktop: true
+    alertWebhookUrl: ""
 
 timeouts:
   upstream: 120000     # 2 minutes
@@ -379,6 +426,15 @@ BASTION_LOG_LEVEL=debug bastion start
 | `GET` | `/api/audit/sessions` | Audit sessions list |
 | `GET` | `/api/audit/session/:id` | Parsed timeline for a session |
 | `GET` | `/api/audit/:requestId` | Single request detail (parsed or summary-only fallback) |
+| `GET` | `/api/tool-guard/recent?limit=50` | 最近的工具调用记录 |
+| `GET` | `/api/tool-guard/stats` | 按严重级别、类别、工具名称统计 |
+| `GET` | `/api/tool-guard/session/:id` | 指定会话的工具调用 |
+| `GET` | `/api/tool-guard/rules` | 列出所有规则（内置 + 自定义） |
+| `POST` | `/api/tool-guard/rules` | 添加自定义规则 |
+| `PUT` | `/api/tool-guard/rules/:id` | 更新规则（切换启用、编辑字段） |
+| `DELETE` | `/api/tool-guard/rules/:id` | 删除自定义规则（内置规则不可删除） |
+| `GET` | `/api/tool-guard/alerts` | 最近告警及未确认数量 |
+| `POST` | `/api/tool-guard/alerts/ack` | 确认所有告警 |
 | `GET` | `/api/optimizer/stats` | Cache hit rate and tokens saved |
 | `GET` | `/api/optimizer/recent?limit=50` | Recent optimizer events |
 | `GET` | `/api/config` | Current configuration + plugin status |

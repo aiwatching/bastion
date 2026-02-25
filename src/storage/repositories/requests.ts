@@ -133,10 +133,22 @@ export class RequestsRepository {
     return { ...totals, by_provider, by_model };
   }
 
-  getRecent(limit: number = 10): RequestRecord[] {
+  getRecent(limit: number = 10, since?: string): RequestRecord[] {
+    if (since) {
+      return this.db.prepare(`
+        SELECT * FROM requests WHERE created_at > ? ORDER BY created_at DESC LIMIT ?
+      `).all(since, limit) as RequestRecord[];
+    }
     return this.db.prepare(`
       SELECT * FROM requests ORDER BY created_at DESC LIMIT ?
     `).all(limit) as RequestRecord[];
+  }
+
+  purgeOlderThan(hours: number): number {
+    const result = this.db.prepare(
+      `DELETE FROM requests WHERE created_at < datetime('now', '-' || ? || ' hours')`
+    ).run(hours);
+    return result.changes;
   }
 
   getSessions(): SessionInfo[] {

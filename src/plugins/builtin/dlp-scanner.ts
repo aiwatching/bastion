@@ -73,12 +73,16 @@ export function createDlpScannerPlugin(db: Database.Database, config: DlpScanner
 
   // Sync remote patterns from signature repo (if configured)
   if (config.remotePatterns?.url) {
-    try {
-      syncRemotePatterns(config.remotePatterns, patternsRepo, config.patterns);
-    } catch (err) {
-      log.warn('Remote pattern sync failed on startup', { error: (err as Error).message });
+    if (config.remotePatterns.syncOnStart !== false) {
+      try {
+        syncRemotePatterns(config.remotePatterns, patternsRepo, config.patterns);
+      } catch (err) {
+        log.warn('Remote pattern sync failed on startup', { error: (err as Error).message });
+      }
     }
-    startPeriodicSync(config.remotePatterns, patternsRepo, config.patterns);
+    if (config.remotePatterns.syncIntervalMinutes > 0) {
+      startPeriodicSync(config.remotePatterns, patternsRepo, config.patterns);
+    }
   }
 
   return {
