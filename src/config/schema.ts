@@ -13,7 +13,7 @@ export interface BastionConfig {
     dlp: {
       enabled: boolean;
       action: 'pass' | 'warn' | 'redact' | 'block';
-      patterns: ('high-confidence' | 'validated' | 'context-aware')[];
+      patterns: ('high-confidence' | 'validated' | 'context-aware' | 'prompt-injection')[];
       remotePatterns: {
         url: string;
         branch: string;

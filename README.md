@@ -448,6 +448,7 @@ All endpoints are available at `http://127.0.0.1:8420` while the gateway is runn
 - [AI Agent Monitoring](docs/agent-monitoring.md) | [中文](docs/agent-monitoring.zh.md) — Monitor any local AI agent (Claude Code, Cursor, custom apps)
 - [Remote Signatures](docs/remote-signatures.md) | [中文](docs/remote-signatures.zh.md) — Remote DLP pattern sync from Git repo
 - [OpenClaw DLP Alert Skill](docs/openclaw-dlp-skill.md) | [中文](docs/openclaw-dlp-skill.zh.md) — Let OpenClaw notify you of DLP findings via Telegram/Discord
+- [Security Research](docs/security-research.md) | [中文](docs/security-research.zh.md) — AI agent threat landscape, Bastion capabilities, and roadmap
 - [Windows Troubleshooting](docs/windows-troubleshooting.md) | [中文](docs/windows-troubleshooting.zh.md) — Common issues and solutions for Windows
 
 ## Data Storage
