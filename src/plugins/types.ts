@@ -24,6 +24,8 @@ export interface RequestContext {
   /** Internal: set by tool-guard onRequest to enable streaming interception in forwarder.
    *  Value is the blockMinSeverity threshold. */
   _toolGuardStreamBlock?: string;
+  /** Internal: DB-loaded rules for streaming guard (set by tool-guard onRequest) */
+  _toolGuardRules?: import('../tool-guard/rules.js').ToolGuardRule[];
 }
 
 export interface ResponseCompleteContext {

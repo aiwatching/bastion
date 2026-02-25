@@ -209,6 +209,16 @@ export const BUILTIN_RULES: ToolGuardRule[] = [
     match: { inputPattern: /\bsystemctl\s+(?:start|stop|enable|disable|restart)/i },
   },
 
+  // ── file-delete (medium) ──
+  {
+    id: 'fs-rm',
+    name: 'File/directory deletion',
+    description: 'Removing files or directories',
+    severity: 'medium',
+    category: 'file-delete',
+    match: { inputPattern: /\brm\s+/i },
+  },
+
   // ── file-write-outside (low) ──
   {
     id: 'write-etc',

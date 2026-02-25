@@ -9,7 +9,7 @@
  * passed through and audited post-send (onResponseComplete).
  */
 
-import { matchRules, BUILTIN_RULES, type RuleMatch } from './rules.js';
+import { matchRules, BUILTIN_RULES, type ToolGuardRule, type RuleMatch } from './rules.js';
 import { shouldAlert } from './alert.js';
 import { createLogger } from '../utils/logger.js';
 
@@ -17,6 +17,7 @@ const log = createLogger('streaming-guard');
 
 export interface StreamingGuardConfig {
   blockMinSeverity: string;
+  rules?: ToolGuardRule[];
 }
 
 export interface StreamingGuardResult {
@@ -27,6 +28,7 @@ export interface StreamingGuardResult {
 
 export class StreamingToolGuard {
   private config: StreamingGuardConfig;
+  private rules: ToolGuardRule[];
   private onForward: (data: string) => void;
 
   // Buffering state for current tool_use block
@@ -44,6 +46,7 @@ export class StreamingToolGuard {
     onForward: (data: string) => void,
   ) {
     this.config = config;
+    this.rules = config.rules ?? BUILTIN_RULES;
     this.onForward = onForward;
   }
 
@@ -112,7 +115,7 @@ export class StreamingToolGuard {
     let input: Record<string, unknown> | string = this.toolInput;
     try { input = JSON.parse(this.toolInput); } catch { /* keep as string */ }
 
-    const ruleMatch = matchRules(this.toolName, input, BUILTIN_RULES);
+    const ruleMatch = matchRules(this.toolName, input, this.rules);
     const shouldBlock = ruleMatch && shouldAlert(ruleMatch.rule.severity, this.config.blockMinSeverity);
 
     if (ruleMatch) {

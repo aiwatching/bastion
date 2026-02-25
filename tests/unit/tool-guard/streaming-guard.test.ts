@@ -300,4 +300,85 @@ describe('StreamingToolGuard', () => {
       expect(data.index).toBe(2);
     }
   });
+
+  it('uses custom rules passed via config', () => {
+    const forwarded: string[] = [];
+    const customRules = [
+      {
+        id: 'custom-secret-read',
+        name: 'Read secrets.yaml',
+        description: 'Block reading secrets.yaml',
+        severity: 'critical' as const,
+        category: 'custom',
+        match: { inputPattern: /secrets\.yaml/i },
+      },
+    ];
+    const guard = new StreamingToolGuard(
+      { blockMinSeverity: 'critical', rules: customRules },
+      (data) => forwarded.push(data),
+    );
+
+    const start = makeSSE('content_block_start', {
+      type: 'content_block_start',
+      index: 0,
+      content_block: { type: 'tool_use', id: 'toolu_1', name: 'read_file' },
+    });
+    const delta = makeSSE('content_block_delta', {
+      type: 'content_block_delta',
+      index: 0,
+      delta: { type: 'input_json_delta', partial_json: '{"path":"config/secrets.yaml"}' },
+    });
+    const stop = makeSSE('content_block_stop', { type: 'content_block_stop', index: 0 });
+
+    guard.processEvent(start.raw, start.parsed);
+    guard.processEvent(delta.raw, delta.parsed);
+    guard.processEvent(stop.raw, stop.parsed);
+
+    // Should be blocked by custom rule
+    expect(forwarded).toHaveLength(3);
+    expect(forwarded[1]).toContain('BLOCKED by Bastion Tool Guard');
+    expect(guard.results).toHaveLength(1);
+    expect(guard.results[0].ruleMatch.rule.id).toBe('custom-secret-read');
+    expect(guard.results[0].blocked).toBe(true);
+  });
+
+  it('custom rules do not match built-in patterns when only custom rules provided', () => {
+    const forwarded: string[] = [];
+    const customRules = [
+      {
+        id: 'custom-only',
+        name: 'Only match foobar',
+        description: 'test',
+        severity: 'critical' as const,
+        category: 'custom',
+        match: { inputPattern: /foobar/i },
+      },
+    ];
+    const guard = new StreamingToolGuard(
+      { blockMinSeverity: 'critical', rules: customRules },
+      (data) => forwarded.push(data),
+    );
+
+    // rm -rf / would match built-in rules but NOT custom-only rules
+    const start = makeSSE('content_block_start', {
+      type: 'content_block_start',
+      index: 0,
+      content_block: { type: 'tool_use', id: 'toolu_1', name: 'bash' },
+    });
+    const delta = makeSSE('content_block_delta', {
+      type: 'content_block_delta',
+      index: 0,
+      delta: { type: 'input_json_delta', partial_json: '{"command":"rm -rf /"}' },
+    });
+    const stop = makeSSE('content_block_stop', { type: 'content_block_stop', index: 0 });
+
+    guard.processEvent(start.raw, start.parsed);
+    guard.processEvent(delta.raw, delta.parsed);
+    guard.processEvent(stop.raw, stop.parsed);
+
+    // Should NOT be blocked — custom rules don't have rm -rf pattern
+    expect(forwarded).toHaveLength(3);
+    expect(forwarded[0]).toContain('tool_use');
+    expect(guard.results).toHaveLength(0);
+  });
 });

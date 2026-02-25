@@ -440,18 +440,82 @@ tr:hover{background:#1c2128}
     </div>
     <div id="tg-alert-list" style="margin-top:8px;font-size:11px;color:#7d8590;max-height:120px;overflow:auto"></div>
   </div>
-  <div class="grid" id="tg-cards"></div>
-  <div class="section">
-    <h2>Recent Tool Calls</h2>
-    <table><thead><tr><th>Time</th><th>Session</th><th>Tool Name</th><th>Severity</th><th>Category</th><th>Input</th></tr></thead><tbody id="tg-table"></tbody></table>
-    <p class="empty" id="no-tg">No tool calls recorded yet.</p>
+  <div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;padding:12px 16px;background:#161b22;border:1px solid #30363d;border-radius:8px">
+    <div style="font-size:13px;color:#e1e4e8;font-weight:500">Action Mode</div>
+    <select id="tg-action-select" class="config-select">
+      <option value="audit">Audit (log only)</option>
+      <option value="block">Block (prevent dangerous calls)</option>
+    </select>
+    <div style="font-size:13px;color:#e1e4e8;font-weight:500;margin-left:16px">Block Min Severity</div>
+    <select id="tg-block-severity" class="config-select">
+      <option value="critical">Critical</option>
+      <option value="high">High</option>
+      <option value="medium">Medium</option>
+      <option value="low">Low</option>
+    </select>
+    <div style="font-size:13px;color:#e1e4e8;font-weight:500;margin-left:16px">Alert Min Severity</div>
+    <select id="tg-alert-severity" class="config-select">
+      <option value="critical">Critical</option>
+      <option value="high">High</option>
+      <option value="medium">Medium</option>
+      <option value="low">Low</option>
+    </select>
+    <span id="tg-cfg-status" style="margin-left:8px;font-size:12px;color:#3fb950;display:none">Saved!</span>
   </div>
-  <div id="tg-detail" style="display:none">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <h2 style="margin:0">Tool Call Detail</h2>
-      <button id="tg-back" style="padding:4px 12px;font-size:12px;cursor:pointer;color:#58a6ff;background:none;border:1px solid #30363d;border-radius:6px">Back</button>
+  <div class="grid" id="tg-cards"></div>
+
+  <div class="sub-tabs" id="tg-sub-tabs">
+    <button class="sub-tab active" data-tg-sub="calls">Calls</button>
+    <button class="sub-tab" data-tg-sub="rules">Rules</button>
+  </div>
+
+  <!-- SUB: Calls -->
+  <div class="sub-content active" id="tg-sub-calls">
+    <div class="section">
+      <h2>Recent Tool Calls</h2>
+      <table><thead><tr><th>Time</th><th>Session</th><th>Tool Name</th><th>Severity</th><th>Category</th><th>Input</th></tr></thead><tbody id="tg-table"></tbody></table>
+      <p class="empty" id="no-tg">No tool calls recorded yet.</p>
     </div>
-    <div id="tg-detail-content" class="card" style="font-size:12px"></div>
+    <div id="tg-detail" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <h2 style="margin:0">Tool Call Detail</h2>
+        <button id="tg-back" style="padding:4px 12px;font-size:12px;cursor:pointer;color:#58a6ff;background:none;border:1px solid #30363d;border-radius:6px">Back</button>
+      </div>
+      <div id="tg-detail-content" class="card" style="font-size:12px"></div>
+    </div>
+  </div>
+
+  <!-- SUB: Rules -->
+  <div class="sub-content" id="tg-sub-rules">
+    <div class="section">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <h2 style="margin:0">Detection Rules</h2>
+        <button id="tg-add-rule-btn" style="padding:6px 16px;font-size:12px;cursor:pointer;color:#fff;background:#238636;border:1px solid #2ea043;border-radius:6px">+ Add Rule</button>
+      </div>
+      <div id="tg-rule-form" style="display:none;background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px;margin-bottom:16px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+          <div><label style="font-size:11px;color:#7d8590">Name *</label><input id="tgr-name" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px"></div>
+          <div><label style="font-size:11px;color:#7d8590">Category</label><input id="tgr-category" value="custom" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px"></div>
+        </div>
+        <div style="margin-bottom:8px"><label style="font-size:11px;color:#7d8590">Description</label><input id="tgr-description" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px"></div>
+        <div style="display:grid;grid-template-columns:3fr 1fr;gap:8px;margin-bottom:8px">
+          <div><label style="font-size:11px;color:#7d8590">Input Pattern (regex) *</label><input id="tgr-input-pattern" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px;font-family:monospace"></div>
+          <div><label style="font-size:11px;color:#7d8590">Flags</label><input id="tgr-input-flags" value="i" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px;font-family:monospace"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:3fr 1fr 1fr;gap:8px;margin-bottom:12px">
+          <div><label style="font-size:11px;color:#7d8590">Tool Name Pattern (optional regex)</label><input id="tgr-tool-pattern" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px;font-family:monospace"></div>
+          <div><label style="font-size:11px;color:#7d8590">Tool Flags</label><input id="tgr-tool-flags" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px;font-family:monospace"></div>
+          <div><label style="font-size:11px;color:#7d8590">Severity</label><select id="tgr-severity" class="config-select" style="width:100%"><option value="critical">Critical</option><option value="high">High</option><option value="medium" selected>Medium</option><option value="low">Low</option></select></div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button id="tgr-save" style="padding:6px 16px;font-size:12px;cursor:pointer;color:#fff;background:#238636;border:1px solid #2ea043;border-radius:6px">Save</button>
+          <button id="tgr-cancel" style="padding:6px 16px;font-size:12px;cursor:pointer;color:#7d8590;background:none;border:1px solid #30363d;border-radius:6px">Cancel</button>
+          <span id="tgr-error" style="color:#f85149;font-size:12px;display:none;align-self:center"></span>
+        </div>
+      </div>
+      <table><thead><tr><th style="width:40px">On</th><th>Name</th><th>Severity</th><th>Category</th><th>Input Pattern</th><th>Type</th><th style="width:60px"></th></tr></thead><tbody id="tg-rules-table"></tbody></table>
+      <p class="empty" id="no-tg-rules" style="display:none">No rules found.</p>
+    </div>
   </div>
 </div>
 
@@ -1635,9 +1699,15 @@ async function refreshToolGuard(){
     const stats=await statsR.json();
     const recent=await recentR.json();
     const cfgData=await cfgR.json();
-    const tgAction=cfgData.config?.plugins?.toolGuard?.action||'audit';
+    const tgCfg=cfgData.config?.plugins?.toolGuard||{};
+    const tgAction=tgCfg.action||'audit';
     const modeLabel=tgAction==='block'?'BLOCK':'AUDIT';
     const modeCls=tgAction==='block'?'warn':'blue';
+
+    // Populate config selects
+    document.getElementById('tg-action-select').value=tgAction;
+    document.getElementById('tg-block-severity').value=tgCfg.blockMinSeverity||'critical';
+    document.getElementById('tg-alert-severity').value=tgCfg.alertMinSeverity||'high';
 
     if(!skipIfSame('tg-cards',{stats,tgAction})){
       document.getElementById('tg-cards').innerHTML=
@@ -1666,7 +1736,7 @@ async function refreshToolGuard(){
       row.addEventListener('click',()=>{
         const entry=recent.find(e=>e.id===row.dataset.tgIdx);
         if(!entry)return;
-        document.querySelector('#tab-toolguard .section').style.display='none';
+        document.querySelector('#tg-sub-calls .section').style.display='none';
         document.getElementById('tg-cards').style.display='none';
         document.getElementById('tg-detail').style.display='block';
 
@@ -1690,8 +1760,119 @@ async function refreshToolGuard(){
 
 document.getElementById('tg-back').addEventListener('click',()=>{
   document.getElementById('tg-detail').style.display='none';
-  document.querySelector('#tab-toolguard .section').style.display='';
+  document.querySelector('#tg-sub-calls .section').style.display='';
   document.getElementById('tg-cards').style.display='';
+});
+
+// Tool Guard sub-tab switching
+document.querySelectorAll('#tg-sub-tabs .sub-tab').forEach(t=>{
+  t.addEventListener('click',()=>{
+    document.querySelectorAll('#tg-sub-tabs .sub-tab').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('#tab-toolguard .sub-content').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById('tg-sub-'+t.dataset.tgSub).classList.add('active');
+    if(t.dataset.tgSub==='rules')refreshToolGuardRules();
+  });
+});
+
+// Tool Guard Rules management
+async function refreshToolGuardRules(){
+  try{
+    const r=await fetch('/api/tool-guard/rules');
+    const rules=await r.json();
+    document.getElementById('no-tg-rules').style.display=rules.length?'none':'';
+    if(skipIfSame('tg-rules-table',rules))return;
+    document.getElementById('tg-rules-table').innerHTML=rules.map(r=>{
+      const patPreview=r.input_pattern?(r.input_pattern.length>60?esc(r.input_pattern.slice(0,60))+'...':esc(r.input_pattern)):'';
+      const typeLabel=r.is_builtin?'<span style="color:#7d8590">built-in</span>':'<span style="color:#58a6ff">custom</span>';
+      return '<tr data-rule-id="'+esc(r.id)+'">'+
+        '<td><label class="switch" style="transform:scale(0.8)"><input type="checkbox" class="tgr-toggle" data-id="'+esc(r.id)+'"'+(r.enabled?' checked':'')+'><span class="slider"></span></label></td>'+
+        '<td><strong>'+esc(r.name)+'</strong>'+(r.description?'<div style="font-size:11px;color:#7d8590">'+esc(r.description)+'</div>':'')+'</td>'+
+        '<td>'+severityTag(r.severity)+'</td>'+
+        '<td><span style="color:#7d8590">'+esc(r.category)+'</span></td>'+
+        '<td class="mono" style="font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(r.input_pattern)+'">'+patPreview+'</td>'+
+        '<td>'+typeLabel+'</td>'+
+        '<td>'+(r.is_builtin?'':'<button class="tgr-del" data-id="'+esc(r.id)+'" style="padding:2px 8px;font-size:11px;cursor:pointer;color:#f85149;background:none;border:1px solid #f85149;border-radius:4px">Del</button>')+'</td></tr>';
+    }).join('');
+
+    // Toggle handlers
+    document.querySelectorAll('.tgr-toggle').forEach(cb=>{
+      cb.addEventListener('change',async()=>{
+        await fetch('/api/tool-guard/rules/'+encodeURIComponent(cb.dataset.id),{
+          method:'PUT',headers:{'content-type':'application/json'},
+          body:JSON.stringify({enabled:cb.checked})
+        });
+      });
+    });
+    // Delete handlers
+    document.querySelectorAll('.tgr-del').forEach(btn=>{
+      btn.addEventListener('click',async(e)=>{
+        e.stopPropagation();
+        if(!confirm('Delete this custom rule?'))return;
+        await fetch('/api/tool-guard/rules/'+encodeURIComponent(btn.dataset.id),{method:'DELETE'});
+        _lastJson={};refreshToolGuardRules();
+      });
+    });
+  }catch(e){console.error('Tool Guard rules refresh error',e)}
+}
+
+// Add Rule form
+document.getElementById('tg-add-rule-btn').addEventListener('click',()=>{
+  document.getElementById('tg-rule-form').style.display='block';
+  document.getElementById('tgr-name').value='';
+  document.getElementById('tgr-description').value='';
+  document.getElementById('tgr-input-pattern').value='';
+  document.getElementById('tgr-input-flags').value='i';
+  document.getElementById('tgr-tool-pattern').value='';
+  document.getElementById('tgr-tool-flags').value='';
+  document.getElementById('tgr-severity').value='medium';
+  document.getElementById('tgr-category').value='custom';
+  document.getElementById('tgr-error').style.display='none';
+});
+document.getElementById('tgr-cancel').addEventListener('click',()=>{
+  document.getElementById('tg-rule-form').style.display='none';
+});
+document.getElementById('tgr-save').addEventListener('click',async()=>{
+  const errEl=document.getElementById('tgr-error');
+  const name=document.getElementById('tgr-name').value.trim();
+  const inputPattern=document.getElementById('tgr-input-pattern').value.trim();
+  if(!name||!inputPattern){errEl.textContent='Name and Input Pattern are required';errEl.style.display='inline';return;}
+  try{new RegExp(inputPattern,document.getElementById('tgr-input-flags').value)}catch(e){
+    errEl.textContent='Invalid regex: '+e.message;errEl.style.display='inline';return;
+  }
+  const toolPat=document.getElementById('tgr-tool-pattern').value.trim();
+  if(toolPat){try{new RegExp(toolPat,document.getElementById('tgr-tool-flags').value)}catch(e){
+    errEl.textContent='Invalid tool name regex: '+e.message;errEl.style.display='inline';return;
+  }}
+  const payload={
+    name,
+    description:document.getElementById('tgr-description').value.trim()||null,
+    input_pattern:inputPattern,
+    input_flags:document.getElementById('tgr-input-flags').value||'i',
+    tool_name_pattern:toolPat||null,
+    tool_name_flags:document.getElementById('tgr-tool-flags').value||null,
+    severity:document.getElementById('tgr-severity').value,
+    category:document.getElementById('tgr-category').value||'custom',
+  };
+  const r=await fetch('/api/tool-guard/rules',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+  const res=await r.json();
+  if(res.error){errEl.textContent=res.error;errEl.style.display='inline';return;}
+  document.getElementById('tg-rule-form').style.display='none';
+  _lastJson={};refreshToolGuardRules();
+});
+
+// Tool Guard config change handlers
+['tg-action-select','tg-block-severity','tg-alert-severity'].forEach(id=>{
+  document.getElementById(id).addEventListener('change',async()=>{
+    const payload={plugins:{toolGuard:{
+      action:document.getElementById('tg-action-select').value,
+      blockMinSeverity:document.getElementById('tg-block-severity').value,
+      alertMinSeverity:document.getElementById('tg-alert-severity').value,
+    }}};
+    await fetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+    const st=document.getElementById('tg-cfg-status');st.style.display='inline';setTimeout(()=>st.style.display='none',2000);
+    _lastJson={};refreshToolGuard();
+  });
 });
 
 // Settings tab
