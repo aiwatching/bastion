@@ -84,7 +84,7 @@ tr:hover{background:#1c2128}
 </head>
 <body>
 <h1><span class="status"></span>Bastion AI Gateway</h1>
-<p class="subtitle">Local-first LLM proxy &mdash; refreshes every 3s</p>
+<p class="subtitle">Local-first LLM proxy &mdash; auto-refresh</p>
 
 <div class="tabs">
   <button class="tab active" data-tab="overview">Overview</button>
@@ -455,6 +455,9 @@ tr:hover{background:#1c2128}
 <p class="footer">Bastion v0.1.0 &mdash; <span id="uptime"></span> uptime &mdash; <span id="mem"></span> MB memory</p>
 
 <script>
+let activeTab='overview';
+let _lastJson={}; // keyed by element ID — skip DOM rebuild if data unchanged
+function skipIfSame(id,json){const s=JSON.stringify(json);if(_lastJson[id]===s)return true;_lastJson[id]=s;return false}
 function fmt(n){return n.toLocaleString()}
 function cost(n){return n<0.01?'$'+n.toFixed(6):'$'+n.toFixed(4)}
 function bytes(n){if(n<1024)return n+'B';if(n<1048576)return(n/1024).toFixed(1)+'KB';return(n/1048576).toFixed(1)+'MB'}
@@ -478,14 +481,19 @@ document.querySelectorAll('.tab').forEach(t=>{
     document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(x=>x.classList.remove('active'));
     t.classList.add('active');
-    document.getElementById('tab-'+t.dataset.tab).classList.add('active');
-    if(t.dataset.tab==='dlp')refreshDlp();
-    if(t.dataset.tab==='optimizer')refreshOptimizer();
-    if(t.dataset.tab==='audit')refreshAudit();
-    if(t.dataset.tab==='toolguard')refreshToolGuard();
-    if(t.dataset.tab==='settings')refreshSettings();
+    activeTab=t.dataset.tab;
+    document.getElementById('tab-'+activeTab).classList.add('active');
+    refreshActiveTab();
   });
 });
+function refreshActiveTab(){
+  if(activeTab==='overview')refresh();
+  else if(activeTab==='dlp')refreshDlp();
+  else if(activeTab==='optimizer')refreshOptimizer();
+  else if(activeTab==='audit')refreshAudit();
+  else if(activeTab==='toolguard')refreshToolGuard();
+  else if(activeTab==='settings')refreshSettings();
+}
 
 // DLP sub-tab switching
 document.querySelectorAll('#dlp-sub-tabs .sub-tab').forEach(t=>{
@@ -527,48 +535,52 @@ async function refresh(){
     const d=await r.json();
     const s=d.stats;
 
-    document.getElementById('cards').innerHTML=
-      card('Requests',fmt(s.total_requests))+
-      card('Total Cost',cost(s.total_cost_usd),'cost')+
-      card('Input Tokens',fmt(s.total_input_tokens))+
-      card('Output Tokens',fmt(s.total_output_tokens))+
-      card('Cache Hits',fmt(s.cache_hits))+
-      card('Avg Latency',Math.round(s.avg_latency_ms)+'ms');
+    if(!skipIfSame('cards',s)){
+      document.getElementById('cards').innerHTML=
+        card('Requests',fmt(s.total_requests))+
+        card('Total Cost',cost(s.total_cost_usd),'cost')+
+        card('Input Tokens',fmt(s.total_input_tokens))+
+        card('Output Tokens',fmt(s.total_output_tokens))+
+        card('Cache Hits',fmt(s.cache_hits))+
+        card('Avg Latency',Math.round(s.avg_latency_ms)+'ms');
 
-    const providers=Object.entries(s.by_provider||{});
-    const maxReq=Math.max(...providers.map(([,v])=>v.requests),1);
-    if(providers.length){
-      document.getElementById('by-provider-section').style.display='';
-      document.getElementById('by-provider').innerHTML=providers.map(([k,v])=>
-        '<tr><td>'+providerTag(k)+'</td><td>'+fmt(v.requests)+'</td><td class="mono">'+cost(v.cost_usd)+'</td>'+
-        '<td style="width:30%"><div class="bar-container"><div class="bar blue" style="width:'+Math.round(v.requests/maxReq*100)+'%"></div></div></td></tr>'
-      ).join('');
-    }
+      const providers=Object.entries(s.by_provider||{});
+      const maxReq=Math.max(...providers.map(([,v])=>v.requests),1);
+      if(providers.length){
+        document.getElementById('by-provider-section').style.display='';
+        document.getElementById('by-provider').innerHTML=providers.map(([k,v])=>
+          '<tr><td>'+providerTag(k)+'</td><td>'+fmt(v.requests)+'</td><td class="mono">'+cost(v.cost_usd)+'</td>'+
+          '<td style="width:30%"><div class="bar-container"><div class="bar blue" style="width:'+Math.round(v.requests/maxReq*100)+'%"></div></div></td></tr>'
+        ).join('');
+      }
 
-    const models=Object.entries(s.by_model||{});
-    if(models.length){
-      document.getElementById('by-model-section').style.display='';
-      document.getElementById('by-model').innerHTML=models.map(([k,v])=>
-        '<tr><td class="mono">'+k+'</td><td>'+fmt(v.requests)+'</td><td class="mono">'+cost(v.cost_usd)+'</td></tr>'
-      ).join('');
+      const models=Object.entries(s.by_model||{});
+      if(models.length){
+        document.getElementById('by-model-section').style.display='';
+        document.getElementById('by-model').innerHTML=models.map(([k,v])=>
+          '<tr><td class="mono">'+k+'</td><td>'+fmt(v.requests)+'</td><td class="mono">'+cost(v.cost_usd)+'</td></tr>'
+        ).join('');
+      }
     }
 
     const recent=d.recent||[];
     document.getElementById('no-requests').style.display=recent.length?'none':'';
-    document.getElementById('recent').innerHTML=recent.map(r=>{
-      let flags='';
-      if(r.cached)flags+='<span class="tag cached">cached</span> ';
-      if(r.dlp_action&&r.dlp_action!=='pass')flags+=actionTag(r.dlp_action)+' ';
-      if(r.session_id){
-        const sInfo=sessions.find(s=>s.session_id===r.session_id);
-        const sLabel=sInfo?.label||r.session_id.slice(0,6);
-        flags+='<span class="tag" style="background:#1a2a3d;color:#58a6ff" title="'+esc(r.session_id)+'">'+esc(sLabel)+'</span> ';
-      }
-      return '<tr><td>'+ago(r.created_at)+'</td><td>'+providerTag(r.provider)+'</td>'+
-        '<td class="mono">'+r.model+'</td><td>'+(r.status_code||'-')+'</td>'+
-        '<td class="mono">'+fmt(r.input_tokens)+' / '+fmt(r.output_tokens)+'</td>'+
-        '<td class="mono">'+cost(r.cost_usd)+'</td><td>'+r.latency_ms+'ms</td><td>'+flags+'</td></tr>';
-    }).join('');
+    if(!skipIfSame('recent',recent)){
+      document.getElementById('recent').innerHTML=recent.map(r=>{
+        let flags='';
+        if(r.cached)flags+='<span class="tag cached">cached</span> ';
+        if(r.dlp_action&&r.dlp_action!=='pass')flags+=actionTag(r.dlp_action)+' ';
+        if(r.session_id){
+          const sInfo=sessions.find(s=>s.session_id===r.session_id);
+          const sLabel=sInfo?.label||r.session_id.slice(0,6);
+          flags+='<span class="tag" style="background:#1a2a3d;color:#58a6ff" title="'+esc(r.session_id)+'">'+esc(sLabel)+'</span> ';
+        }
+        return '<tr><td>'+ago(r.created_at)+'</td><td>'+providerTag(r.provider)+'</td>'+
+          '<td class="mono">'+r.model+'</td><td>'+(r.status_code||'-')+'</td>'+
+          '<td class="mono">'+fmt(r.input_tokens)+' / '+fmt(r.output_tokens)+'</td>'+
+          '<td class="mono">'+cost(r.cost_usd)+'</td><td>'+r.latency_ms+'ms</td><td>'+flags+'</td></tr>';
+      }).join('');
+    }
 
     document.getElementById('uptime').textContent=uptime(d.uptime);
     document.getElementById('mem').textContent=Math.round(d.memory/1024/1024);
@@ -709,12 +721,14 @@ async function refreshDlp(){
   try{
     const statsR=await fetch('/api/stats');
     const stats=(await statsR.json()).dlp;
-    const ba=stats.by_action||{};
-    document.getElementById('dlp-cards').innerHTML=
-      card('Total Scans',fmt(stats.total_events))+
-      card('Blocked',fmt(ba.block||0),'warn')+
-      card('Redacted',fmt(ba.redact||0),'blue')+
-      card('Warned',fmt(ba.warn||0));
+    if(!skipIfSame('dlp-cards',stats)){
+      const ba=stats.by_action||{};
+      document.getElementById('dlp-cards').innerHTML=
+        card('Total Scans',fmt(stats.total_events))+
+        card('Blocked',fmt(ba.block||0),'warn')+
+        card('Redacted',fmt(ba.redact||0),'blue')+
+        card('Warned',fmt(ba.warn||0));
+    }
     await loadDlpConfig();
     refreshFindings();
   }catch(e){}
@@ -726,14 +740,19 @@ async function refreshFindings(){
   try{
     const [statsR,recentR]=await Promise.all([fetch('/api/stats'),fetch('/api/dlp/recent?limit=200')]);
     const stats=(await statsR.json()).dlp;
-    const ba=stats.by_action||{};
-    document.getElementById('findings-cards').innerHTML=
-      card('Total Findings',fmt(stats.total_events))+
-      card('Blocked',fmt(ba.block||0),'warn')+
-      card('Redacted',fmt(ba.redact||0),'blue')+
-      card('Warned',fmt(ba.warn||0));
-    findingsAll=await recentR.json();
-    renderFindings();
+    if(!skipIfSame('findings-cards',stats)){
+      const ba=stats.by_action||{};
+      document.getElementById('findings-cards').innerHTML=
+        card('Total Findings',fmt(stats.total_events))+
+        card('Blocked',fmt(ba.block||0),'warn')+
+        card('Redacted',fmt(ba.redact||0),'blue')+
+        card('Warned',fmt(ba.warn||0));
+    }
+    const newFindings=await recentR.json();
+    if(!skipIfSame('findings-list',newFindings)){
+      findingsAll=newFindings;
+      renderFindings();
+    }
   }catch(e){}
 }
 
@@ -1552,13 +1571,16 @@ async function refreshToolGuard(){
     const modeLabel=tgAction==='block'?'BLOCK':'AUDIT';
     const modeCls=tgAction==='block'?'warn':'blue';
 
-    document.getElementById('tg-cards').innerHTML=
-      card('Mode',modeLabel,modeCls)+
-      card('Total Tool Calls',fmt(stats.total))+
-      card('Flagged',fmt(stats.flagged),'warn')+
-      card('Critical',(stats.bySeverity?.critical||0).toString(),'warn');
+    if(!skipIfSame('tg-cards',{stats,tgAction})){
+      document.getElementById('tg-cards').innerHTML=
+        card('Mode',modeLabel,modeCls)+
+        card('Total Tool Calls',fmt(stats.total))+
+        card('Flagged',fmt(stats.flagged),'warn')+
+        card('Critical',(stats.bySeverity?.critical||0).toString(),'warn');
+    }
 
     document.getElementById('no-tg').style.display=recent.length?'none':'';
+    if(skipIfSame('tg-table',recent))return;
     document.getElementById('tg-table').innerHTML=recent.map(e=>{
       const inputPreview=e.tool_input?(e.tool_input.length>80?esc(e.tool_input.slice(0,80))+'...':esc(e.tool_input)):'';
       const sid=e.session_id?e.session_id.slice(0,8)+'...':'-';
@@ -1632,7 +1654,9 @@ async function refreshSettings(){
 loadSessions();
 refresh();
 pollToolGuardAlerts();
-setInterval(()=>{refresh();loadSessions();pollToolGuardAlerts()},3000);
+// Only refresh the active tab + alerts; sessions reload every 15s
+setInterval(()=>{refreshActiveTab();pollToolGuardAlerts()},3000);
+setInterval(loadSessions,15000);
 </script>
 </body>
 </html>`;
