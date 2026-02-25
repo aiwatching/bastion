@@ -190,7 +190,7 @@ async function handleStreamingResponse(
   const useGuard = Boolean(context._toolGuardStreamBlock);
   const guard = useGuard
     ? new StreamingToolGuard(
-        { blockMinSeverity: context._toolGuardStreamBlock! },
+        { blockMinSeverity: context._toolGuardStreamBlock!, rules: context._toolGuardRules },
         (data: string) => clientRes.write(data),
       )
     : null;

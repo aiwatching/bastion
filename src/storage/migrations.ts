@@ -166,6 +166,24 @@ const MIGRATIONS: string[] = [
   CREATE INDEX IF NOT EXISTS idx_tool_calls_severity ON tool_calls(severity);
   CREATE INDEX IF NOT EXISTS idx_tool_calls_created ON tool_calls(created_at);
   `,
+
+  // Migration 9: Tool Guard rules table for DB-backed, UI-configurable rules
+  `
+  CREATE TABLE IF NOT EXISTS tool_guard_rules (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    description TEXT,
+    severity TEXT NOT NULL DEFAULT 'medium',
+    category TEXT NOT NULL DEFAULT 'custom',
+    tool_name_pattern TEXT,
+    tool_name_flags TEXT,
+    input_pattern TEXT NOT NULL,
+    input_flags TEXT DEFAULT 'i',
+    enabled INTEGER DEFAULT 1,
+    is_builtin INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  `,
 ];
 
 export function runMigrations(db: Database.Database): void {

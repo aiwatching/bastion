@@ -7,8 +7,9 @@ import type {
   PluginResponseResult,
 } from '../types.js';
 import { ToolCallsRepository } from '../../storage/repositories/tool-calls.js';
+import { ToolGuardRulesRepository } from '../../storage/repositories/tool-guard-rules.js';
 import { extractToolCalls, type ExtractedToolCall } from '../../tool-guard/extractor.js';
-import { matchRules, BUILTIN_RULES, type RuleMatch } from '../../tool-guard/rules.js';
+import { matchRules, BUILTIN_RULES, type ToolGuardRule, type RuleMatch } from '../../tool-guard/rules.js';
 import { dispatchAlert, shouldAlert, type AlertConfig } from '../../tool-guard/alert.js';
 import { createLogger } from '../../utils/logger.js';
 import type Database from 'better-sqlite3';
@@ -29,18 +30,22 @@ interface MatchedToolCall {
   ruleMatch: RuleMatch | null;
 }
 
-function analyzeToolCalls(body: string, isStreaming: boolean): MatchedToolCall[] {
+function analyzeToolCalls(body: string, isStreaming: boolean, rules: ToolGuardRule[]): MatchedToolCall[] {
   const toolCalls = extractToolCalls(body, isStreaming);
   return toolCalls.map(tc => ({
     tc,
-    ruleMatch: matchRules(tc.toolName, tc.toolInput, BUILTIN_RULES),
+    ruleMatch: matchRules(tc.toolName, tc.toolInput, rules),
   }));
 }
 
 export function createToolGuardPlugin(db: Database.Database, config: ToolGuardConfig): Plugin {
   const repo = new ToolCallsRepository(db);
+  const rulesRepo = new ToolGuardRulesRepository(db);
   const action = config.action ?? 'audit';
   const blockMinSeverity = config.blockMinSeverity ?? 'critical';
+
+  // Seed built-in rules on first init (INSERT OR IGNORE preserves user toggles)
+  rulesRepo.seedBuiltins(BUILTIN_RULES);
 
   const alertConfig: AlertConfig = {
     minSeverity: config.alertMinSeverity ?? 'high',
@@ -93,8 +98,10 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
     name: 'tool-guard',
     priority: 15,
 
-    // ── Set streaming block flag if action=block and request is streaming ──
+    // ── Load rules from DB and set streaming block flag ──
     async onRequest(context: RequestContext): Promise<PluginRequestResult | void> {
+      const rules = rulesRepo.getEnabled();
+      context._toolGuardRules = rules;
       if (action === 'block' && context.isStreaming) {
         context._toolGuardStreamBlock = blockMinSeverity;
       }
@@ -105,7 +112,8 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
       if (action !== 'block') return;
       if (context.isStreaming) return; // streaming handled in onResponseComplete (post-send audit only)
 
-      const matches = analyzeToolCalls(context.body, false);
+      const rules = context.request._toolGuardRules ?? rulesRepo.getEnabled();
+      const matches = analyzeToolCalls(context.body, false, rules);
       if (matches.length === 0) return;
 
       // Check if any flagged call meets the block severity threshold
@@ -139,7 +147,8 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
       if (context.request._toolGuardRecorded) return;
 
       try {
-        const matches = analyzeToolCalls(context.body, context.isStreaming);
+        const rules = context.request._toolGuardRules ?? rulesRepo.getEnabled();
+        const matches = analyzeToolCalls(context.body, context.isStreaming, rules);
         if (matches.length === 0) return;
 
         const flagged = recordAndAlert(matches, context.request.id, context.request.sessionId);

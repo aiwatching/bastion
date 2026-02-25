@@ -9,6 +9,7 @@ import { SessionsRepository } from '../storage/repositories/sessions.js';
 import { DlpPatternsRepository } from '../storage/repositories/dlp-patterns.js';
 import { DlpConfigHistoryRepository } from '../storage/repositories/dlp-config-history.js';
 import { ToolCallsRepository } from '../storage/repositories/tool-calls.js';
+import { ToolGuardRulesRepository } from '../storage/repositories/tool-guard-rules.js';
 import { getRecentAlerts, getUnacknowledgedCount, acknowledgeAlerts } from '../tool-guard/alert.js';
 import { scanText, type DlpTrace } from '../dlp/engine.js';
 import type { DlpAction } from '../dlp/actions.js';
@@ -53,6 +54,7 @@ export function createApiRouter(
   const dlpPatternsRepo = new DlpPatternsRepository(db);
   const dlpConfigHistory = new DlpConfigHistoryRepository(db);
   const toolCallsRepo = new ToolCallsRepository(db);
+  const toolGuardRulesRepo = new ToolGuardRulesRepository(db);
 
   return (req: IncomingMessage, res: ServerResponse): boolean => {
     const url = parseUrl(req);
@@ -524,6 +526,90 @@ export function createApiRouter(
         return true;
       }
       sendJson(res, toolCallsRepo.getBySession(sessionId));
+      return true;
+    }
+
+    // GET /api/tool-guard/rules — list all rules
+    if (req.method === 'GET' && path === '/api/tool-guard/rules') {
+      sendJson(res, toolGuardRulesRepo.getAll());
+      return true;
+    }
+
+    // POST /api/tool-guard/rules — add custom rule
+    if (req.method === 'POST' && path === '/api/tool-guard/rules') {
+      bufferBody(req).then(raw => {
+        try {
+          const body = JSON.parse(raw);
+          if (!body.name || !body.input_pattern) {
+            sendJson(res, { error: 'name and input_pattern are required' }, 400);
+            return;
+          }
+          // Validate regex
+          try { new RegExp(body.input_pattern, body.input_flags ?? 'i'); } catch {
+            sendJson(res, { error: 'Invalid input_pattern regex' }, 400);
+            return;
+          }
+          if (body.tool_name_pattern) {
+            try { new RegExp(body.tool_name_pattern, body.tool_name_flags ?? ''); } catch {
+              sendJson(res, { error: 'Invalid tool_name_pattern regex' }, 400);
+              return;
+            }
+          }
+          const id = body.id ?? `custom-${Date.now()}`;
+          toolGuardRulesRepo.upsert({ ...body, id });
+          sendJson(res, { ok: true, id });
+        } catch {
+          sendJson(res, { error: 'Invalid JSON' }, 400);
+        }
+      });
+      return true;
+    }
+
+    // PUT /api/tool-guard/rules/:id — update or toggle rule
+    if (req.method === 'PUT' && path.startsWith('/api/tool-guard/rules/')) {
+      const id = decodeURIComponent(path.slice('/api/tool-guard/rules/'.length));
+      if (!id) { sendJson(res, { error: 'Missing rule ID' }, 400); return true; }
+      bufferBody(req).then(raw => {
+        try {
+          const body = JSON.parse(raw);
+          // Toggle shortcut: { enabled: true/false }
+          if ('enabled' in body && Object.keys(body).length === 1) {
+            toolGuardRulesRepo.toggle(id, body.enabled);
+            sendJson(res, { ok: true });
+            return;
+          }
+          // Full update (custom rules only)
+          if (body.input_pattern) {
+            try { new RegExp(body.input_pattern, body.input_flags ?? 'i'); } catch {
+              sendJson(res, { error: 'Invalid input_pattern regex' }, 400);
+              return;
+            }
+          }
+          if (body.tool_name_pattern) {
+            try { new RegExp(body.tool_name_pattern, body.tool_name_flags ?? ''); } catch {
+              sendJson(res, { error: 'Invalid tool_name_pattern regex' }, 400);
+              return;
+            }
+          }
+          toolGuardRulesRepo.upsert({ ...body, id });
+          sendJson(res, { ok: true });
+        } catch {
+          sendJson(res, { error: 'Invalid JSON' }, 400);
+        }
+      });
+      return true;
+    }
+
+    // DELETE /api/tool-guard/rules/:id — delete custom rule
+    if (req.method === 'DELETE' && path.startsWith('/api/tool-guard/rules/')) {
+      const id = decodeURIComponent(path.slice('/api/tool-guard/rules/'.length));
+      if (!id) { sendJson(res, { error: 'Missing rule ID' }, 400); return true; }
+      try {
+        toolGuardRulesRepo.remove(id);
+        sendJson(res, { ok: true });
+      } catch (err) {
+        sendJson(res, { error: (err as Error).message }, 400);
+      }
       return true;
     }
 
