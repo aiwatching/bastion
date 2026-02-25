@@ -42,7 +42,6 @@ export interface BastionConfig {
     };
     audit: {
       enabled: boolean;
-      retentionHours: number;
       rawData: boolean;
       rawMaxBytes: number;
       summaryMaxBytes: number;
@@ -55,6 +54,14 @@ export interface BastionConfig {
       alertDesktop: boolean;
       alertWebhookUrl: string;
     };
+  };
+  retention: {
+    requestsHours: number;
+    dlpEventsHours: number;
+    toolCallsHours: number;
+    optimizerEventsHours: number;
+    sessionsHours: number;
+    auditLogHours: number;
   };
   timeouts: {
     upstream: number;

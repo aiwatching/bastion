@@ -18,6 +18,12 @@ import { createProxyServer, startServer } from './proxy/server.js';
 import { writePidFile } from './cli/daemon.js';
 import { getCACertPath } from './proxy/certs.js';
 import { updateSemanticConfig } from './dlp/semantics.js';
+import { RequestsRepository } from './storage/repositories/requests.js';
+import { DlpEventsRepository } from './storage/repositories/dlp-events.js';
+import { OptimizerEventsRepository } from './storage/repositories/optimizer-events.js';
+import { SessionsRepository } from './storage/repositories/sessions.js';
+import { AuditLogRepository } from './storage/repositories/audit-log.js';
+import { ToolCallsRepository } from './storage/repositories/tool-calls.js';
 import { getVersion } from './version.js';
 
 const log = createLogger('main');
@@ -75,7 +81,6 @@ export async function startGateway(): Promise<void> {
   if (!config.plugins.optimizer.enabled) pluginManager.disable('token-optimizer');
 
   pluginManager.register(createAuditLoggerPlugin(db, {
-    retentionHours: config.plugins.audit?.retentionHours ?? 168,
     rawData: config.plugins.audit?.rawData ?? true,
     rawMaxBytes: config.plugins.audit?.rawMaxBytes ?? 524288,
     summaryMaxBytes: config.plugins.audit?.summaryMaxBytes ?? 1024,
@@ -101,6 +106,35 @@ export async function startGateway(): Promise<void> {
 
   // Write PID file
   writePidFile(process.pid);
+
+  // Centralized data retention purge
+  const requestsRepo = new RequestsRepository(db);
+  const dlpEventsRepo = new DlpEventsRepository(db);
+  const optimizerEventsRepo = new OptimizerEventsRepository(db);
+  const sessionsRepo = new SessionsRepository(db);
+  const auditLogRepo = new AuditLogRepository(db);
+  const toolCallsRepo = new ToolCallsRepository(db);
+
+  function runPurge(): void {
+    const r = configManager.get().retention;
+    try {
+      let total = 0;
+      total += requestsRepo.purgeOlderThan(r.requestsHours);
+      total += dlpEventsRepo.purgeOlderThan(r.dlpEventsHours);
+      total += optimizerEventsRepo.purgeOlderThan(r.optimizerEventsHours);
+      total += sessionsRepo.purgeOlderThan(r.sessionsHours);
+      total += auditLogRepo.purgeOlderThan(r.auditLogHours);
+      total += toolCallsRepo.purgeOlderThan(r.toolCallsHours);
+      if (total > 0) log.info('Data retention purge completed', { purged: total });
+    } catch (err) {
+      log.warn('Data retention purge failed', { error: (err as Error).message });
+    }
+  }
+
+  // Run immediately on startup, then every hour
+  runPurge();
+  const purgeInterval = setInterval(runPurge, 60 * 60 * 1000);
+  purgeInterval.unref();
 
   const baseUrl = `http://${config.server.host}:${config.server.port}`;
   log.info('Gateway ready', {

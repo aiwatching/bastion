@@ -56,7 +56,12 @@ export class ToolCallsRepository {
     });
   }
 
-  getRecent(limit: number = 50): ToolCallRecord[] {
+  getRecent(limit: number = 50, since?: string): ToolCallRecord[] {
+    if (since) {
+      return this.db.prepare(`
+        SELECT * FROM tool_calls WHERE created_at > ? ORDER BY created_at DESC LIMIT ?
+      `).all(since, limit) as ToolCallRecord[];
+    }
     return this.db.prepare(`
       SELECT * FROM tool_calls ORDER BY created_at DESC LIMIT ?
     `).all(limit) as ToolCallRecord[];

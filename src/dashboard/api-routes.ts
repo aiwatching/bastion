@@ -65,8 +65,9 @@ export function createApiRouter(
       const hours = url.searchParams.get('hours');
       const sinceHours = hours ? parseInt(hours, 10) : undefined;
 
+      const since = url.searchParams.get('since') ?? undefined;
       const stats = requestsRepo.getStats({ sinceHours, sessionId, apiKeyHash });
-      const recent = requestsRepo.getRecent(20);
+      const recent = requestsRepo.getRecent(20, since);
       const cacheStats = cacheRepo.getStats();
       const dlpStats = dlpRepo.getStats();
 
@@ -140,20 +141,23 @@ export function createApiRouter(
     // GET /api/optimizer/recent
     if (req.method === 'GET' && path === '/api/optimizer/recent') {
       const limit = parseInt(url.searchParams.get('limit') ?? '50', 10);
-      sendJson(res, optimizerRepo.getRecent(limit));
+      const since = url.searchParams.get('since') ?? undefined;
+      sendJson(res, optimizerRepo.getRecent(limit, since));
       return true;
     }
 
     // GET /api/audit/recent
     if (req.method === 'GET' && path === '/api/audit/recent') {
       const limit = parseInt(url.searchParams.get('limit') ?? '50', 10);
-      sendJson(res, auditRepo.getRecent(limit));
+      const since = url.searchParams.get('since') ?? undefined;
+      sendJson(res, auditRepo.getRecent(limit, since));
       return true;
     }
 
     // GET /api/audit/sessions — list sessions with audit data
     if (req.method === 'GET' && path === '/api/audit/sessions') {
-      sendJson(res, auditRepo.getAuditSessions());
+      const since = url.searchParams.get('since') ?? undefined;
+      sendJson(res, auditRepo.getAuditSessions(30, since));
       return true;
     }
 
@@ -501,7 +505,8 @@ export function createApiRouter(
     // GET /api/tool-guard/recent — recent tool calls
     if (req.method === 'GET' && path === '/api/tool-guard/recent') {
       const limit = parseInt(url.searchParams.get('limit') ?? '50', 10);
-      sendJson(res, toolCallsRepo.getRecent(limit));
+      const since = url.searchParams.get('since') ?? undefined;
+      sendJson(res, toolCallsRepo.getRecent(limit, since));
       return true;
     }
 

@@ -38,11 +38,9 @@ plugins:
     reorderForCache: true
   audit:
     enabled: true
-    retentionHours: 168
     rawData: true
     rawMaxBytes: 524288
     summaryMaxBytes: 1024
-
   toolGuard:
     enabled: true
     action: "audit"
@@ -50,6 +48,14 @@ plugins:
     alertMinSeverity: "high"
     alertDesktop: true
     alertWebhookUrl: ""
+
+retention:
+  requestsHours: 720
+  dlpEventsHours: 720
+  toolCallsHours: 720
+  optimizerEventsHours: 720
+  sessionsHours: 720
+  auditLogHours: 24
 
 timeouts:
   upstream: 120000
