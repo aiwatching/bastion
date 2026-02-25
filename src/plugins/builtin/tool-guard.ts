@@ -132,7 +132,7 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
     async onRequest(context: RequestContext): Promise<PluginRequestResult | void> {
       const rules = rulesRepo.getEnabled();
       context._toolGuardRules = rules;
-      log.debug('onRequest', { action: getAction(), recordAll: getRecordAll(), isStreaming: context.isStreaming });
+      log.info('onRequest', { action: getAction(), recordAll: getRecordAll(), isStreaming: context.isStreaming });
       if (getAction() === 'block' && context.isStreaming) {
         context._toolGuardStreamBlock = getBlockMinSeverity();
       }
@@ -141,7 +141,7 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
     // ── Pre-send: block dangerous tool calls in non-streaming responses ──
     async onResponse(context: ResponseInterceptContext): Promise<PluginResponseResult | void> {
       const currentAction = getAction();
-      log.debug('onResponse action check', { action: currentAction, isStreaming: context.isStreaming });
+      log.info('onResponse', { action: currentAction, isStreaming: context.isStreaming });
       if (currentAction !== 'block') return;
       if (context.isStreaming) return; // streaming handled in onResponseComplete (post-send audit only)
 
@@ -191,7 +191,7 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
           context.request.toolGuardFindings = flagged;
         }
 
-        log.debug('Tool calls recorded', {
+        log.info('Tool calls recorded', {
           requestId: context.request.id,
           total: matches.length,
           flagged,

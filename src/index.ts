@@ -97,12 +97,13 @@ export async function startGateway(): Promise<void> {
     alertWebhookUrl: config.plugins.toolGuard?.alertWebhookUrl ?? '',
     getLiveConfig: () => {
       const tg = configManager.get().plugins.toolGuard;
-      return {
+      const live = {
         action: tg?.action ?? 'audit',
         recordAll: tg?.recordAll ?? true,
         blockMinSeverity: tg?.blockMinSeverity ?? 'critical',
         alertMinSeverity: tg?.alertMinSeverity ?? 'high',
       };
+      return live;
     },
   }));
   if (!config.plugins.toolGuard?.enabled) pluginManager.disable('tool-guard');

@@ -16,7 +16,7 @@ Local-first proxy for LLM providers (Anthropic, OpenAI, Gemini). Provides DLP sc
 ### macOS / Linux
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/your-org/bastion/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/aiwatching/bastion/main/install.sh | bash
 ```
 
 Or from local source:

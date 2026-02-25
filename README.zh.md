@@ -16,7 +16,7 @@
 ### macOS / Linux
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/your-org/bastion/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/aiwatching/bastion/main/install.sh | bash
 ```
 
 或从本地源码安装：
