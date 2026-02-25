@@ -3,7 +3,7 @@
 $ErrorActionPreference = "Stop"
 
 $InstallDir = if ($env:BASTION_INSTALL_DIR) { $env:BASTION_INSTALL_DIR } else { "$env:USERPROFILE\.bastion\app" }
-$RepoUrl = if ($env:BASTION_REPO_URL) { $env:BASTION_REPO_URL } else { "https://github.com/your-org/bastion.git" }
+$RepoUrl = if ($env:BASTION_REPO_URL) { $env:BASTION_REPO_URL } else { "https://github.com/aiwatching/bastion.git" }
 
 function Info($msg) { Write-Host "==> $msg" -ForegroundColor Green }
 function Warn($msg) { Write-Host "==> $msg" -ForegroundColor Yellow }

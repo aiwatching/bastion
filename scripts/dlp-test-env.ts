@@ -411,8 +411,9 @@ async function main() {
         semantics: { sensitivePatterns: [], nonSensitiveNames: [] },
       },
       optimizer: { enabled: false, cache: false, cacheTtlSeconds: 300, trimWhitespace: false, reorderForCache: false },
-      audit: { enabled: true, retentionHours: 168, rawData: true, rawMaxBytes: 524288, summaryMaxBytes: 1024 },
+      audit: { enabled: true, rawData: true, rawMaxBytes: 524288, summaryMaxBytes: 1024 },
     },
+    retention: { requestsHours: 720, dlpEventsHours: 720, toolCallsHours: 720, optimizerEventsHours: 720, sessionsHours: 720, auditLogHours: 24 },
     timeouts: { upstream: 10000, plugin: 5000 },
   };
 
@@ -426,7 +427,6 @@ async function main() {
     getAction: () => configManager.get().plugins.dlp.action,
   }));
   pluginManager.register(createAuditLoggerPlugin(db, {
-    retentionHours: 168,
     rawData: true,
     rawMaxBytes: 524288,
     summaryMaxBytes: 1024,

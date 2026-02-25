@@ -16,6 +16,16 @@ export interface RequestContext {
   dlpHit?: boolean;
   dlpAction?: string;
   dlpFindings?: number;
+  /** Set by tool-guard plugin during onResponseComplete */
+  toolGuardHit?: boolean;
+  toolGuardFindings?: number;
+  /** Internal: set by tool-guard onResponse to skip duplicate recording in onResponseComplete */
+  _toolGuardRecorded?: boolean;
+  /** Internal: set by tool-guard onRequest to enable streaming interception in forwarder.
+   *  Value is the blockMinSeverity threshold. */
+  _toolGuardStreamBlock?: string;
+  /** Internal: DB-loaded rules for streaming guard (set by tool-guard onRequest) */
+  _toolGuardRules?: import('../tool-guard/rules.js').ToolGuardRule[];
 }
 
 export interface ResponseCompleteContext {

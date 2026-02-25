@@ -42,11 +42,27 @@ export interface BastionConfig {
     };
     audit: {
       enabled: boolean;
-      retentionHours: number;
       rawData: boolean;
       rawMaxBytes: number;
       summaryMaxBytes: number;
     };
+    toolGuard: {
+      enabled: boolean;
+      action: 'audit' | 'block';
+      recordAll: boolean;
+      blockMinSeverity: 'critical' | 'high' | 'medium' | 'low';
+      alertMinSeverity: 'critical' | 'high' | 'medium' | 'low';
+      alertDesktop: boolean;
+      alertWebhookUrl: string;
+    };
+  };
+  retention: {
+    requestsHours: number;
+    dlpEventsHours: number;
+    toolCallsHours: number;
+    optimizerEventsHours: number;
+    sessionsHours: number;
+    auditLogHours: number;
   };
   timeouts: {
     upstream: number;

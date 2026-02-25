@@ -41,10 +41,18 @@ export class ConfigManager {
   }
 
   update(partial: Record<string, unknown>): BastionConfig {
+    log.info('Config update received', { partial: JSON.stringify(partial) });
     this.config = deepMerge(
       this.config as unknown as Record<string, unknown>,
       partial,
     ) as unknown as BastionConfig;
+
+    // Log the effective toolGuard config after merge
+    const tg = (this.config as unknown as Record<string, unknown>).plugins as Record<string, unknown> | undefined;
+    const toolGuard = tg?.toolGuard as Record<string, unknown> | undefined;
+    if (toolGuard) {
+      log.info('Effective toolGuard config', { action: toolGuard.action, blockMinSeverity: toolGuard.blockMinSeverity });
+    }
 
     // Persist to user config file
     try {

@@ -53,6 +53,13 @@ export class DlpEventsRepository {
     `).all(limit) as (DlpEventRecord & { provider?: string; model?: string; session_id?: string; session_label?: string })[];
   }
 
+  purgeOlderThan(hours: number): number {
+    const result = this.db.prepare(
+      `DELETE FROM dlp_events WHERE created_at < datetime('now', '-' || ? || ' hours')`
+    ).run(hours);
+    return result.changes;
+  }
+
   getStats(): { total_events: number; by_action: Record<string, number>; by_pattern: Record<string, number> } {
     const total = this.db.prepare('SELECT COUNT(*) as count FROM dlp_events').get() as { count: number };
     const actionRows = this.db.prepare(
