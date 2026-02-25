@@ -46,6 +46,8 @@ tr:hover{background:#1c2128}
 .tag.tg{background:#3d2e1a;color:#d29922}
 .tag.warn{background:#3d2e1a;color:#d29922}
 .tag.redact{background:#2a1f3d;color:#b388ff}
+.tag.blue{background:#1a2a3d;color:#58a6ff}
+.tag.orange{background:#3d2a1a;color:#f0883e}
 .mono{font-family:"SF Mono",Monaco,monospace;font-size:12px}
 .bar-container{height:6px;background:#21262d;border-radius:3px;overflow:hidden;margin-top:4px}
 .bar{height:100%;border-radius:3px;transition:width .3s}
@@ -268,6 +270,12 @@ tr:hover{background:#1c2128}
         <button id="dlp-cancel-btn" style="padding:4px 12px;font-size:12px;cursor:pointer;color:#7d8590;background:none;border:1px solid #30363d;border-radius:6px">Cancel</button>
         <span id="dlp-form-error" style="color:#f85149;font-size:12px;align-self:center"></span>
       </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <select id="dlp-cat-filter" style="background:#161b22;border:1px solid #30363d;color:#e1e4e8;padding:4px 8px;border-radius:4px;font-size:12px">
+        <option value="">All categories</option>
+      </select>
+      <span id="dlp-pat-count" style="font-size:11px;color:#7d8590"></span>
     </div>
     <table><thead><tr><th style="width:60px">Enabled</th><th>Name</th><th>Category</th><th>Regex</th><th>Description</th><th style="width:60px">Actions</th></tr></thead><tbody id="dlp-patterns"></tbody></table>
     <p class="empty" id="no-patterns">No patterns configured.</p>
@@ -1176,41 +1184,55 @@ document.getElementById('scan-input').addEventListener('keydown',e=>{
 });
 
 // DLP Patterns management
+let _allPatterns=[];
 async function refreshPatterns(){
   try{
     const r=await fetch('/api/dlp/patterns');
-    const patterns=await r.json();
-    document.getElementById('no-patterns').style.display=patterns.length?'none':'';
-    document.getElementById('dlp-patterns').innerHTML=patterns.map(p=>{
-      const catClass=p.category==='high-confidence'?'cached':p.category==='validated'?'blue':p.category==='context-aware'?'warn':'redact';
-      const regexDisp=esc(p.regex_source.length>40?p.regex_source.slice(0,40)+'...':p.regex_source);
-      const delBtn=p.is_builtin?'':'<button class="dlp-del-btn" data-id="'+esc(p.id)+'" style="cursor:pointer;color:#f85149;background:none;border:1px solid #3d1a1a;border-radius:4px;padding:2px 8px;font-size:11px">Del</button>';
-      return '<tr><td><label class="switch" style="margin:0"><input type="checkbox" data-pid="'+esc(p.id)+'"'+(p.enabled?' checked':'')+'><span class="slider"></span></label></td>'+
-        '<td class="mono" style="font-size:12px">'+esc(p.name)+'</td>'+
-        '<td><span class="tag '+catClass+'">'+esc(p.category)+'</span></td>'+
-        '<td class="mono" style="font-size:11px" title="'+esc(p.regex_source)+'">'+regexDisp+'</td>'+
-        '<td style="font-size:12px;color:#7d8590">'+esc(p.description||'-')+'</td>'+
-        '<td>'+delBtn+'</td></tr>';
-    }).join('');
-    // Bind toggle switches
-    document.querySelectorAll('#dlp-patterns input[type=checkbox]').forEach(cb=>{
-      cb.addEventListener('change',async()=>{
-        await fetch('/api/dlp/patterns/'+encodeURIComponent(cb.dataset.pid),{
-          method:'PUT',headers:{'content-type':'application/json'},
-          body:JSON.stringify({enabled:cb.checked})
-        });
-      });
-    });
-    // Bind delete buttons
-    document.querySelectorAll('.dlp-del-btn').forEach(btn=>{
-      btn.addEventListener('click',async()=>{
-        if(!confirm('Delete this custom pattern?'))return;
-        await fetch('/api/dlp/patterns/'+encodeURIComponent(btn.dataset.id),{method:'DELETE'});
-        refreshPatterns();
-      });
-    });
+    _allPatterns=await r.json();
+    // Populate category filter (preserve selection)
+    const sel=document.getElementById('dlp-cat-filter');
+    const prev=sel.value;
+    const cats=[...new Set(_allPatterns.map(p=>p.category))].sort();
+    sel.innerHTML='<option value="">All categories</option>'+cats.map(c=>'<option value="'+esc(c)+'">'+esc(c)+' ('+_allPatterns.filter(p=>p.category===c).length+')</option>').join('');
+    sel.value=prev;
+    renderPatterns();
   }catch(e){console.error('Pattern refresh error',e)}
 }
+function renderPatterns(){
+  const catFilter=document.getElementById('dlp-cat-filter').value;
+  const filtered=catFilter?_allPatterns.filter(p=>p.category===catFilter):_allPatterns;
+  document.getElementById('dlp-pat-count').textContent=catFilter?filtered.length+' / '+_allPatterns.length+' patterns':_allPatterns.length+' patterns';
+  document.getElementById('no-patterns').style.display=filtered.length?'none':'';
+  document.getElementById('dlp-patterns').innerHTML=filtered.map(p=>{
+    const catClass=p.category==='high-confidence'?'cached':p.category==='validated'?'blue':p.category==='context-aware'?'warn':p.category==='prompt-injection'?'orange':'redact';
+    const regexDisp=esc(p.regex_source.length>40?p.regex_source.slice(0,40)+'...':p.regex_source);
+    const delBtn=p.is_builtin?'':'<button class="dlp-del-btn" data-id="'+esc(p.id)+'" style="cursor:pointer;color:#f85149;background:none;border:1px solid #3d1a1a;border-radius:4px;padding:2px 8px;font-size:11px">Del</button>';
+    return '<tr><td><label class="switch" style="margin:0"><input type="checkbox" data-pid="'+esc(p.id)+'"'+(p.enabled?' checked':'')+'><span class="slider"></span></label></td>'+
+      '<td class="mono" style="font-size:12px">'+esc(p.name)+'</td>'+
+      '<td><span class="tag '+catClass+'">'+esc(p.category)+'</span></td>'+
+      '<td class="mono" style="font-size:11px" title="'+esc(p.regex_source)+'">'+regexDisp+'</td>'+
+      '<td style="font-size:12px;color:#7d8590">'+esc(p.description||'-')+'</td>'+
+      '<td>'+delBtn+'</td></tr>';
+  }).join('');
+  // Bind toggle switches
+  document.querySelectorAll('#dlp-patterns input[type=checkbox]').forEach(cb=>{
+    cb.addEventListener('change',async()=>{
+      await fetch('/api/dlp/patterns/'+encodeURIComponent(cb.dataset.pid),{
+        method:'PUT',headers:{'content-type':'application/json'},
+        body:JSON.stringify({enabled:cb.checked})
+      });
+    });
+  });
+  // Bind delete buttons
+  document.querySelectorAll('.dlp-del-btn').forEach(btn=>{
+    btn.addEventListener('click',async()=>{
+      if(!confirm('Delete this custom pattern?'))return;
+      await fetch('/api/dlp/patterns/'+encodeURIComponent(btn.dataset.id),{method:'DELETE'});
+      refreshPatterns();
+    });
+  });
+}
+document.getElementById('dlp-cat-filter').addEventListener('change',renderPatterns);
 
 // Signature management
 const sigLog=[];

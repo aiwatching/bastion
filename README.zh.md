@@ -448,6 +448,7 @@ BASTION_LOG_LEVEL=debug bastion start
 - [AI Agent 监控](docs/agent-monitoring.zh.md) — 监控任何本地 AI Agent（Claude Code、Cursor、自定义应用）
 - [远程签名库](docs/remote-signatures.zh.md) — 从 Git 仓库远程同步 DLP 模式
 - [OpenClaw DLP 告警 Skill](docs/openclaw-dlp-skill.zh.md) — 让 OpenClaw 通过 Telegram/Discord 通知 DLP 发现
+- [安全调研](docs/security-research.zh.md) — AI Agent 威胁态势、Bastion 能力分析与路线图
 - [Windows 故障排除](docs/windows-troubleshooting.zh.md) — Windows 常见问题及解决方案
 
 ## 数据存储

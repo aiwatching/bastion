@@ -3,6 +3,7 @@ import type { DlpAction, DlpFinding, DlpResult } from './actions.js';
 import { highConfidencePatterns } from './patterns/high-confidence.js';
 import { validatedPatterns } from './patterns/validated.js';
 import { contextAwarePatterns } from './patterns/context-aware.js';
+import { promptInjectionPatterns } from './patterns/prompt-injection.js';
 import { extractStructuredFields } from './structure.js';
 import { shannonEntropy, isHighEntropy, DEFAULT_ENTROPY_THRESHOLD, MAX_SECRET_LENGTH, MIN_ENTROPY_LENGTH } from './entropy.js';
 import { isSensitiveFieldName } from './semantics.js';
@@ -83,6 +84,7 @@ export function getPatterns(categories: string[]): DlpPattern[] {
   if (catSet.has('high-confidence')) all.push(...highConfidencePatterns);
   if (catSet.has('validated')) all.push(...validatedPatterns);
   if (catSet.has('context-aware')) all.push(...contextAwarePatterns);
+  if (catSet.has('prompt-injection')) all.push(...promptInjectionPatterns);
   return all;
 }
 

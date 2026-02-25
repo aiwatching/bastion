@@ -15,6 +15,7 @@ plugins:
       - "high-confidence"
       - "validated"
       - "context-aware"
+      - "prompt-injection"
     remotePatterns:
       url: "https://github.com/aiwatching/bastion_signature.git"
       branch: "auto"

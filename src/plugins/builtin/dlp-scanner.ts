@@ -15,6 +15,7 @@ import { AiValidator, type AiValidatorConfig } from '../../dlp/ai-validator.js';
 import { highConfidencePatterns } from '../../dlp/patterns/high-confidence.js';
 import { validatedPatterns } from '../../dlp/patterns/validated.js';
 import { contextAwarePatterns } from '../../dlp/patterns/context-aware.js';
+import { promptInjectionPatterns } from '../../dlp/patterns/prompt-injection.js';
 import { syncRemotePatterns, startPeriodicSync } from '../../dlp/remote-sync.js';
 import { createLogger } from '../../utils/logger.js';
 import type Database from 'better-sqlite3';
@@ -68,6 +69,7 @@ export function createDlpScannerPlugin(db: Database.Database, config: DlpScanner
     ...highConfidencePatterns,
     ...validatedPatterns,
     ...contextAwarePatterns,
+    ...promptInjectionPatterns,
   ];
   patternsRepo.seedBuiltins(allBuiltins, config.patterns);
 
