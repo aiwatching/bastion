@@ -218,6 +218,14 @@ export function createApiRouter(
         }
       }
 
+      // Tool Guard: attach tool_calls for this request
+      if (url.searchParams.get('tg') === 'true') {
+        const toolCalls = toolCallsRepo.getByRequestId(requestId);
+        if (toolCalls.length > 0) {
+          (parsed as unknown as Record<string, unknown>).toolGuardFindings = toolCalls;
+        }
+      }
+
       sendJson(res, parsed);
       return true;
     }

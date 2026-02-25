@@ -403,7 +403,14 @@ tr:hover{background:#1c2128}
 <!-- AUDIT TAB -->
 <div class="tab-content" id="tab-audit">
   <div class="section">
-    <h2>Sessions</h2>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <h2 style="margin:0">Sessions</h2>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="audit-session-filter" type="text" placeholder="Filter by Session ID..." style="padding:4px 10px;font-size:12px;background:#0d1117;color:#e1e4e8;border:1px solid #30363d;border-radius:6px;width:260px;font-family:monospace">
+        <button id="audit-session-filter-btn" style="padding:4px 12px;font-size:12px;cursor:pointer;color:#58a6ff;background:none;border:1px solid #30363d;border-radius:6px">Search</button>
+        <button id="audit-session-filter-clear" style="padding:4px 12px;font-size:12px;cursor:pointer;color:#7d8590;background:none;border:1px solid #30363d;border-radius:6px;display:none">Clear</button>
+      </div>
+    </div>
     <table><thead><tr><th>Time</th><th>Session</th><th>Project</th><th>Models</th><th>Requests</th><th></th></tr></thead><tbody id="audit-sessions"></tbody></table>
     <p class="empty" id="no-audit">No audit entries. Enable audit logging in Settings to start capturing request/response content.</p>
   </div>
@@ -1445,6 +1452,43 @@ function bindAuditSingleClicks(){
   });
 }
 
+// Session ID filter
+function applyAuditSessionFilter(){
+  const q=document.getElementById('audit-session-filter').value.trim().toLowerCase();
+  const clearBtn=document.getElementById('audit-session-filter-clear');
+  const rows=document.querySelectorAll('#audit-sessions tr');
+  if(!q){
+    rows.forEach(r=>r.style.display='');
+    clearBtn.style.display='none';
+    return;
+  }
+  clearBtn.style.display='';
+  let hasMatch=false;
+  rows.forEach(r=>{
+    const sid=r.dataset.sid||'';
+    if(sid&&sid.toLowerCase().includes(q)){
+      r.style.display='';
+      hasMatch=true;
+    }else if(r.dataset.sid!==undefined){
+      r.style.display='none';
+    }else{
+      // non-session header rows or entries: hide when filtering
+      r.style.display='none';
+    }
+  });
+  // If exactly one session matches, jump directly to timeline
+  const visible=Array.from(document.querySelectorAll('#audit-sessions tr[data-sid]')).filter(r=>r.style.display!=='none');
+  if(visible.length===1&&q.length>=8){
+    loadSessionTimeline(visible[0].dataset.sid);
+  }
+}
+document.getElementById('audit-session-filter-btn').addEventListener('click',applyAuditSessionFilter);
+document.getElementById('audit-session-filter').addEventListener('keydown',e=>{if(e.key==='Enter')applyAuditSessionFilter()});
+document.getElementById('audit-session-filter-clear').addEventListener('click',()=>{
+  document.getElementById('audit-session-filter').value='';
+  applyAuditSessionFilter();
+});
+
 async function loadSessionTimeline(sessionId){
   auditCurrentSession=sessionId;
   try{
@@ -1526,7 +1570,7 @@ async function loadSessionTimeline(sessionId){
 
 async function loadSingleAudit(requestId){
   try{
-    const r=await fetch('/api/audit/'+requestId);
+    const r=await fetch('/api/audit/'+requestId+'?dlp=true&tg=true');
     const data=await r.json();
     document.querySelector('#tab-audit .section').style.display='none';
     document.getElementById('audit-timeline').style.display=auditCurrentSession?'none':'none';
@@ -1634,6 +1678,26 @@ function renderParsedAudit(data){
   if(res.stopReason)cards.push(card('Stop Reason',esc(res.stopReason)));
 
   document.getElementById('audit-meta-cards').innerHTML=cards.join('');
+
+  // --- Tool Guard Findings ---
+  const tgFindings=data.toolGuardFindings||[];
+  if(tgFindings.length>0){
+    const tgHtml=tgFindings.map(function(f){
+      const icon=f.action==='block'?'\u{1F534}':f.action==='flag'?'\u{1F7E1}':'\u{1F7E2}';
+      return '<div style="margin:4px 0;padding:6px 10px;background:#1c2128;border:1px solid #30363d;border-radius:6px;font-size:12px">'+
+        '<div>'+icon+' <strong style="color:#e1e4e8">'+esc(f.tool_name)+'</strong> '+
+        actionTag(f.action)+' '+severityTag(f.severity)+
+        (f.rule_name?' <span style="color:#8b949e">'+esc(f.rule_name)+'</span>':'')+
+        '</div>'+
+        (f.rule_id?'<div style="color:#484f58;font-size:11px;margin-top:2px">Rule: '+esc(f.rule_id)+'</div>':'')+
+        (f.tool_input?'<div style="color:#7d8590;font-size:11px;margin-top:2px;font-family:monospace;white-space:pre-wrap;word-break:break-word">Matched: '+esc(f.tool_input.length>200?f.tool_input.slice(0,200)+'...':f.tool_input)+'</div>':'')+
+        '</div>';
+    }).join('');
+    document.getElementById('audit-meta-cards').insertAdjacentHTML('afterend',
+      '<div style="margin:12px 0;padding:10px 12px;background:#1a1a2e;border:1px solid #30363d;border-radius:8px">'+
+      '<div style="color:#f0883e;font-weight:600;margin-bottom:6px;font-size:13px">Tool Guard Findings ('+tgFindings.length+')</div>'+
+      tgHtml+'</div>');
+  }
 
   // --- Request side ---
   const msgEl=document.getElementById('audit-messages');
@@ -1778,10 +1842,28 @@ async function refreshToolGuard(){
           '<div class="audit-kv"><span class="k">Severity</span><span class="v">'+severityTag(entry.severity)+'</span></div>'+
           '<div class="audit-kv"><span class="k">Rule</span><span class="v">'+(entry.rule_name?esc(entry.rule_name)+' ('+esc(entry.rule_id)+')':'<span style="color:#484f58">none</span>')+'</span></div>'+
           '<div class="audit-kv"><span class="k">Category</span><span class="v">'+(entry.category?esc(entry.category):'-')+'</span></div>'+
-          '<div class="audit-kv"><span class="k">Request ID</span><span class="v">'+esc(entry.request_id)+'</span></div>'+
+          '<div class="audit-kv"><span class="k">Request ID</span><span class="v"><a href="#" class="tg-audit-link" data-rid="'+esc(entry.request_id)+'" style="color:#58a6ff;text-decoration:underline;cursor:pointer">'+esc(entry.request_id)+'</a></span></div>'+
           '<div class="audit-kv"><span class="k">Session</span><span class="v">'+esc(entry.session_id||'-')+'</span></div>'+
           '<div class="audit-kv"><span class="k">Time</span><span class="v">'+esc(entry.created_at)+'</span></div>'+
-          '<div style="margin-top:12px"><div class="label">Input</div><pre class="snippet" style="max-height:400px;overflow:auto">'+esc(inputFormatted)+'</pre></div>';
+          '<div style="margin-top:12px"><a href="#" class="tg-audit-link" data-rid="'+esc(entry.request_id)+'" style="display:inline-block;padding:6px 14px;background:#1a3a5c;color:#58a6ff;border:1px solid #264d73;border-radius:6px;text-decoration:none;font-size:12px;font-weight:600;cursor:pointer;margin-bottom:12px">View Audit Log</a></div>'+
+          '<div><div class="label">Input</div><pre class="snippet" style="max-height:400px;overflow:auto">'+esc(inputFormatted)+'</pre></div>';
+
+        // Attach click handlers for audit links
+        document.querySelectorAll('.tg-audit-link').forEach(link=>{
+          link.addEventListener('click',e=>{
+            e.preventDefault();
+            const rid=link.dataset.rid;
+            if(!rid)return;
+            // Switch to Audit tab and load the audit detail
+            document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(x=>x.classList.remove('active'));
+            const auditTab=document.querySelector('.tab[data-tab="audit"]');
+            auditTab.classList.add('active');
+            activeTab='audit';
+            document.getElementById('tab-audit').classList.add('active');
+            loadSingleAudit(rid);
+          });
+        });
       });
     });
   }catch(e){console.error('Tool Guard refresh error',e)}

@@ -58,6 +58,12 @@ export class ToolCallsRepository {
     });
   }
 
+  getByRequestId(requestId: string): ToolCallRecord[] {
+    return this.db.prepare(
+      'SELECT * FROM tool_calls WHERE request_id = ? ORDER BY created_at ASC'
+    ).all(requestId) as ToolCallRecord[];
+  }
+
   getRecent(limit: number = 50, since?: string): ToolCallRecord[] {
     if (since) {
       return this.db.prepare(`
