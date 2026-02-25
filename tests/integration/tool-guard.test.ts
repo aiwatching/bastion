@@ -9,6 +9,7 @@ import { clearProviders, registerProvider, type ProviderConfig } from '../../src
 import { createProxyServer } from '../../src/proxy/server.js';
 import { ToolCallsRepository } from '../../src/storage/repositories/tool-calls.js';
 import { ToolGuardRulesRepository } from '../../src/storage/repositories/tool-guard-rules.js';
+import { AuditLogRepository } from '../../src/storage/repositories/audit-log.js';
 import { resetEncryptionKey, getEncryptionKey } from '../../src/storage/encryption.js';
 import { readFileSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -200,6 +201,23 @@ describe('Integration: Tool Guard Pipeline', () => {
     expect(dangerous).toBeDefined();
     expect(dangerous!.rule_id).toBe('fs-rm-rf-root');
     expect(dangerous!.category).toBe('destructive-fs');
+  });
+
+  it('writes audit_log entry when blocking dangerous tool call', async () => {
+    const auditRepo = new AuditLogRepository(db);
+    // The block test above should have triggered an auto-audit
+    // Find the audit entry for the most recent blocked request
+    const recent = auditRepo.getRecent(10);
+    const tgAudit = recent.find(a => a.tool_guard_hit === 1);
+    expect(tgAudit).toBeDefined();
+    expect(tgAudit!.request_id).toBeTruthy();
+
+    // Verify the raw content is stored (not just a 403 error)
+    const raw = auditRepo.getByRequestId(tgAudit!.request_id);
+    expect(raw).not.toBeNull();
+    // The response body should contain the original LLM response with the dangerous tool call
+    expect(raw!.response).toContain('bash');
+    expect(raw!.response).toContain('rm -rf');
   });
 
   it('allows safe tool_use through (read_file)', async () => {

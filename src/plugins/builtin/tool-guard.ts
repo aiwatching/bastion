@@ -8,6 +8,7 @@ import type {
 } from '../types.js';
 import { ToolCallsRepository } from '../../storage/repositories/tool-calls.js';
 import { ToolGuardRulesRepository } from '../../storage/repositories/tool-guard-rules.js';
+import { AuditLogRepository } from '../../storage/repositories/audit-log.js';
 import { extractToolCalls, type ExtractedToolCall } from '../../tool-guard/extractor.js';
 import { matchRules, BUILTIN_RULES, type ToolGuardRule, type RuleMatch } from '../../tool-guard/rules.js';
 import { dispatchAlert, shouldAlert, type AlertConfig } from '../../tool-guard/alert.js';
@@ -44,6 +45,7 @@ function analyzeToolCalls(body: string, isStreaming: boolean, rules: ToolGuardRu
 export function createToolGuardPlugin(db: Database.Database, config: ToolGuardConfig): Plugin {
   const repo = new ToolCallsRepository(db);
   const rulesRepo = new ToolGuardRulesRepository(db);
+  const auditRepo = new AuditLogRepository(db);
 
   // Seed built-in rules on first init (INSERT OR IGNORE preserves user toggles)
   rulesRepo.seedBuiltins(BUILTIN_RULES);
@@ -176,6 +178,20 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
         );
         const reason = `Response blocked by Tool Guard: dangerous tool call detected — ${reasons.join('; ')}`;
         log.warn('Blocking response', { requestId: context.request.id, blocked: reasons });
+
+        // Auto-audit on tool-guard block (same pattern as DLP scanner)
+        try {
+          auditRepo.insert({
+            id: crypto.randomUUID(),
+            request_id: context.request.id,
+            requestBody: context.request.body,
+            responseBody: context.body,
+            toolGuardHit: true,
+          });
+        } catch (err) {
+          log.warn('Failed to write tool-guard auto-audit', { error: (err as Error).message });
+        }
+
         return { blocked: { reason } };
       }
     },
