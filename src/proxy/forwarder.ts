@@ -6,6 +6,7 @@ import type { ProviderConfig } from './providers/index.js';
 import type { PluginManager } from '../plugins/index.js';
 import type { RequestContext, ResponseCompleteContext, ResponseInterceptContext } from '../plugins/types.js';
 import { SSEParser, parseSSEData } from './streaming.js';
+import { StreamingToolGuard } from '../tool-guard/streaming-guard.js';
 import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('forwarder');
@@ -185,24 +186,50 @@ async function handleStreamingResponse(
   let fullResponseData = '';
   const sseEvents: Record<string, unknown>[] = [];
 
+  // Streaming tool guard: intercept tool_use SSE blocks when action=block
+  const useGuard = Boolean(context._toolGuardStreamBlock);
+  const guard = useGuard
+    ? new StreamingToolGuard(
+        { blockMinSeverity: context._toolGuardStreamBlock! },
+        (data: string) => clientRes.write(data),
+      )
+    : null;
+
+  // Accumulate raw events for the guard (keyed by parse position)
+  let rawEventBuffer = '';
+
   const parser = new SSEParser((event) => {
     const data = parseSSEData(event);
     if (data) {
       sseEvents.push(data);
     }
+
+    if (guard) {
+      // Reconstruct the raw SSE text for this event
+      const rawEvent = (event.event ? `event: ${event.event}\n` : '') +
+        `data: ${event.data}\n\n`;
+      guard.processEvent(rawEvent, data);
+    }
   });
 
   return new Promise<void>((resolve) => {
     upstreamRes.on('data', (chunk: Buffer) => {
-      // Forward raw bytes unmodified
-      clientRes.write(chunk);
-      // Parse for inspection only
-      parser.feed(chunk.toString('utf-8'));
-      fullResponseData += chunk.toString('utf-8');
+      const chunkStr = chunk.toString('utf-8');
+      fullResponseData += chunkStr;
+
+      if (guard) {
+        // Let the parser drive the guard (events are processed in the SSEParser callback)
+        parser.feed(chunkStr);
+      } else {
+        // No guard: forward raw bytes unmodified, parse for inspection only
+        clientRes.write(chunk);
+        parser.feed(chunkStr);
+      }
     });
 
     upstreamRes.on('end', async () => {
       parser.flush();
+      if (guard) guard.flush();
       clientRes.end();
 
       const latencyMs = Date.now() - startTime;
@@ -233,6 +260,7 @@ async function handleStreamingResponse(
     });
 
     upstreamRes.on('error', () => {
+      if (guard) guard.flush();
       clientRes.end();
       resolve();
     });

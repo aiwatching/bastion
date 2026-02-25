@@ -19,6 +19,11 @@ export interface RequestContext {
   /** Set by tool-guard plugin during onResponseComplete */
   toolGuardHit?: boolean;
   toolGuardFindings?: number;
+  /** Internal: set by tool-guard onResponse to skip duplicate recording in onResponseComplete */
+  _toolGuardRecorded?: boolean;
+  /** Internal: set by tool-guard onRequest to enable streaming interception in forwarder.
+   *  Value is the blockMinSeverity threshold. */
+  _toolGuardStreamBlock?: string;
 }
 
 export interface ResponseCompleteContext {

@@ -9,6 +9,7 @@ import { SessionsRepository } from '../storage/repositories/sessions.js';
 import { DlpPatternsRepository } from '../storage/repositories/dlp-patterns.js';
 import { DlpConfigHistoryRepository } from '../storage/repositories/dlp-config-history.js';
 import { ToolCallsRepository } from '../storage/repositories/tool-calls.js';
+import { getRecentAlerts, getUnacknowledgedCount, acknowledgeAlerts } from '../tool-guard/alert.js';
 import { scanText, type DlpTrace } from '../dlp/engine.js';
 import type { DlpAction } from '../dlp/actions.js';
 import { getBuiltinSensitivePatterns, getBuiltinNonSensitiveNames } from '../dlp/semantics.js';
@@ -476,6 +477,22 @@ export function createApiRouter(
       } catch (err) {
         sendJson(res, { error: (err as Error).message }, 400);
       }
+      return true;
+    }
+
+    // GET /api/tool-guard/alerts — recent alerts with unack count
+    if (req.method === 'GET' && path === '/api/tool-guard/alerts') {
+      sendJson(res, {
+        alerts: getRecentAlerts(),
+        unacknowledged: getUnacknowledgedCount(),
+      });
+      return true;
+    }
+
+    // POST /api/tool-guard/alerts/ack — acknowledge all alerts
+    if (req.method === 'POST' && path === '/api/tool-guard/alerts/ack') {
+      acknowledgeAlerts();
+      sendJson(res, { ok: true });
       return true;
     }
 

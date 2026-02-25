@@ -49,6 +49,11 @@ export interface BastionConfig {
     };
     toolGuard: {
       enabled: boolean;
+      action: 'audit' | 'block';
+      blockMinSeverity: 'critical' | 'high' | 'medium' | 'low';
+      alertMinSeverity: 'critical' | 'high' | 'medium' | 'low';
+      alertDesktop: boolean;
+      alertWebhookUrl: string;
     };
   };
   timeouts: {
