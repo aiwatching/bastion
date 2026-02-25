@@ -189,6 +189,25 @@ const MIGRATIONS: string[] = [
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   `,
+
+  // Migration 11: Audit log — tool_guard_hit column + ensure action column exists
+  // (action column may already exist from migration 9 on fresh installs; runner handles duplicate)
+  `
+  ALTER TABLE tool_calls ADD COLUMN action TEXT;
+  ALTER TABLE audit_log ADD COLUMN tool_guard_hit INTEGER DEFAULT 0;
+  CREATE INDEX IF NOT EXISTS idx_audit_tool_guard_hit ON audit_log(tool_guard_hit);
+  `,
+
+  // Migration 12: Ensure tool_calls.action column exists (catch-up for DBs that skipped migration 9/11)
+  `
+  ALTER TABLE tool_calls ADD COLUMN action TEXT;
+  `,
+
+  // Migration 13: Backfill action + severity for existing records
+  `
+  UPDATE tool_calls SET action = 'flag' WHERE action IS NULL AND rule_id IS NOT NULL;
+  UPDATE tool_calls SET action = 'pass', severity = 'info' WHERE action IS NULL AND rule_id IS NULL;
+  `,
 ];
 
 export function runMigrations(db: Database.Database): void {
@@ -206,7 +225,26 @@ export function runMigrations(db: Database.Database): void {
   const version = currentVersion?.version ?? 0;
 
   for (let i = version; i < MIGRATIONS.length; i++) {
-    db.exec(MIGRATIONS[i]);
+    try {
+      db.exec(MIGRATIONS[i]);
+    } catch (err) {
+      // Handle duplicate column errors from idempotent ALTER TABLE statements
+      if (err instanceof Error && err.message.includes('duplicate column')) {
+        // Execute statements individually, skipping duplicate column errors
+        const statements = MIGRATIONS[i].split(';').map(s => s.trim()).filter(Boolean);
+        for (const stmt of statements) {
+          try {
+            db.exec(stmt);
+          } catch (stmtErr) {
+            if (!(stmtErr instanceof Error) || !stmtErr.message.includes('duplicate column')) {
+              throw stmtErr;
+            }
+          }
+        }
+      } else {
+        throw err;
+      }
+    }
     db.prepare('INSERT INTO schema_version (version) VALUES (?)').run(i + 1);
   }
 }

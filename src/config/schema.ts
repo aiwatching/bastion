@@ -49,6 +49,7 @@ export interface BastionConfig {
     toolGuard: {
       enabled: boolean;
       action: 'audit' | 'block';
+      recordAll: boolean;
       blockMinSeverity: 'critical' | 'high' | 'medium' | 'low';
       alertMinSeverity: 'critical' | 'high' | 'medium' | 'low';
       alertDesktop: boolean;

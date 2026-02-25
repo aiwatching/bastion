@@ -155,8 +155,8 @@ describe('Data Retention', () => {
       db = createTestDatabase();
       const repo = new ToolCallsRepository(db);
 
-      repo.insert({ id: 't1', request_id: 'r1', tool_name: 'bash', tool_input: 'ls', rule_id: null, rule_name: null, severity: null, category: null, provider: 'anthropic', session_id: null });
-      repo.insert({ id: 't2', request_id: 'r2', tool_name: 'bash', tool_input: 'pwd', rule_id: null, rule_name: null, severity: null, category: null, provider: 'anthropic', session_id: null });
+      repo.insert({ id: 't1', request_id: 'r1', tool_name: 'bash', tool_input: 'ls', rule_id: null, rule_name: null, severity: null, category: null, action: 'pass', provider: 'anthropic', session_id: null });
+      repo.insert({ id: 't2', request_id: 'r2', tool_name: 'bash', tool_input: 'pwd', rule_id: null, rule_name: null, severity: null, category: null, action: 'pass', provider: 'anthropic', session_id: null });
 
       insertAt(db, 'tool_calls', 't1', 48);
 
@@ -170,8 +170,8 @@ describe('Data Retention', () => {
       db = createTestDatabase();
       const repo = new ToolCallsRepository(db);
 
-      repo.insert({ id: 't1', request_id: 'r1', tool_name: 'bash', tool_input: 'ls', rule_id: null, rule_name: null, severity: null, category: null, provider: 'anthropic', session_id: null });
-      repo.insert({ id: 't2', request_id: 'r2', tool_name: 'bash', tool_input: 'pwd', rule_id: null, rule_name: null, severity: null, category: null, provider: 'anthropic', session_id: null });
+      repo.insert({ id: 't1', request_id: 'r1', tool_name: 'bash', tool_input: 'ls', rule_id: null, rule_name: null, severity: null, category: null, action: 'pass', provider: 'anthropic', session_id: null });
+      repo.insert({ id: 't2', request_id: 'r2', tool_name: 'bash', tool_input: 'pwd', rule_id: null, rule_name: null, severity: null, category: null, action: 'pass', provider: 'anthropic', session_id: null });
 
       insertAt(db, 'tool_calls', 't1', 48);
 
