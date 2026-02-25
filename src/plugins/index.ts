@@ -127,7 +127,7 @@ export class PluginManager {
       try {
         await withTimeout(
           plugin.onResponseComplete(context),
-          this.timeoutMs,
+          this.timeoutMs * 10, // post-send: allow more time for DB writes
         );
       } catch (err) {
         if (err instanceof TimeoutError) {

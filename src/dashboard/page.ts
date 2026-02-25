@@ -1870,14 +1870,22 @@ document.getElementById('tgr-save').addEventListener('click',async()=>{
 
 // Tool Guard config change handlers
 ['tg-action-select','tg-record-all','tg-block-severity','tg-alert-severity'].forEach(id=>{
-  document.getElementById(id).addEventListener('change',async()=>{
+  const el=document.getElementById(id);
+  if(!el){console.error('Tool Guard config element not found:',id);return;}
+  el.addEventListener('change',async()=>{
     const payload={plugins:{toolGuard:{
       action:document.getElementById('tg-action-select').value,
       recordAll:document.getElementById('tg-record-all').checked,
       blockMinSeverity:document.getElementById('tg-block-severity').value,
       alertMinSeverity:document.getElementById('tg-alert-severity').value,
     }}};
-    await fetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+    try{
+      console.log('[Bastion] Saving toolGuard config:',JSON.stringify(payload));
+      const r=await fetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+      if(!r.ok){console.error('[Bastion] Config save failed:',r.status,await r.text());return;}
+      const result=await r.json();
+      console.log('[Bastion] Config saved, effective toolGuard:',JSON.stringify(result.config?.plugins?.toolGuard));
+    }catch(e){console.error('[Bastion] Config save error:',e);return;}
     const st=document.getElementById('tg-cfg-status');st.style.display='inline';setTimeout(()=>st.style.display='none',2000);
     _lastJson={};refreshToolGuard();
   });
@@ -1941,6 +1949,10 @@ setInterval(loadSessions,15000);
 </html>`;
 
 export function serveDashboard(res: ServerResponse): void {
-  res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+  res.writeHead(200, {
+    'content-type': 'text/html; charset=utf-8',
+    'cache-control': 'no-store, no-cache, must-revalidate',
+    'pragma': 'no-cache',
+  });
   res.end(HTML);
 }
