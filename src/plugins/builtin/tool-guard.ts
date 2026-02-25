@@ -132,7 +132,7 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
     async onRequest(context: RequestContext): Promise<PluginRequestResult | void> {
       const rules = rulesRepo.getEnabled();
       context._toolGuardRules = rules;
-      log.info('onRequest', { action: getAction(), recordAll: getRecordAll(), isStreaming: context.isStreaming });
+      log.debug('onRequest', { action: getAction(), recordAll: getRecordAll(), isStreaming: context.isStreaming });
       if (getAction() === 'block' && context.isStreaming) {
         context._toolGuardStreamBlock = getBlockMinSeverity();
       }
@@ -141,12 +141,17 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
     // ── Pre-send: block dangerous tool calls in non-streaming responses ──
     async onResponse(context: ResponseInterceptContext): Promise<PluginResponseResult | void> {
       const currentAction = getAction();
-      log.info('onResponse', { action: currentAction, isStreaming: context.isStreaming });
+      log.debug('onResponse', { action: currentAction, isStreaming: context.isStreaming });
       if (currentAction !== 'block') return;
       if (context.isStreaming) return; // streaming handled in onResponseComplete (post-send audit only)
 
       const rules = context.request._toolGuardRules ?? rulesRepo.getEnabled();
       const matches = analyzeToolCalls(context.body, false, rules);
+      log.debug('onResponse analysis', {
+        requestId: context.request.id,
+        toolCalls: matches.length,
+        bodyLen: context.body.length,
+      });
       if (matches.length === 0) return;
 
       // Check if any flagged call meets the block severity threshold
@@ -183,6 +188,12 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
       try {
         const rules = context.request._toolGuardRules ?? rulesRepo.getEnabled();
         const matches = analyzeToolCalls(context.body, context.isStreaming, rules);
+        log.debug('onResponseComplete', {
+          requestId: context.request.id,
+          isStreaming: context.isStreaming,
+          toolCalls: matches.length,
+          bodyLen: context.body.length,
+        });
         if (matches.length === 0) return;
 
         const flagged = recordAndAlert(matches, context.request.id, context.request.sessionId);
@@ -191,7 +202,7 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
           context.request.toolGuardFindings = flagged;
         }
 
-        log.info('Tool calls recorded', {
+        log.debug('Tool calls recorded', {
           requestId: context.request.id,
           total: matches.length,
           flagged,
