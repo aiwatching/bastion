@@ -64,10 +64,10 @@ tr:hover{background:#1c2128}
 .toggle-row .toggle-desc{font-size:11px;color:#7d8590;margin-top:2px}
 .switch{position:relative;width:40px;height:22px;flex-shrink:0}
 .switch input{opacity:0;width:0;height:0}
-.slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#30363d;border-radius:11px;transition:.2s}
-.slider:before{position:absolute;content:"";height:16px;width:16px;left:3px;bottom:3px;background:#e1e4e8;border-radius:50%;transition:.2s}
-.switch input:checked+.slider{background:#3fb950}
-.switch input:checked+.slider:before{transform:translateX(18px)}
+.slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#21262d;border:1px solid #30363d;border-radius:11px;transition:.2s}
+.slider:before{position:absolute;content:"";height:16px;width:16px;left:2px;bottom:2px;background:#484f58;border-radius:50%;transition:.2s}
+.switch input:checked+.slider{background:#238636;border-color:#2ea043}
+.switch input:checked+.slider:before{transform:translateX(18px);background:#fff}
 .config-select{background:#161b22;border:1px solid #30363d;color:#e1e4e8;padding:4px 8px;border-radius:4px;font-size:12px}
 .msg-bubble{padding:8px 12px;border-radius:8px;margin-bottom:6px;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
 .msg-bubble.user{background:#1a2a3d;border:1px solid #264166}
@@ -472,7 +472,7 @@ tr:hover{background:#1c2128}
   <div class="sub-content active" id="tg-sub-calls">
     <div class="section">
       <h2>Recent Tool Calls</h2>
-      <table><thead><tr><th>Time</th><th>Session</th><th>Tool Name</th><th>Severity</th><th>Category</th><th>Input</th></tr></thead><tbody id="tg-table"></tbody></table>
+      <table><thead><tr><th>Time</th><th>Session</th><th>Tool Name</th><th>Action</th><th>Severity</th><th>Category</th><th>Input</th></tr></thead><tbody id="tg-table"></tbody></table>
       <p class="empty" id="no-tg">No tool calls recorded yet.</p>
     </div>
     <div id="tg-detail" style="display:none">

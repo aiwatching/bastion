@@ -94,6 +94,14 @@ export async function startGateway(): Promise<void> {
     alertMinSeverity: config.plugins.toolGuard?.alertMinSeverity ?? 'high',
     alertDesktop: config.plugins.toolGuard?.alertDesktop ?? true,
     alertWebhookUrl: config.plugins.toolGuard?.alertWebhookUrl ?? '',
+    getLiveConfig: () => {
+      const tg = configManager.get().plugins.toolGuard;
+      return {
+        action: tg?.action ?? 'audit',
+        blockMinSeverity: tg?.blockMinSeverity ?? 'critical',
+        alertMinSeverity: tg?.alertMinSeverity ?? 'high',
+      };
+    },
   }));
   if (!config.plugins.toolGuard?.enabled) pluginManager.disable('tool-guard');
 

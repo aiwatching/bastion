@@ -9,6 +9,7 @@ export interface ToolCallRecord {
   rule_name: string | null;
   severity: string | null;
   category: string | null;
+  action: string | null;
   provider: string | null;
   session_id: string | null;
   created_at: string;
@@ -31,8 +32,8 @@ export class ToolCallsRepository {
   constructor(db: Database.Database) {
     this.db = db;
     this.insertStmt = db.prepare(`
-      INSERT INTO tool_calls (id, request_id, tool_name, tool_input, rule_id, rule_name, severity, category, provider, session_id)
-      VALUES (@id, @request_id, @tool_name, @tool_input, @rule_id, @rule_name, @severity, @category, @provider, @session_id)
+      INSERT INTO tool_calls (id, request_id, tool_name, tool_input, rule_id, rule_name, severity, category, action, provider, session_id)
+      VALUES (@id, @request_id, @tool_name, @tool_input, @rule_id, @rule_name, @severity, @category, @action, @provider, @session_id)
     `);
   }
 
@@ -45,6 +46,7 @@ export class ToolCallsRepository {
     rule_name: string | null;
     severity: string | null;
     category: string | null;
+    action: string | null;
     provider: string;
     session_id: string | null;
   }): void {
