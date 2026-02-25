@@ -91,7 +91,7 @@ tr:hover{background:#1c2128}
   <button class="tab" data-tab="dlp">DLP</button>
   <button class="tab" data-tab="optimizer">Optimizer</button>
   <button class="tab" data-tab="audit">Audit</button>
-  <button class="tab" data-tab="toolguard">Tool Guard</button>
+  <button class="tab" data-tab="toolguard">Tool Guard <span id="tg-badge" style="display:none;background:#f85149;color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:4px;font-weight:700"></span></button>
   <button class="tab" data-tab="settings">Settings</button>
 </div>
 
@@ -422,6 +422,13 @@ tr:hover{background:#1c2128}
 
 <!-- TOOL GUARD TAB -->
 <div class="tab-content" id="tab-toolguard">
+  <div id="tg-alert-banner" style="display:none;background:#3d1a1a;border:1px solid #f85149;border-radius:8px;padding:12px 16px;margin-bottom:16px;display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div><span style="color:#f85149;font-weight:600;font-size:14px" id="tg-alert-title"></span><span style="color:#e1e4e8;font-size:12px;margin-left:8px" id="tg-alert-msg"></span></div>
+      <button id="tg-ack-btn" style="padding:4px 12px;font-size:11px;cursor:pointer;color:#f85149;background:none;border:1px solid #f85149;border-radius:6px">Acknowledge</button>
+    </div>
+    <div id="tg-alert-list" style="margin-top:8px;font-size:11px;color:#7d8590;max-height:120px;overflow:auto"></div>
+  </div>
   <div class="grid" id="tg-cards"></div>
   <div class="section">
     <h2>Recent Tool Calls</h2>
@@ -1498,6 +1505,36 @@ function renderParsedAudit(data){
   }
 }
 
+// Tool Guard — alert polling
+async function pollToolGuardAlerts(){
+  try{
+    const r=await fetch('/api/tool-guard/alerts');
+    const data=await r.json();
+    const badge=document.getElementById('tg-badge');
+    const banner=document.getElementById('tg-alert-banner');
+    const unack=data.unacknowledged||0;
+    if(unack>0){
+      badge.textContent=unack>99?'99+':String(unack);
+      badge.style.display='inline';
+      banner.style.display='block';
+      document.getElementById('tg-alert-title').textContent=unack+' unacknowledged alert'+(unack>1?'s':'');
+      const recent=data.alerts.filter(a=>!a.acknowledged).slice(0,5);
+      document.getElementById('tg-alert-msg').textContent=recent.length>0?recent[0].toolName+': '+recent[0].ruleName:'';
+      document.getElementById('tg-alert-list').innerHTML=recent.map(a=>
+        '<div>'+severityTag(a.severity)+' <strong>'+esc(a.toolName)+'</strong> — '+esc(a.ruleName)+' <span style="color:#484f58">'+ago(a.timestamp)+'</span></div>'
+      ).join('');
+    }else{
+      badge.style.display='none';
+      banner.style.display='none';
+    }
+  }catch(e){}
+}
+
+document.getElementById('tg-ack-btn').addEventListener('click',async()=>{
+  await fetch('/api/tool-guard/alerts/ack',{method:'POST'});
+  pollToolGuardAlerts();
+});
+
 // Tool Guard tab
 function severityTag(s){
   if(!s)return '<span class="tag" style="background:#21262d;color:#484f58">none</span>';
@@ -1507,15 +1544,19 @@ function severityTag(s){
 
 async function refreshToolGuard(){
   try{
-    const [statsR,recentR]=await Promise.all([fetch('/api/tool-guard/stats'),fetch('/api/tool-guard/recent?limit=100')]);
+    const [statsR,recentR,cfgR]=await Promise.all([fetch('/api/tool-guard/stats'),fetch('/api/tool-guard/recent?limit=100'),fetch('/api/config')]);
     const stats=await statsR.json();
     const recent=await recentR.json();
+    const cfgData=await cfgR.json();
+    const tgAction=cfgData.config?.plugins?.toolGuard?.action||'audit';
+    const modeLabel=tgAction==='block'?'BLOCK':'AUDIT';
+    const modeCls=tgAction==='block'?'warn':'blue';
 
     document.getElementById('tg-cards').innerHTML=
+      card('Mode',modeLabel,modeCls)+
       card('Total Tool Calls',fmt(stats.total))+
       card('Flagged',fmt(stats.flagged),'warn')+
-      card('Critical',(stats.bySeverity?.critical||0).toString(),'warn')+
-      card('High',(stats.bySeverity?.high||0).toString(),'warn');
+      card('Critical',(stats.bySeverity?.critical||0).toString(),'warn');
 
     document.getElementById('no-tg').style.display=recent.length?'none':'';
     document.getElementById('tg-table').innerHTML=recent.map(e=>{
@@ -1590,7 +1631,8 @@ async function refreshSettings(){
 
 loadSessions();
 refresh();
-setInterval(()=>{refresh();loadSessions()},3000);
+pollToolGuardAlerts();
+setInterval(()=>{refresh();loadSessions();pollToolGuardAlerts()},3000);
 </script>
 </body>
 </html>`;

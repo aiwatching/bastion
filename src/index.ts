@@ -82,6 +82,11 @@ export async function startGateway(): Promise<void> {
 
   pluginManager.register(createToolGuardPlugin(db, {
     enabled: config.plugins.toolGuard?.enabled ?? true,
+    action: config.plugins.toolGuard?.action ?? 'audit',
+    blockMinSeverity: config.plugins.toolGuard?.blockMinSeverity ?? 'critical',
+    alertMinSeverity: config.plugins.toolGuard?.alertMinSeverity ?? 'high',
+    alertDesktop: config.plugins.toolGuard?.alertDesktop ?? true,
+    alertWebhookUrl: config.plugins.toolGuard?.alertWebhookUrl ?? '',
   }));
   if (!config.plugins.toolGuard?.enabled) pluginManager.disable('tool-guard');
 

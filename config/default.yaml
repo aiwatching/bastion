@@ -45,6 +45,11 @@ plugins:
 
   toolGuard:
     enabled: true
+    action: "audit"
+    blockMinSeverity: "critical"
+    alertMinSeverity: "high"
+    alertDesktop: true
+    alertWebhookUrl: ""
 
 timeouts:
   upstream: 120000
