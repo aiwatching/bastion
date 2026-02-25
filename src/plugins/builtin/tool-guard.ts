@@ -48,15 +48,6 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
     webhookUrl: config.alertWebhookUrl ?? '',
   };
 
-  // Periodic purge (keep 7 days by default)
-  const purgeInterval = setInterval(() => {
-    try {
-      const purged = repo.purgeOlderThan(168);
-      if (purged > 0) log.debug('Purged old tool call entries', { purged });
-    } catch { /* ignore */ }
-  }, 60 * 60 * 1000);
-  purgeInterval.unref();
-
   /** Record tool calls to DB and dispatch alerts. Returns count of flagged calls. */
   function recordAndAlert(
     matches: MatchedToolCall[],

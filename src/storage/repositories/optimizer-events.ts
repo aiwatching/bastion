@@ -58,9 +58,21 @@ export class OptimizerEventsRepository {
     };
   }
 
-  getRecent(limit: number = 20): OptimizerEventRecord[] {
+  getRecent(limit: number = 20, since?: string): OptimizerEventRecord[] {
+    if (since) {
+      return this.db.prepare(`
+        SELECT * FROM optimizer_events WHERE created_at > ? ORDER BY created_at DESC LIMIT ?
+      `).all(since, limit) as OptimizerEventRecord[];
+    }
     return this.db.prepare(`
       SELECT * FROM optimizer_events ORDER BY created_at DESC LIMIT ?
     `).all(limit) as OptimizerEventRecord[];
+  }
+
+  purgeOlderThan(hours: number): number {
+    const result = this.db.prepare(
+      `DELETE FROM optimizer_events WHERE created_at < datetime('now', '-' || ? || ' hours')`
+    ).run(hours);
+    return result.changes;
   }
 }

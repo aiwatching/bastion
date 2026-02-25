@@ -7,7 +7,6 @@ import type Database from 'better-sqlite3';
 const log = createLogger('audit-plugin');
 
 export interface AuditLoggerConfig {
-  retentionHours: number;
   rawData: boolean;
   rawMaxBytes: number;
   summaryMaxBytes: number;
@@ -18,21 +17,6 @@ export function createAuditLoggerPlugin(db: Database.Database, config: AuditLogg
 
   // Store request bodies temporarily until response is complete
   const pendingRequests = new Map<string, string>();
-
-  // Periodic purge of old audit entries
-  const purgeInterval = setInterval(() => {
-    try {
-      const purged = auditRepo.purgeOlderThan(config.retentionHours);
-      if (purged > 0) {
-        log.debug('Purged old audit entries', { purged });
-      }
-    } catch {
-      // Ignore purge errors
-    }
-  }, 60 * 60 * 1000); // Every hour
-
-  // Prevent the interval from keeping the process alive
-  purgeInterval.unref();
 
   return {
     name: 'audit-logger',

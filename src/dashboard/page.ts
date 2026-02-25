@@ -83,8 +83,19 @@ tr:hover{background:#1c2128}
 </style>
 </head>
 <body>
-<h1><span class="status"></span>Bastion AI Gateway</h1>
-<p class="subtitle">Local-first LLM proxy &mdash; auto-refresh</p>
+<div style="display:flex;justify-content:space-between;align-items:center">
+<div><h1><span class="status"></span>Bastion AI Gateway</h1>
+<p class="subtitle">Local-first LLM proxy &mdash; auto-refresh</p></div>
+<div style="display:flex;align-items:center;gap:8px">
+<label style="font-size:12px;color:#7d8590">Time Range:</label>
+<select id="time-range" style="background:#161b22;border:1px solid #30363d;color:#e1e4e8;padding:6px 10px;border-radius:6px;font-size:12px">
+<option value="24h">Today (24h)</option>
+<option value="7d">7 days</option>
+<option value="30d">30 days</option>
+<option value="all">All</option>
+</select>
+</div>
+</div>
 
 <div class="tabs">
   <button class="tab active" data-tab="overview">Overview</button>
@@ -450,6 +461,37 @@ tr:hover{background:#1c2128}
     <h2>Plugin Controls</h2>
     <div id="plugin-toggles"></div>
   </div>
+  <div class="section">
+    <h2>Data Retention</h2>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
+      <div class="toggle-row" style="flex-direction:column;align-items:flex-start;gap:4px">
+        <div class="toggle-label" style="font-size:12px">Requests (hours)</div>
+        <input type="number" id="ret-requests" min="1" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px">
+      </div>
+      <div class="toggle-row" style="flex-direction:column;align-items:flex-start;gap:4px">
+        <div class="toggle-label" style="font-size:12px">DLP Events (hours)</div>
+        <input type="number" id="ret-dlp" min="1" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px">
+      </div>
+      <div class="toggle-row" style="flex-direction:column;align-items:flex-start;gap:4px">
+        <div class="toggle-label" style="font-size:12px">Tool Calls (hours)</div>
+        <input type="number" id="ret-tools" min="1" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px">
+      </div>
+      <div class="toggle-row" style="flex-direction:column;align-items:flex-start;gap:4px">
+        <div class="toggle-label" style="font-size:12px">Optimizer Events (hours)</div>
+        <input type="number" id="ret-optimizer" min="1" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px">
+      </div>
+      <div class="toggle-row" style="flex-direction:column;align-items:flex-start;gap:4px">
+        <div class="toggle-label" style="font-size:12px">Sessions (hours)</div>
+        <input type="number" id="ret-sessions" min="1" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px">
+      </div>
+      <div class="toggle-row" style="flex-direction:column;align-items:flex-start;gap:4px">
+        <div class="toggle-label" style="font-size:12px">Audit Log (hours)</div>
+        <input type="number" id="ret-audit" min="1" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px">
+      </div>
+    </div>
+    <button id="ret-save-btn" style="padding:6px 20px;font-size:13px;cursor:pointer;color:#fff;background:#238636;border:1px solid #2ea043;border-radius:6px;font-weight:500">Save Retention Settings</button>
+    <span id="ret-status" style="margin-left:8px;font-size:12px;color:#3fb950;display:none">Saved!</span>
+  </div>
 </div>
 
 <p class="footer">Bastion <span id="ver">v0.1.0</span> &mdash; <span id="uptime"></span> uptime &mdash; <span id="mem"></span> MB memory</p>
@@ -474,6 +516,19 @@ function providerTag(p){return '<span class="tag '+p+'">'+p+'</span>'}
 function actionTag(a){return '<span class="tag '+(a==='block'?'blocked':a==='warn'?'warn':'redact')+'">'+a+'</span>'}
 function card(label,value,cls){return '<div class="card"><div class="label">'+label+'</div><div class="value'+(cls?' '+cls:'')+'">'+value+'</div></div>'}
 function esc(s){if(!s)return'';const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+
+// Time range
+let timeRange='24h';
+function sinceForRange(r){
+  if(r==='all')return '';
+  const h=r==='24h'?24:r==='7d'?168:720;
+  return new Date(Date.now()-h*3600000).toISOString().replace('T',' ').slice(0,19);
+}
+function hoursForRange(r){return r==='24h'?24:r==='7d'?168:r==='30d'?720:0}
+document.getElementById('time-range').addEventListener('change',function(){
+  timeRange=this.value;_lastJson={};refreshActiveTab();
+});
+function sinceParam(){const s=sinceForRange(timeRange);return s?'since='+encodeURIComponent(s):'';}
 
 // Tab switching
 document.querySelectorAll('.tab').forEach(t=>{
@@ -530,7 +585,12 @@ document.getElementById('session-filter').addEventListener('change',()=>refresh(
 async function refresh(){
   try{
     const sid=document.getElementById('session-filter').value;
-    const params=sid?'?session_id='+encodeURIComponent(sid):'';
+    const parts=[];
+    if(sid)parts.push('session_id='+encodeURIComponent(sid));
+    const h=hoursForRange(timeRange);
+    if(h)parts.push('hours='+h);
+    const sp=sinceParam();if(sp)parts.push(sp);
+    const params=parts.length?'?'+parts.join('&'):'';
     const r=await fetch('/api/stats'+params);
     const d=await r.json();
     const s=d.stats;
@@ -739,7 +799,9 @@ async function refreshDlp(){
 let findingsAll=[];
 async function refreshFindings(){
   try{
-    const [statsR,recentR]=await Promise.all([fetch('/api/stats'),fetch('/api/dlp/recent?limit=200')]);
+    const sp=sinceParam();
+    const dlpUrl='/api/dlp/recent?limit=200'+(sp?'&'+sp:'');
+    const [statsR,recentR]=await Promise.all([fetch('/api/stats'),fetch(dlpUrl)]);
     const stats=(await statsR.json()).dlp;
     if(!skipIfSame('findings-cards',stats)){
       const ba=stats.by_action||{};
@@ -1221,7 +1283,9 @@ document.getElementById('dlp-save-btn').addEventListener('click',async()=>{
 // Optimizer tab
 async function refreshOptimizer(){
   try{
-    const [statsR,recentR]=await Promise.all([fetch('/api/optimizer/stats'),fetch('/api/optimizer/recent')]);
+    const sp=sinceParam();
+    const optUrl='/api/optimizer/recent'+(sp?'?'+sp:'');
+    const [statsR,recentR]=await Promise.all([fetch('/api/optimizer/stats'),fetch(optUrl)]);
     const stats=await statsR.json();
     const recent=await recentR.json();
 
@@ -1246,7 +1310,8 @@ let auditCurrentSession=null;
 
 async function refreshAudit(){
   try{
-    const r=await fetch('/api/audit/sessions');
+    const sp=sinceParam();
+    const r=await fetch('/api/audit/sessions'+(sp?'?'+sp:''));
     const sessions=await r.json();
     document.getElementById('no-audit').style.display=sessions.length?'none':'';
     document.getElementById('audit-sessions').innerHTML=sessions.map(s=>{
@@ -1265,7 +1330,7 @@ async function refreshAudit(){
         '<td style="color:#58a6ff">View</td></tr>';
     }).join('');
     // Also show non-session entries
-    const recentR=await fetch('/api/audit/recent');
+    const recentR=await fetch('/api/audit/recent'+(sp?'?'+sp:''));
     const recent=await recentR.json();
     const noSession=recent.filter(e=>!e.session_id);
     if(noSession.length>0){
@@ -1564,7 +1629,9 @@ function severityTag(s){
 
 async function refreshToolGuard(){
   try{
-    const [statsR,recentR,cfgR]=await Promise.all([fetch('/api/tool-guard/stats'),fetch('/api/tool-guard/recent?limit=100'),fetch('/api/config')]);
+    const sp=sinceParam();
+    const tgUrl='/api/tool-guard/recent?limit=100'+(sp?'&'+sp:'');
+    const [statsR,recentR,cfgR]=await Promise.all([fetch('/api/tool-guard/stats'),fetch(tgUrl),fetch('/api/config')]);
     const stats=await statsR.json();
     const recent=await recentR.json();
     const cfgData=await cfgR.json();
@@ -1649,8 +1716,30 @@ async function refreshSettings(){
         await fetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
       });
     });
+
+    // Retention settings
+    const ret=data.config?.retention||{};
+    document.getElementById('ret-requests').value=ret.requestsHours||720;
+    document.getElementById('ret-dlp').value=ret.dlpEventsHours||720;
+    document.getElementById('ret-tools').value=ret.toolCallsHours||720;
+    document.getElementById('ret-optimizer').value=ret.optimizerEventsHours||720;
+    document.getElementById('ret-sessions').value=ret.sessionsHours||720;
+    document.getElementById('ret-audit').value=ret.auditLogHours||24;
   }catch(e){}
 }
+
+document.getElementById('ret-save-btn').addEventListener('click',async()=>{
+  const retention={
+    requestsHours:parseInt(document.getElementById('ret-requests').value)||720,
+    dlpEventsHours:parseInt(document.getElementById('ret-dlp').value)||720,
+    toolCallsHours:parseInt(document.getElementById('ret-tools').value)||720,
+    optimizerEventsHours:parseInt(document.getElementById('ret-optimizer').value)||720,
+    sessionsHours:parseInt(document.getElementById('ret-sessions').value)||720,
+    auditLogHours:parseInt(document.getElementById('ret-audit').value)||24,
+  };
+  await fetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({retention})});
+  const st=document.getElementById('ret-status');st.style.display='inline';setTimeout(()=>st.style.display='none',2000);
+});
 
 loadSessions();
 refresh();

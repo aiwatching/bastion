@@ -3,7 +3,7 @@ set -euo pipefail
 
 INSTALL_DIR="${BASTION_INSTALL_DIR:-$HOME/.bastion/app}"
 BIN_DIR="${BASTION_BIN_DIR:-/usr/local/bin}"
-REPO_URL="${BASTION_REPO_URL:-https://github.com/your-org/bastion.git}"
+REPO_URL="${BASTION_REPO_URL:-https://github.com/aiwatching/bastion.git}"
 LOCAL_SOURCE=""
 
 # Parse arguments
@@ -36,6 +36,22 @@ warn()  { echo -e "${YELLOW}==>${NC} $*"; }
 error() { echo -e "${RED}==>${NC} $*" >&2; exit 1; }
 
 # --- Pre-checks ---
+
+# macOS: ensure Xcode Command Line Tools are installed (provides git, clang, etc.)
+if [ "$(uname)" = "Darwin" ]; then
+  if ! xcode-select -p >/dev/null 2>&1; then
+    info "Installing Xcode Command Line Tools (required for git)..."
+    info "A system dialog may appear — click 'Install' and wait for it to finish."
+    xcode-select --install 2>/dev/null || true
+    # Wait for installation to complete
+    until xcode-select -p >/dev/null 2>&1; do
+      sleep 5
+    done
+    info "Xcode Command Line Tools installed."
+  fi
+fi
+
+command -v git  >/dev/null 2>&1 || error "git is required. Install it first: https://git-scm.com"
 command -v node >/dev/null 2>&1 || error "Node.js is required. Install it first: https://nodejs.org"
 command -v npm  >/dev/null 2>&1 || error "npm is required. Install it with Node.js."
 
