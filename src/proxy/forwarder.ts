@@ -232,6 +232,15 @@ async function handleStreamingResponse(
       if (guard) guard.flush();
       clientRes.end();
 
+      // Propagate streaming guard block results to request context
+      if (guard && guard.results.length > 0) {
+        const blocked = guard.results.filter(r => r.blocked);
+        if (blocked.length > 0) {
+          context.toolGuardHit = true;
+          context.toolGuardFindings = blocked.length;
+        }
+      }
+
       const latencyMs = Date.now() - startTime;
 
       // Extract usage by merging across all SSE events (take max per field).

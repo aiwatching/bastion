@@ -167,7 +167,12 @@ const MIGRATIONS: string[] = [
   CREATE INDEX IF NOT EXISTS idx_tool_calls_created ON tool_calls(created_at);
   `,
 
-  // Migration 9: Tool Guard rules table for DB-backed, UI-configurable rules
+  // Migration 9: Tool Guard — action result column on tool_calls
+  `
+  ALTER TABLE tool_calls ADD COLUMN action TEXT;
+  `,
+
+  // Migration 10: Tool Guard rules table for DB-backed, UI-configurable rules
   `
   CREATE TABLE IF NOT EXISTS tool_guard_rules (
     id TEXT PRIMARY KEY,

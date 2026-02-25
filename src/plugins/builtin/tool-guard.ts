@@ -23,6 +23,8 @@ export interface ToolGuardConfig {
   alertMinSeverity: string;
   alertDesktop: boolean;
   alertWebhookUrl: string;
+  /** Live getter — when provided, overrides static fields for hot-reload */
+  getLiveConfig?: () => { action: string; blockMinSeverity: string; alertMinSeverity: string };
 }
 
 interface MatchedToolCall {
@@ -41,17 +43,36 @@ function analyzeToolCalls(body: string, isStreaming: boolean, rules: ToolGuardRu
 export function createToolGuardPlugin(db: Database.Database, config: ToolGuardConfig): Plugin {
   const repo = new ToolCallsRepository(db);
   const rulesRepo = new ToolGuardRulesRepository(db);
-  const action = config.action ?? 'audit';
-  const blockMinSeverity = config.blockMinSeverity ?? 'critical';
 
   // Seed built-in rules on first init (INSERT OR IGNORE preserves user toggles)
   rulesRepo.seedBuiltins(BUILTIN_RULES);
 
-  const alertConfig: AlertConfig = {
-    minSeverity: config.alertMinSeverity ?? 'high',
-    desktop: config.alertDesktop ?? true,
-    webhookUrl: config.alertWebhookUrl ?? '',
-  };
+  // Live config readers — support hot-reload from Dashboard
+  const getAction = () => config.getLiveConfig ? config.getLiveConfig().action : config.action;
+  const getBlockMinSeverity = () => config.getLiveConfig ? config.getLiveConfig().blockMinSeverity : config.blockMinSeverity;
+  const getAlertMinSeverity = () => config.getLiveConfig ? config.getLiveConfig().alertMinSeverity : config.alertMinSeverity;
+
+  function getAlertConfig(): AlertConfig {
+    return {
+      minSeverity: getAlertMinSeverity() ?? 'high',
+      desktop: config.alertDesktop ?? true,
+      webhookUrl: config.alertWebhookUrl ?? '',
+    };
+  }
+
+  /**
+   * Determine the action result for a tool call:
+   * - 'block' if action=block and severity meets blockMinSeverity
+   * - 'flag' if rule matched but not blocked
+   * - 'pass' if no rule matched
+   */
+  function resolveAction(ruleMatch: RuleMatch | null): string {
+    if (!ruleMatch) return 'pass';
+    if (getAction() === 'block' && shouldAlert(ruleMatch.rule.severity, getBlockMinSeverity())) {
+      return 'block';
+    }
+    return 'flag';
+  }
 
   /** Record tool calls to DB and dispatch alerts. Returns count of flagged calls. */
   function recordAndAlert(
@@ -65,6 +86,8 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
         ? tc.toolInput
         : JSON.stringify(tc.toolInput);
 
+      const actionResult = resolveAction(ruleMatch);
+
       repo.insert({
         id: crypto.randomUUID(),
         request_id: requestId,
@@ -74,6 +97,7 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
         rule_name: ruleMatch?.rule.name ?? null,
         severity: ruleMatch?.rule.severity ?? null,
         category: ruleMatch?.rule.category ?? null,
+        action: actionResult,
         provider: tc.provider,
         session_id: sessionId ?? null,
       });
@@ -86,9 +110,10 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
           ruleId: ruleMatch.rule.id,
           severity: ruleMatch.rule.severity,
           matched: ruleMatch.matchedText,
+          action: actionResult,
         });
 
-        dispatchAlert(alertConfig, tc.toolName, ruleMatch, requestId, sessionId);
+        dispatchAlert(getAlertConfig(), tc.toolName, ruleMatch, requestId, sessionId);
       }
     }
     return flaggedCount;
@@ -102,14 +127,14 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
     async onRequest(context: RequestContext): Promise<PluginRequestResult | void> {
       const rules = rulesRepo.getEnabled();
       context._toolGuardRules = rules;
-      if (action === 'block' && context.isStreaming) {
-        context._toolGuardStreamBlock = blockMinSeverity;
+      if (getAction() === 'block' && context.isStreaming) {
+        context._toolGuardStreamBlock = getBlockMinSeverity();
       }
     },
 
     // ── Pre-send: block dangerous tool calls in non-streaming responses ──
     async onResponse(context: ResponseInterceptContext): Promise<PluginResponseResult | void> {
-      if (action !== 'block') return;
+      if (getAction() !== 'block') return;
       if (context.isStreaming) return; // streaming handled in onResponseComplete (post-send audit only)
 
       const rules = context.request._toolGuardRules ?? rulesRepo.getEnabled();
@@ -117,8 +142,9 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
       if (matches.length === 0) return;
 
       // Check if any flagged call meets the block severity threshold
+      const currentBlockMin = getBlockMinSeverity();
       const blockable = matches.filter(
-        m => m.ruleMatch && shouldAlert(m.ruleMatch.rule.severity, blockMinSeverity),
+        m => m.ruleMatch && shouldAlert(m.ruleMatch.rule.severity, currentBlockMin),
       );
 
       // Record all tool calls and dispatch alerts
