@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import yaml from 'js-yaml';
 import { paths } from '../config/paths.js';
 import { DlpPatternsRepository } from '../storage/repositories/dlp-patterns.js';
+import { getMajorVersion } from '../version.js';
 import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('dlp-remote-sync');
@@ -69,13 +70,10 @@ const META_FILE = '.meta.json';
 function resolveBranch(branch: string): string {
   if (branch !== 'auto') return branch;
 
-  try {
-    const versionPath = join(__dirname, '..', '..', 'VERSION');
-    if (existsSync(versionPath)) {
-      const version = readFileSync(versionPath, 'utf-8').trim();
-      return `v${version}`;
-    }
-  } catch { /* ignore */ }
+  const major = getMajorVersion();
+  if (major && major !== '0.0.0') {
+    return `v${major}`;
+  }
 
   log.warn('Could not resolve VERSION for auto branch, falling back to "main"');
   return 'main';

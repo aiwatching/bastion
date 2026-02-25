@@ -18,6 +18,7 @@ import { createProxyServer, startServer } from './proxy/server.js';
 import { writePidFile } from './cli/daemon.js';
 import { getCACertPath } from './proxy/certs.js';
 import { updateSemanticConfig } from './dlp/semantics.js';
+import { getVersion } from './version.js';
 
 const log = createLogger('main');
 
@@ -26,7 +27,8 @@ export async function startGateway(): Promise<void> {
   const config = loadConfig();
   setLogLevel(config.logging.level);
 
-  log.info('Starting Bastion AI Gateway');
+  const version = getVersion();
+  log.info('Starting Bastion AI Gateway', { version });
 
   // Initialize config manager for runtime updates
   const configManager = new ConfigManager(config);
