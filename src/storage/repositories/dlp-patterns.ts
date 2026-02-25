@@ -128,28 +128,47 @@ export class DlpPatternsRepository {
     enabled: boolean;
     source: string;
   }): void {
-    this.db.prepare(`
-      INSERT INTO dlp_patterns (id, name, category, regex_source, regex_flags, description, validator, require_context, enabled, is_builtin)
-      VALUES (@id, @name, @category, @regex_source, @regex_flags, @description, @validator, @require_context, @enabled, 0)
-      ON CONFLICT(id) DO UPDATE SET
-        name = @name,
-        category = @category,
-        regex_source = @regex_source,
-        regex_flags = @regex_flags,
-        description = @description,
-        validator = @validator,
-        require_context = @require_context
-    `).run({
-      id: record.id,
-      name: record.name,
-      category: record.category,
-      regex_source: record.regex_source,
-      regex_flags: record.regex_flags,
-      description: record.description,
-      validator: record.validator,
-      require_context: record.require_context,
-      enabled: record.enabled ? 1 : 0,
-    });
+    // If a row with the same name already exists (e.g. builtin with different id),
+    // update its regex/description but preserve user's enabled toggle.
+    const existing = this.db.prepare(
+      'SELECT id FROM dlp_patterns WHERE name = ?'
+    ).get(record.name) as { id: string } | undefined;
+
+    if (existing) {
+      this.db.prepare(`
+        UPDATE dlp_patterns SET
+          category = @category,
+          regex_source = @regex_source,
+          regex_flags = @regex_flags,
+          description = @description,
+          validator = @validator,
+          require_context = @require_context
+        WHERE id = @id
+      `).run({
+        id: existing.id,
+        category: record.category,
+        regex_source: record.regex_source,
+        regex_flags: record.regex_flags,
+        description: record.description,
+        validator: record.validator,
+        require_context: record.require_context,
+      });
+    } else {
+      this.db.prepare(`
+        INSERT INTO dlp_patterns (id, name, category, regex_source, regex_flags, description, validator, require_context, enabled, is_builtin)
+        VALUES (@id, @name, @category, @regex_source, @regex_flags, @description, @validator, @require_context, @enabled, 0)
+      `).run({
+        id: record.id,
+        name: record.name,
+        category: record.category,
+        regex_source: record.regex_source,
+        regex_flags: record.regex_flags,
+        description: record.description,
+        validator: record.validator,
+        require_context: record.require_context,
+        enabled: record.enabled ? 1 : 0,
+      });
+    }
   }
 
   /** Get DlpPattern objects by name (regardless of enabled status) */

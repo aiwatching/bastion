@@ -289,7 +289,6 @@ tr:hover{background:#1c2128}
 
   <!-- SUB: Findings -->
   <div class="sub-content active" id="dlp-sub-findings">
-  <div class="grid" id="findings-cards"></div>
   <div class="section">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
       <h2>DLP Findings</h2>
@@ -865,16 +864,7 @@ async function refreshFindings(){
   try{
     const sp=sinceParam();
     const dlpUrl='/api/dlp/recent?limit=200'+(sp?'&'+sp:'');
-    const [statsR,recentR]=await Promise.all([fetch('/api/stats'),fetch(dlpUrl)]);
-    const stats=(await statsR.json()).dlp;
-    if(!skipIfSame('findings-cards',stats)){
-      const ba=stats.by_action||{};
-      document.getElementById('findings-cards').innerHTML=
-        card('Total Findings',fmt(stats.total_events))+
-        card('Blocked',fmt(ba.block||0),'warn')+
-        card('Redacted',fmt(ba.redact||0),'blue')+
-        card('Warned',fmt(ba.warn||0));
-    }
+    const recentR=await fetch(dlpUrl);
     const newFindings=await recentR.json();
     if(!skipIfSame('findings-list',newFindings)){
       findingsAll=newFindings;
