@@ -208,6 +208,12 @@ const MIGRATIONS: string[] = [
   UPDATE tool_calls SET action = 'flag' WHERE action IS NULL AND rule_id IS NOT NULL;
   UPDATE tool_calls SET action = 'pass', severity = 'info' WHERE action IS NULL AND rule_id IS NULL;
   `,
+
+  // Migration 14: Audit log — plugin pipeline fail-closed tracking
+  `
+  ALTER TABLE audit_log ADD COLUMN failed_plugin TEXT;
+  ALTER TABLE audit_log ADD COLUMN fail_action TEXT;
+  `,
 ];
 
 export function runMigrations(db: Database.Database): void {

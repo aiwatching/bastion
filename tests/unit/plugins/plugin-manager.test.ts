@@ -161,6 +161,71 @@ describe('PluginManager', () => {
     expect(order).toEqual(['metrics', 'logger']);
   });
 
+  it('failMode open + plugin error → request passes, pipeline continues', async () => {
+    const pm = new PluginManager(1000, 'open');
+    let secondRan = false;
+
+    pm.register({
+      name: 'broken',
+      priority: 10,
+      async onRequest() { throw new Error('plugin crashed'); },
+    });
+
+    pm.register({
+      name: 'working',
+      priority: 20,
+      async onRequest() { secondRan = true; },
+    });
+
+    const result = await pm.runOnRequest(makeContext());
+    expect(result.pluginError).toBeUndefined();
+    expect(secondRan).toBe(true);
+  });
+
+  it('failMode closed + plugin error → returns pluginError, pipeline stops', async () => {
+    const pm = new PluginManager(1000, 'closed');
+    let secondRan = false;
+
+    pm.register({
+      name: 'broken',
+      priority: 10,
+      async onRequest() { throw new Error('plugin crashed'); },
+    });
+
+    pm.register({
+      name: 'working',
+      priority: 20,
+      async onRequest() { secondRan = true; },
+    });
+
+    const result = await pm.runOnRequest(makeContext());
+    expect(result.pluginError).toBeDefined();
+    expect(result.pluginError!.pluginName).toBe('broken');
+    expect(result.pluginError!.reason).toBe('plugin crashed');
+    expect(secondRan).toBe(false);
+  });
+
+  it('failMode closed + all plugins OK → request passes normally', async () => {
+    const pm = new PluginManager(1000, 'closed');
+    const order: string[] = [];
+
+    pm.register({
+      name: 'first',
+      priority: 10,
+      async onRequest() { order.push('first'); },
+    });
+
+    pm.register({
+      name: 'second',
+      priority: 20,
+      async onRequest() { order.push('second'); },
+    });
+
+    const result = await pm.runOnRequest(makeContext());
+    expect(result.pluginError).toBeUndefined();
+    expect(order).toEqual(['first', 'second']);
+  });
+
   it('passes modified body between plugins', async () => {
     const pm = new PluginManager(1000);
 

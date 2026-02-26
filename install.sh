@@ -79,7 +79,7 @@ if [ -n "$LOCAL_SOURCE" ]; then
     info "Installing from local source: $LOCAL_SOURCE"
     mkdir -p "$(dirname "$INSTALL_DIR")"
     rm -rf "$INSTALL_DIR"
-    cp -r "$LOCAL_SOURCE" "$INSTALL_DIR"
+    rsync -a --exclude node_modules --exclude .git "$LOCAL_SOURCE/" "$INSTALL_DIR/"
   fi
   cd "$INSTALL_DIR"
 elif [ -d "$INSTALL_DIR/.git" ]; then

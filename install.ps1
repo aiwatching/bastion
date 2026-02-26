@@ -43,7 +43,9 @@ if (Test-Path "$InstallDir\.git") {
     if ((Test-Path "$ScriptDir\package.json") -and (Select-String -Path "$ScriptDir\package.json" -Pattern "bastion-ai-gateway" -Quiet)) {
         Info "Installing from local source: $ScriptDir"
         New-Item -ItemType Directory -Force -Path (Split-Path -Parent $InstallDir) | Out-Null
-        Copy-Item -Path $ScriptDir -Destination $InstallDir -Recurse -Force
+        if (Test-Path $InstallDir) { Remove-Item -Recurse -Force $InstallDir }
+        # Exclude node_modules and .git — symlinks inside node_modules/.bin break on copy
+        robocopy $ScriptDir $InstallDir /E /XD node_modules .git /NFL /NDL /NJH /NJS /NC /NS /NP | Out-Null
         Push-Location $InstallDir
     } else {
         Info "Cloning repository..."

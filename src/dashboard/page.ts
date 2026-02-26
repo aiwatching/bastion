@@ -573,6 +573,17 @@ tr:hover{background:#1c2128}
     <button id="ret-save-btn" style="padding:6px 20px;font-size:13px;cursor:pointer;color:#fff;background:#238636;border:1px solid #2ea043;border-radius:6px;font-weight:500">Save Retention Settings</button>
     <span id="ret-status" style="margin-left:8px;font-size:12px;color:#3fb950;display:none">Saved!</span>
   </div>
+  <div class="section">
+    <h2>Security Pipeline</h2>
+    <div style="display:flex;gap:12px;align-items:center;padding:12px 16px;background:#161b22;border:1px solid #30363d;border-radius:8px">
+      <div style="font-size:13px;color:#e1e4e8;font-weight:500">Fail Mode</div>
+      <select id="fail-mode-select" class="config-select">
+        <option value="open">Open (skip failed plugins)</option>
+        <option value="closed">Closed (reject on plugin failure)</option>
+      </select>
+      <span id="fail-mode-status" style="margin-left:8px;font-size:12px;color:#3fb950;display:none">Saved!</span>
+    </div>
+  </div>
 </div>
 
 <p class="footer">Bastion <span id="ver">v0.1.0</span> &mdash; <span id="uptime"></span> uptime &mdash; <span id="mem"></span> MB memory</p>
@@ -2010,6 +2021,10 @@ async function refreshSettings(){
       });
     });
 
+    // Fail mode
+    const srv=data.config?.server||{};
+    document.getElementById('fail-mode-select').value=srv.failMode||'open';
+
     // Retention settings
     const ret=data.config?.retention||{};
     document.getElementById('ret-requests').value=ret.requestsHours||720;
@@ -2032,6 +2047,12 @@ document.getElementById('ret-save-btn').addEventListener('click',async()=>{
   };
   await apiFetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({retention})});
   const st=document.getElementById('ret-status');st.style.display='inline';setTimeout(()=>st.style.display='none',2000);
+});
+
+document.getElementById('fail-mode-select').addEventListener('change',async()=>{
+  const val=document.getElementById('fail-mode-select').value;
+  await apiFetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({server:{failMode:val}})});
+  const st=document.getElementById('fail-mode-status');st.style.display='inline';setTimeout(()=>st.style.display='none',2000);
 });
 
 async function checkAuth(){

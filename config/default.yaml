@@ -1,6 +1,7 @@
 server:
   host: "0.0.0.0"
   port: 8420
+  failMode: "open"
   auth:
     enabled: true
     token: ""

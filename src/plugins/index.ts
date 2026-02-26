@@ -8,9 +8,16 @@ export class PluginManager {
   private plugins: Plugin[] = [];
   private disabledPlugins: Set<string> = new Set();
   private timeoutMs: number;
+  private failMode: 'open' | 'closed';
 
-  constructor(timeoutMs: number = 50) {
+  constructor(timeoutMs: number = 50, failMode: 'open' | 'closed' = 'open') {
     this.timeoutMs = timeoutMs;
+    this.failMode = failMode;
+  }
+
+  setFailMode(mode: 'open' | 'closed'): void {
+    this.failMode = mode;
+    log.info('Fail mode updated', { failMode: mode });
   }
 
   register(plugin: Plugin): void {
@@ -74,12 +81,20 @@ export class PluginManager {
           }
         }
       } catch (err) {
+        const reason = err instanceof TimeoutError
+          ? 'timeout'
+          : (err as Error).message;
+
+        if (this.failMode === 'closed') {
+          log.error('Plugin failed in fail-closed mode, rejecting request', { plugin: plugin.name, reason });
+          return { pluginError: { pluginName: plugin.name, reason } };
+        }
+
         if (err instanceof TimeoutError) {
           log.warn('Plugin timed out, skipping', { plugin: plugin.name });
         } else {
-          log.warn('Plugin error, skipping', { plugin: plugin.name, error: (err as Error).message });
+          log.warn('Plugin error, skipping', { plugin: plugin.name, error: reason });
         }
-        // Fail-open: skip this plugin and continue
       }
     }
 
@@ -109,10 +124,19 @@ export class PluginManager {
           }
         }
       } catch (err) {
+        const reason = err instanceof TimeoutError
+          ? 'timeout'
+          : (err as Error).message;
+
+        if (this.failMode === 'closed') {
+          log.error('Plugin onResponse failed in fail-closed mode, rejecting', { plugin: plugin.name, reason });
+          return { pluginError: { pluginName: plugin.name, reason } };
+        }
+
         if (err instanceof TimeoutError) {
           log.warn('Plugin onResponse timed out, skipping', { plugin: plugin.name });
         } else {
-          log.warn('Plugin onResponse error, skipping', { plugin: plugin.name, error: (err as Error).message });
+          log.warn('Plugin onResponse error, skipping', { plugin: plugin.name, error: reason });
         }
       }
     }

@@ -22,6 +22,8 @@ export interface AuditLogMeta {
   response_length: number;
   dlp_hit: number;
   tool_guard_hit: number;
+  failed_plugin: string | null;
+  fail_action: string | null;
   summary: string | null;
   created_at: string;
   session_id?: string | null;
@@ -475,8 +477,8 @@ export class AuditLogRepository {
   constructor(db: Database.Database) {
     this.db = db;
     this.insertStmt = db.prepare(`
-      INSERT INTO audit_log (id, request_id, encrypted_content, iv, auth_tag, request_length, response_length, dlp_hit, tool_guard_hit, summary)
-      VALUES (@id, @request_id, @encrypted_content, @iv, @auth_tag, @request_length, @response_length, @dlp_hit, @tool_guard_hit, @summary)
+      INSERT INTO audit_log (id, request_id, encrypted_content, iv, auth_tag, request_length, response_length, dlp_hit, tool_guard_hit, summary, failed_plugin, fail_action)
+      VALUES (@id, @request_id, @encrypted_content, @iv, @auth_tag, @request_length, @response_length, @dlp_hit, @tool_guard_hit, @summary, @failed_plugin, @fail_action)
     `);
   }
 
@@ -487,6 +489,8 @@ export class AuditLogRepository {
     responseBody: string;
     dlpHit?: boolean;
     toolGuardHit?: boolean;
+    failedPlugin?: string;
+    failAction?: 'continued' | 'blocked';
     rawData?: boolean;
     rawMaxBytes?: number;
     summaryMaxBytes?: number;
@@ -529,6 +533,8 @@ export class AuditLogRepository {
       dlp_hit: record.dlpHit ? 1 : 0,
       tool_guard_hit: record.toolGuardHit ? 1 : 0,
       summary,
+      failed_plugin: record.failedPlugin ?? null,
+      fail_action: record.failAction ?? null,
     });
   }
 
@@ -572,7 +578,7 @@ export class AuditLogRepository {
   /** Get meta for a single request (used as fallback when rawData is off) */
   getMetaByRequestId(requestId: string): AuditLogMeta | null {
     const row = this.db.prepare(`
-      SELECT a.id, a.request_id, a.request_length, a.response_length, a.dlp_hit, a.tool_guard_hit, a.summary, a.created_at,
+      SELECT a.id, a.request_id, a.request_length, a.response_length, a.dlp_hit, a.tool_guard_hit, a.failed_plugin, a.fail_action, a.summary, a.created_at,
              r.session_id, r.model, r.status_code, r.latency_ms
       FROM audit_log a
       LEFT JOIN requests r ON r.id = a.request_id
@@ -584,7 +590,7 @@ export class AuditLogRepository {
   getRecent(limit: number = 20, sinceHours?: number): AuditLogMeta[] {
     if (sinceHours) {
       return this.db.prepare(`
-        SELECT a.id, a.request_id, a.request_length, a.response_length, a.dlp_hit, a.tool_guard_hit, a.summary, a.created_at,
+        SELECT a.id, a.request_id, a.request_length, a.response_length, a.dlp_hit, a.tool_guard_hit, a.failed_plugin, a.fail_action, a.summary, a.created_at,
                r.session_id, r.model, r.status_code, r.latency_ms
         FROM audit_log a
         LEFT JOIN requests r ON r.id = a.request_id
@@ -593,7 +599,7 @@ export class AuditLogRepository {
       `).all(sinceHours, limit) as AuditLogMeta[];
     }
     return this.db.prepare(`
-      SELECT a.id, a.request_id, a.request_length, a.response_length, a.dlp_hit, a.tool_guard_hit, a.summary, a.created_at,
+      SELECT a.id, a.request_id, a.request_length, a.response_length, a.dlp_hit, a.tool_guard_hit, a.failed_plugin, a.fail_action, a.summary, a.created_at,
              r.session_id, r.model, r.status_code, r.latency_ms
       FROM audit_log a
       LEFT JOIN requests r ON r.id = a.request_id
@@ -604,7 +610,7 @@ export class AuditLogRepository {
   /** Get all audit entries for a session, in chronological order */
   getBySessionId(sessionId: string): AuditLogMeta[] {
     return this.db.prepare(`
-      SELECT a.id, a.request_id, a.request_length, a.response_length, a.dlp_hit, a.tool_guard_hit, a.summary, a.created_at,
+      SELECT a.id, a.request_id, a.request_length, a.response_length, a.dlp_hit, a.tool_guard_hit, a.failed_plugin, a.fail_action, a.summary, a.created_at,
              r.session_id, r.model, r.status_code, r.latency_ms
       FROM audit_log a
       INNER JOIN requests r ON r.id = a.request_id
