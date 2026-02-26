@@ -28,3 +28,4 @@ Thumbs.db
 *.log
 /integration/openclaw-docker/openclaw-src/
 /integration/openclaw-docker/.instances/
+.doc

@@ -15,7 +15,7 @@ Bastion is a local-first security gateway that sits between your AI agents (Clau
 <!-- TODO: Replace with 30-second demo GIF:
      bastion start → use Claude Code → DLP catches leaked API key → Tool Guard blocks rm -rf → dashboard view
 -->
-![Overview](docs/overview.png "Overview")
+![Overview](docs/bastion-readme.gif "Overview")
 
 ## The Problem
 
