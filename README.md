@@ -1,468 +1,183 @@
 **English** | [中文](README.zh.md)
 
-# Bastion AI Gateway
+<p align="center">
+  <a href="https://github.com/aiwatching/bastion/stargazers"><img src="https://img.shields.io/github/stars/aiwatching/bastion?style=flat-square" alt="Stars"></a>
+  <a href="https://github.com/aiwatching/bastion/blob/main/LICENSE"><img src="https://img.shields.io/github/license/aiwatching/bastion?style=flat-square" alt="License"></a>
+  <a href="https://github.com/aiwatching/bastion/commits/main"><img src="https://img.shields.io/github/last-commit/aiwatching/bastion?style=flat-square" alt="Last Commit"></a>
+</p>
 
-Local-first proxy for LLM providers (Anthropic, OpenAI, Gemini). Provides DLP scanning, tool call monitoring, usage metrics, cost tracking, and response caching — all running on your machine.
+# Bastion — Secure Your AI Agents Locally
 
+**AI agents can leak your credentials, get hijacked by prompt injection, and execute dangerous commands on your machine. Bastion stops all three.**
+
+Bastion is a local-first security gateway that sits between your AI agents (Claude Code, Cursor, Copilot, custom agents) and LLM providers. It provides data loss prevention, prompt injection detection, tool call monitoring, and full audit logging — all running on your machine with zero cloud dependencies.
+
+<!-- TODO: Replace with 30-second demo GIF:
+     bastion start → use Claude Code → DLP catches leaked API key → Tool Guard blocks rm -rf → dashboard view
+-->
 ![Overview](docs/overview.png "Overview")
 
-![DLP Findings](docs/dlp-finding.jpeg "DLP Findings")
+## The Problem
 
-![Audit Log](docs/auditlog.png "Audit Log")
+AI agents are powerful — and dangerous. Every time an agent runs on your machine, it can:
 
+- **Leak secrets in prompts** — API keys, database passwords, private keys from your codebase get sent to LLM providers without you knowing
+- **Be hijacked via prompt injection** — malicious instructions hidden in code comments, READMEs, or fetched content can take over your agent's behavior
+- **Execute destructive commands** — `rm -rf /`, `curl | bash`, `git push --force` — one bad tool call and the damage is done
+
+You can't watch every request manually. Bastion does it for you.
 
 ## Install
 
-### macOS / Linux
-
 ```bash
+# macOS / Linux
 curl -fsSL https://raw.githubusercontent.com/aiwatching/bastion/main/install.sh | bash
-```
 
-Or from local source:
-
-```bash
-cd bastion && bash install.sh
-```
-
-### Windows (PowerShell)
-
-```powershell
+# Windows (PowerShell)
 powershell -ExecutionPolicy Bypass -File install.ps1
 ```
 
-Or from local source:
-
-```powershell
-cd bastion; powershell -ExecutionPolicy Bypass -File install.ps1
-```
-
-Requires **Node.js 22 LTS** (recommended). Node.js 18+ is supported but non-LTS versions may require [additional setup](docs/windows-troubleshooting.md#1-better-sqlite3-build-failure-non-lts-nodejs). Installs to `~/.bastion/app/`.
+Requires Node.js 22 LTS (recommended). Node.js 18+ supported. Installs to `~/.bastion/app/`.
 
 ## Quick Start
 
 ```bash
-# Start the gateway
-bastion start
-
-# Option A: Wrap a single command (proxy scoped to that process only)
-bastion wrap claude
-bastion wrap python my_app.py
-
-# Option B: Global proxy (all terminals, all new processes, GUI apps)
-eval $(bastion proxy on)          # bash/zsh
-bastion proxy on | Invoke-Expression  # PowerShell
+bastion start                          # Start the gateway
+bastion wrap claude                    # Wrap any AI agent
+open http://127.0.0.1:8420/dashboard   # Real-time security dashboard
 ```
 
-## OpenClaw Integration
+Three commands. Your agent traffic is now monitored.
 
-Bastion can proxy all AI traffic from [OpenClaw](https://github.com/openclaw/openclaw) instances — both Docker and local — providing DLP scanning, cost tracking, and audit logging for every LLM request.
-
-### Docker
+For global proxy mode (all terminals, all apps):
 
 ```bash
-# Create and start an OpenClaw instance with Bastion proxy
-bastion openclaw docker up mywork \
-  --port 18789 \
-  --image openclaw:local \
-  --config-dir ~/openclaw-data/mywork/config \
-  --workspace ~/openclaw-data/mywork/workspace
-
-# Manage instances
-bastion openclaw docker status        # List all instances
-bastion openclaw docker stop mywork   # Stop
-bastion openclaw docker logs mywork -f  # Tail logs
+eval $(bastion proxy on)                    # bash/zsh
+bastion proxy on | Invoke-Expression        # PowerShell
 ```
 
-See [OpenClaw Docker Integration](docs/openclaw-docker.md) | [中文](docs/openclaw-docker.zh.md) for full guide (fresh install, existing setup, multi-instance).
+## Core Security Features
 
-### Local
+### 🔑 Data Loss Prevention (DLP)
 
-```bash
-# Start OpenClaw natively with Bastion proxy
-bastion openclaw local start mywork --port 18789
+Scans **both directions** — outgoing prompts and incoming responses — to catch sensitive data before it leaves your machine or reaches your agent.
 
-# Manage
-bastion openclaw local status
-bastion openclaw local stop mywork
-```
+5-layer detection pipeline: structure parsing → entropy filtering → regex matching → field-name semantics → optional AI validation.
 
-See [OpenClaw Local Installation](docs/openclaw-local.md) | [中文](docs/openclaw-local.zh.md) for details.
+**20 built-in patterns:**
 
-### Attach to Existing Container
+| Category | What It Catches |
+|----------|----------------|
+| API Keys & Tokens | AWS, GitHub PAT, Slack, Stripe, OpenAI, Anthropic, Google AI, Hugging Face, and more |
+| Secrets | Private keys, generic high-entropy secrets in sensitive fields (`password`, `secret`, `api_key`) |
+| PII | Credit card (Luhn validated), US SSN, email, phone, driver license, passport |
 
-```bash
-# Inject Bastion proxy into a running Docker container
-bastion openclaw docker attach <container-name>
-```
+Four action modes: `pass` · `warn` · `redact` · `block`
 
-## Usage
+Add custom patterns from the dashboard. Sync shared patterns from a [remote Git repo](https://github.com/aiwatching/bastion_signature). No restart required.
 
-### `bastion start`
+![DLP Findings](docs/dlp-finding.jpeg "DLP Findings")
 
-Start the gateway (daemon mode by default).
+### 🧬 Prompt Injection Detection
 
-```bash
-bastion start              # Background daemon
-bastion start --foreground # Foreground (see logs in real-time)
-bastion start -p 9000      # Custom port
-```
+Detects malicious instructions injected into content that your agent processes — code comments, markdown files, web pages, API responses. Catches attempts to hijack agent behavior, override system prompts, or exfiltrate data through indirect prompt injection.
 
-### `bastion stop`
+### 🛡️ Tool Guard
 
-```bash
-bastion stop
-```
+Monitors and blocks dangerous tool calls made by AI agents in real-time. Intercepts tool invocations from all major providers (Anthropic `tool_use`, OpenAI `tool_calls`, Gemini `functionCall`) and evaluates them against security rules.
 
-### `bastion proxy on/off/status`
+**26 built-in rules across 9 categories:**
 
-Global proxy mode — routes **all** AI traffic through Bastion, including background processes and GUI apps.
+| Category | Examples | Severity |
+|----------|----------|----------|
+| Destructive filesystem | `rm -rf /`, `chmod 777`, `dd` to disk | critical |
+| Code execution | `curl \| bash`, `eval()` on dynamic input | critical |
+| Credential access | Read `.env`, access private keys, echo secrets | high |
+| Network exfiltration | `curl POST` with data, transfer to raw IP | high |
+| Git destructive | Force push, `reset --hard`, `clean -f` | high |
+| System config | `sudo`, `iptables`, `systemctl` | medium |
+| Package publish | `npm publish`, `pip upload` | medium |
+| File operations | `rm` files, write to `/etc/` or `/usr/` | medium / low |
 
-```bash
-eval $(bastion proxy on)              # bash/zsh: enable
-eval $(bastion proxy off)             # bash/zsh: disable
-bastion proxy on | Invoke-Expression  # PowerShell: enable
-bastion proxy off | Invoke-Expression # PowerShell: disable
-bastion proxy status                  # Check current proxy state
-```
+Action modes: `audit` (log and alert) or `block` (intercept in real-time, including streaming responses). Desktop notifications and webhook alerts (Slack, Discord) for high-severity matches.
 
-What `bastion proxy on` does:
-1. Writes proxy exports to shell profile (`~/.zshrc` / `~/.bashrc` / PowerShell `$PROFILE`) — new terminals auto-inherit
-2. Sets system HTTPS proxy (macOS `networksetup`, Linux GNOME `gsettings`, Windows registry) — GUI apps also route through Bastion
-3. Outputs shell-appropriate commands to stdout — current shell takes effect immediately via `eval` / `Invoke-Expression`
+### 📝 Audit Logger
 
-Environment variables set:
+Full request/response history for every AI interaction, encrypted at rest. Session-based timeline with DLP and Tool Guard tags. Any security event automatically creates an audit entry — even if the audit plugin is disabled.
 
-| Variable | Purpose |
-|----------|---------|
-| `HTTPS_PROXY` | Standard proxy (curl, Python, Go, etc.) |
-| `NO_PROXY` | Excludes OAuth/auth domains |
-| `NODE_EXTRA_CA_CERTS` | Node.js tools trust Bastion CA cert |
-| `ANTHROPIC_BASE_URL` | Anthropic SDK direct connection |
-| `OPENAI_BASE_URL` | OpenAI SDK direct connection |
-| `GOOGLE_AI_BASE_URL` | Google AI SDK direct connection |
+Configurable retention with automatic purge. Formatted viewer in the dashboard for reviewing exactly what your agent sent and received.
 
-Options:
-- `--no-system` — Skip setting system proxy
-- `--trust-ca` — Add CA cert to system trust store (requires sudo)
-
-> **Note:** `bastion stop` automatically removes the system proxy if it points to Bastion, preventing network disruption.
-
-Supported platforms: macOS, Linux (GNOME desktop for system proxy; headless servers use `HTTPS_PROXY` env var directly), Windows (system proxy via registry; PowerShell profile auto-configured).
-
-### `bastion wrap <command>`
-
-Run a single command with AI traffic routed through Bastion. Proxy settings are scoped to that process only.
-
-```bash
-bastion wrap claude
-bastion wrap python app.py
-bastion wrap node server.js
-```
-
-Options:
-- `--base-url` — Use `ANTHROPIC_BASE_URL` mode instead of `HTTPS_PROXY` (simpler but breaks OAuth)
-- `--label <name>` — Human-readable session label for dashboard tracking
-
-### `bastion env`
-
-Print shell exports for manual proxy setup.
-
-```bash
-eval $(bastion env)                        # bash/zsh
-bastion env --powershell | Invoke-Expression  # PowerShell
-eval $(bastion env --unset)                # bash/zsh: unset
-bastion env --powershell --unset | Invoke-Expression  # PowerShell: unset
-```
-
-### `bastion stats`
-
-View usage statistics (requests, cost, tokens, latency).
-
-```bash
-bastion stats
-```
-
-### `bastion health`
-
-Check if the gateway is running.
-
-```bash
-bastion health
-```
-
-### `bastion trust-ca`
-
-Display CA certificate info for manual trust configuration.
-
-```bash
-bastion trust-ca
-```
+![Audit Log](docs/auditlog.png "Audit Log")
 
 ## Dashboard
 
-Open `http://127.0.0.1:8420/dashboard` in a browser while the gateway is running.
+Real-time security dashboard at `http://127.0.0.1:8420/dashboard`:
 
-6 tabs:
-- **Overview** — Request metrics, cost, tokens, per-provider/per-model/per-session breakdown
-- **DLP** — Sub-tabs: Findings (direction, snippets, drill-into audit), Config (engine toggle, action mode, AI validation, semantics), Signatures (remote sync status, version tracking, changelog, pattern management), Test (standalone scanner with presets, trace log)
-- **Tool Guard** — Sub-tabs: Calls (recent tool call history with severity, rule match, action taken), Rules (26 built-in rules + custom rule management, enable/disable per rule)
-- **Optimizer** — Cache hit rate, tokens saved
-- **Audit** — Session-based timeline, DLP/Tool Guard-tagged entries, summary preview, formatted request/response viewer
-- **Settings** — Toggle plugins, configure AI validation, semantic rules, runtime changes without restart
+- **Overview** — Request metrics, cost, tokens, per-provider/model/session breakdown
+- **DLP** — Findings, config, signature management, standalone test scanner with trace log
+- **Tool Guard** — Tool call history, severity, rule management (built-in + custom)
+- **Audit** — Session timeline, security-tagged entries, formatted request/response viewer
+- **Settings** — Toggle plugins, configure rules — all changes apply without restart
 
 ## How It Works
 
-Bastion operates as an HTTPS proxy with selective MITM (Man-in-the-Middle) interception:
+Bastion runs as a local HTTPS proxy with selective interception:
 
-- **API domains** (`api.anthropic.com`, `api.openai.com`, `generativelanguage.googleapis.com`, `claude.ai`, `api.telegram.org`, `discord.com`, `api.slack.com`, etc.) — Traffic is decrypted, processed through the plugin pipeline (DLP, metrics, caching), then forwarded to the real upstream.
-- **All other domains** — Plain TCP tunnel, no inspection. OAuth flows, browser traffic, etc. pass through unmodified.
+- **AI provider domains** (Anthropic, OpenAI, Google AI, etc.) → decrypted and processed through the security pipeline (DLP → Prompt Injection → Tool Guard → Audit), then forwarded upstream
+- **Everything else** → plain TCP tunnel, zero inspection. OAuth, browser traffic, etc. pass through untouched
 
-A local CA certificate (`~/.bastion/ca.crt`) is generated automatically. Node.js tools trust it via `NODE_EXTRA_CA_CERTS`.
+A local CA certificate is generated automatically. No data leaves your machine.
 
-## Plugins
+## Works With Any AI Agent
 
-### Metrics Collector
-Records every API request: provider, model, tokens, cost, latency. Data stored in SQLite (`~/.bastion/bastion.db`). Supports per-session and per-API-key filtering.
-
-### DLP Scanner
-Bidirectional scanning — inspects both **outgoing requests** and **incoming responses** for sensitive data. Non-streaming responses are intercepted pre-send (can block/redact before reaching the client). Streaming responses are scanned post-send (detection + audit only).
-
-Any DLP hit automatically creates an audit log entry with the full request/response content, regardless of whether the Audit Logger plugin is enabled. DLP-tagged audit entries are visually marked in the dashboard.
-
-The engine uses a 5-layer detection pipeline (structure parsing → entropy filtering → regex matching → field-name semantics → AI validation). See [docs/dlp.md](docs/dlp.md) for the full architecture.
-
-**Built-in patterns (20):**
-
-| Category | Patterns |
-|----------|----------|
-| `high-confidence` | AWS Access Key, AWS Secret Key, GitHub PAT, GitHub Fine-grained PAT, Slack Token, Stripe Secret Key, Private Key, OpenAI API Key, Anthropic API Key, Google AI / Gemini API Key, Hugging Face Token, Replicate API Token, Groq API Key, Perplexity API Key, xAI (Grok) API Key, Cohere / Mistral / Together AI API Key (context-aware), Azure OpenAI API Key (context-aware), Telegram Bot Token |
-| `validated` | Credit Card (Luhn check), US SSN (structural validation) |
-| `context-aware` | Email Address, Phone Number, IPv4 Address, Driver License, Passport Number |
-
-Patterns are stored in SQLite and can be managed from the dashboard (enable/disable, add custom patterns) without restarting. Built-in patterns are seeded on first start.
-
-**Remote signatures:**
-Patterns can also be synced from a remote Git repo ([bastion_signature](https://github.com/aiwatching/bastion_signature)), with independent versioning and automatic update detection. See [docs/remote-signatures.md](docs/remote-signatures.md).
-
-**Generic secret detection:**
-High-entropy values in sensitive field names (e.g. `password`, `secret`, `api_key`) are detected even without a specific regex pattern. Sensitivity rules and non-sensitive field names are configurable at runtime.
-
-**AI Validation (optional, off by default):**
-Uses an LLM to filter false positives. Enable in config with an API key — results are cached (LRU) to minimize token usage.
-
-**Standalone scan API:**
 ```bash
-curl -X POST http://127.0.0.1:8420/api/dlp/scan \
-  -H "Content-Type: application/json" \
-  -d '{"text": "my key is sk-ant-abc123...", "action": "warn", "trace": true}'
+bastion wrap claude              # Claude Code
+bastion wrap cursor              # Cursor
+bastion wrap python app.py       # Custom Python agent
+bastion wrap node server.js      # Custom Node.js agent
 ```
 
-Pass `"trace": true` to get a detailed step-by-step trace log of the detection pipeline (useful for debugging pattern behavior).
+### OpenClaw Integration
 
-Configure in `~/.bastion/config.yaml`:
-```yaml
-plugins:
-  dlp:
-    action: "warn"    # pass | warn | redact | block
-    patterns:
-      - "high-confidence"
-      - "validated"
-      - "context-aware"
-    remotePatterns:
-      url: "https://github.com/aiwatching/bastion_signature.git"  # leave empty to disable
-      branch: "auto"          # "auto" = match Bastion VERSION, or explicit e.g. "v0.1.0"
-      syncOnStart: true       # pull latest on startup
-      syncIntervalMinutes: 0  # 0 = startup only, >0 = periodic sync (minutes)
-    aiValidation:
-      enabled: false          # set to true to enable LLM-based false positive filtering
-      provider: "anthropic"   # anthropic | openai
-      model: "claude-haiku-4-5-20241022"
-      apiKey: ""              # required if enabled
-    semantics:
-      sensitivePatterns: []   # extra regex patterns for sensitive field names
-      nonSensitiveNames: []   # extra field names to exclude from detection
-```
+Proxy all AI traffic from [OpenClaw](https://github.com/openclaw/openclaw) instances with full Bastion security:
 
-### Tool Guard
-Real-time monitoring and blocking of dangerous tool calls made by AI agents. Inspects LLM responses for tool invocations (Anthropic `tool_use`, OpenAI `tool_calls`, Gemini `functionCall`) and evaluates them against configurable rules.
-
-Two action modes:
-- **audit** — Record all tool calls and flag dangerous ones (no blocking)
-- **block** — Actively block dangerous tool calls in real-time. For streaming responses, a `StreamingToolGuard` intercepts SSE events and replaces blocked tool calls with a text warning. For non-streaming responses, the entire response is blocked before reaching the client.
-
-**Built-in rules (26):**
-
-| Category | Rules | Severity |
-|----------|-------|----------|
-| `destructive-fs` | Recursive delete root/home, recursive delete with wildcard, chmod 777, format filesystem, dd to block device | critical / high |
-| `code-execution` | curl pipe to shell, wget pipe to shell, eval() on dynamic input, base64 decode and execute | critical / high |
-| `credential-access` | Read .env file, access private key, access AWS credentials, echo secret env var | high |
-| `network-exfil` | curl POST with data, data transfer to raw IP | medium / high |
-| `git-destructive` | git force push, git reset --hard, git clean -f | high / medium |
-| `package-publish` | npm publish, pip/twine upload | medium |
-| `system-config` | sudo command, iptables modification, systemctl service control | medium |
-| `file-delete` | File/directory deletion (rm) | medium |
-| `file-write-outside` | Write to /etc/, write to /usr/ | low |
-
-Rules are stored in SQLite and can be managed from the dashboard (enable/disable, add custom rules) without restarting. Built-in rules are seeded on first start and can be individually disabled but not deleted.
-
-Desktop notifications and webhook alerts are supported for high-severity matches.
-
-Configure in `~/.bastion/config.yaml`:
-```yaml
-plugins:
-  toolGuard:
-    enabled: true
-    action: "audit"       # audit | block
-    recordAll: true       # record all tool calls (not just flagged ones)
-    blockMinSeverity: "critical"  # minimum severity to block (when action=block)
-    alertMinSeverity: "high"      # minimum severity for alerts
-    alertDesktop: true             # macOS desktop notifications
-    alertWebhookUrl: ""            # webhook URL for alerts (Slack, Discord, etc.)
-```
-
-### Token Optimizer
-- **Response cache** — Exact-match cache for identical requests (AES-256-GCM encrypted)
-- **Whitespace trimming** — Collapses excessive whitespace to save tokens
-
-### Audit Logger
-Stores request/response content (encrypted at rest) for review in the dashboard. Configurable retention period with automatic purge. DLP hits are auto-audited even if this plugin is disabled.
-
-- **Summary** — Always stored (configurable max size), shown as preview in lists
-- **Raw data** — Full encrypted content, enabled by default, can be disabled to save space
-
-## Configuration
-
-Default config: `config/default.yaml`. Override by creating `~/.bastion/config.yaml`:
-
-```yaml
-server:
-  host: "127.0.0.1"
-  port: 8420
-
-logging:
-  level: "info"       # debug | info | warn | error
-
-plugins:
-  metrics:
-    enabled: true
-  dlp:
-    enabled: true
-    action: "block"    # pass | warn | redact | block
-    patterns:
-      - "high-confidence"
-      - "validated"
-      - "context-aware"
-    remotePatterns:
-      url: ""
-      branch: "auto"
-      syncOnStart: true
-      syncIntervalMinutes: 0
-    aiValidation:
-      enabled: false
-      provider: "anthropic"   # anthropic | openai
-      model: "claude-haiku-4-5-20241022"
-      apiKey: ""
-      timeoutMs: 5000
-      cacheSize: 500
-    semantics:
-      sensitivePatterns: []
-      nonSensitiveNames: []
-  optimizer:
-    enabled: true
-    cache: true
-    cacheTtlSeconds: 300
-    trimWhitespace: true
-    reorderForCache: true
-  audit:
-    enabled: true
-    retentionHours: 168    # 7 days
-    rawData: true          # store full encrypted content
-    rawMaxBytes: 524288    # 512KB max per entry
-    summaryMaxBytes: 1024  # 1KB summary
-  toolGuard:
-    enabled: true
-    action: "audit"        # audit | block
-    recordAll: true        # record all tool calls, not just flagged
-    blockMinSeverity: "critical"  # minimum severity to block
-    alertMinSeverity: "high"      # minimum severity for alerts
-    alertDesktop: true
-    alertWebhookUrl: ""
-
-timeouts:
-  upstream: 120000     # 2 minutes
-  plugin: 50           # 50ms per plugin
-```
-
-Environment variable overrides:
 ```bash
-BASTION_PORT=9000 bastion start
-BASTION_HOST=0.0.0.0 bastion start
-BASTION_LOG_LEVEL=debug bastion start
+bastion openclaw docker up mywork --port 18789    # Docker
+bastion openclaw local start mywork --port 18789  # Local
+bastion openclaw docker attach <container-name>   # Existing container
 ```
 
-## API
+See [OpenClaw Docker Guide](docs/openclaw-docker.md) | [Local Guide](docs/openclaw-local.md)
 
-All endpoints are available at `http://127.0.0.1:8420` while the gateway is running.
+## Documentation
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/stats` | Usage statistics (requests, tokens, cost). Query params: `session_id`, `api_key_hash`, `hours` |
-| `GET` | `/api/sessions` | List tracked sessions |
-| `GET` | `/api/dlp/recent?limit=50&since=ISO` | Recent DLP findings. `since` returns only newer findings (for polling) |
-| `POST` | `/api/dlp/scan` | Standalone DLP scan (body: `{"text": "...", "action": "warn", "trace": true}`) |
-| `GET` | `/api/dlp/patterns` | List all DLP patterns |
-| `POST` | `/api/dlp/patterns` | Add custom pattern |
-| `PUT` | `/api/dlp/patterns/:id` | Update pattern (toggle enabled, edit fields) |
-| `DELETE` | `/api/dlp/patterns/:id` | Delete custom pattern (built-ins cannot be deleted) |
-| `POST` | `/api/dlp/config/apply` | Batch-apply DLP config and record history |
-| `GET` | `/api/dlp/config/history` | Last 10 DLP config changes |
-| `POST` | `/api/dlp/config/restore/:id` | Restore a previous DLP config snapshot |
-| `GET` | `/api/dlp/semantics/builtins` | Read-only built-in semantic rules |
-| `GET` | `/api/dlp/signature` | Signature version info. `?check=true` to check remote for updates |
-| `POST` | `/api/dlp/signature/sync` | Trigger manual sync of remote signature patterns |
-| `GET` | `/api/audit/recent?limit=50` | Recent audit entries |
-| `GET` | `/api/audit/sessions` | Audit sessions list |
-| `GET` | `/api/audit/session/:id` | Parsed timeline for a session |
-| `GET` | `/api/audit/:requestId` | Single request detail (parsed or summary-only fallback) |
-| `GET` | `/api/tool-guard/recent?limit=50` | Recent tool call records |
-| `GET` | `/api/tool-guard/stats` | Tool call counts by severity, category, top tool names |
-| `GET` | `/api/tool-guard/session/:id` | Tool calls for a specific session |
-| `GET` | `/api/tool-guard/rules` | List all rules (built-in + custom) |
-| `POST` | `/api/tool-guard/rules` | Add custom rule |
-| `PUT` | `/api/tool-guard/rules/:id` | Update rule (toggle enabled, edit fields) |
-| `DELETE` | `/api/tool-guard/rules/:id` | Delete custom rule (built-ins cannot be deleted) |
-| `GET` | `/api/tool-guard/alerts` | Recent alerts with unacknowledged count |
-| `POST` | `/api/tool-guard/alerts/ack` | Acknowledge all alerts |
-| `GET` | `/api/optimizer/stats` | Cache hit rate and tokens saved |
-| `GET` | `/api/optimizer/recent?limit=50` | Recent optimizer events |
-| `GET` | `/api/config` | Current configuration + plugin status |
-| `PUT` | `/api/config` | Update configuration at runtime |
+| Doc | Description |
+|-----|-------------|
+| [DLP Engine Architecture](docs/dlp.md) | 5-layer detection pipeline internals |
+| [AI Agent Monitoring](docs/agent-monitoring.md) | Monitor Claude Code, Cursor, custom apps |
+| [Security Research](docs/security-research.md) | AI agent threat landscape & Bastion roadmap |
+| [Remote Signatures](docs/remote-signatures.md) | Sync DLP patterns from Git repo |
+| [OpenClaw DLP Alerts](docs/openclaw-dlp-skill.md) | Telegram/Discord alert integration |
+| [Windows Troubleshooting](docs/windows-troubleshooting.md) | Common Windows issues |
 
-## Docs
-
-- [DLP Engine Architecture](docs/dlp.md) | [中文](docs/dlp.zh.md) — 5-layer detection pipeline details
-- [OpenClaw Docker Integration](docs/openclaw-docker.md) | [中文](docs/openclaw-docker.zh.md) — Docker Compose setup (fresh install + existing setup)
-- [OpenClaw Local Installation](docs/openclaw-local.md) | [中文](docs/openclaw-local.zh.md) — Run OpenClaw natively with Bastion proxy
-- [AI Agent Monitoring](docs/agent-monitoring.md) | [中文](docs/agent-monitoring.zh.md) — Monitor any local AI agent (Claude Code, Cursor, custom apps)
-- [Remote Signatures](docs/remote-signatures.md) | [中文](docs/remote-signatures.zh.md) — Remote DLP pattern sync from Git repo
-- [OpenClaw DLP Alert Skill](docs/openclaw-dlp-skill.md) | [中文](docs/openclaw-dlp-skill.zh.md) — Let OpenClaw notify you of DLP findings via Telegram/Discord
-- [Security Research](docs/security-research.md) | [中文](docs/security-research.zh.md) — AI agent threat landscape, Bastion capabilities, and roadmap
-- [Windows Troubleshooting](docs/windows-troubleshooting.md) | [中文](docs/windows-troubleshooting.zh.md) — Common issues and solutions for Windows
+Chinese versions (中文) available for all docs.
 
 ## Data Storage
 
-All data stored locally in `~/.bastion/`:
+Everything stays on your machine in `~/.bastion/`:
 
 ```
 ~/.bastion/
-  bastion.db    # SQLite database (metrics, cache, DLP events, audit log)
-  config.yaml   # User config overrides (created by bastion proxy on / dashboard settings)
-  ca.key        # CA private key
-  ca.crt        # CA certificate
-  certs/        # Generated host certificates
-  .key          # AES encryption key for cache & audit
-  bastion.pid   # Daemon PID file
-  bastion.log   # Daemon log file
+  bastion.db    # SQLite (metrics, DLP events, tool guard, audit)
+  config.yaml   # Your config overrides
+  ca.key / ca.crt / certs/   # Local CA & certificates
+  .key          # AES encryption key for audit data
 ```
+
+## Contributing
+
+Issues and PRs welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+[MIT](LICENSE)
