@@ -62,6 +62,11 @@ export interface BastionConfig {
       alertDesktop: boolean;
       alertWebhookUrl: string;
     };
+    external?: Array<{
+      package: string;
+      enabled: boolean;
+      config?: Record<string, unknown>;
+    }>;
   };
   retention: {
     requestsHours: number;
@@ -70,6 +75,7 @@ export interface BastionConfig {
     optimizerEventsHours: number;
     sessionsHours: number;
     auditLogHours: number;
+    pluginEventsHours: number;
   };
   timeouts: {
     upstream: number;
