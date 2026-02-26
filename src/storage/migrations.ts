@@ -214,6 +214,25 @@ const MIGRATIONS: string[] = [
   ALTER TABLE audit_log ADD COLUMN failed_plugin TEXT;
   ALTER TABLE audit_log ADD COLUMN fail_action TEXT;
   `,
+
+  // Migration 15: Plugin events table for external plugin event storage
+  `
+  CREATE TABLE IF NOT EXISTS plugin_events (
+    id TEXT PRIMARY KEY,
+    plugin_name TEXT NOT NULL,
+    request_id TEXT,
+    type TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    rule TEXT NOT NULL,
+    detail TEXT NOT NULL,
+    matched_text TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_plugin_events_plugin ON plugin_events(plugin_name);
+  CREATE INDEX IF NOT EXISTS idx_plugin_events_request ON plugin_events(request_id);
+  CREATE INDEX IF NOT EXISTS idx_plugin_events_created ON plugin_events(created_at);
+  `,
 ];
 
 export function runMigrations(db: Database.Database): void {
