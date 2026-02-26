@@ -17,6 +17,7 @@ import { validatedPatterns } from '../../dlp/patterns/validated.js';
 import { contextAwarePatterns } from '../../dlp/patterns/context-aware.js';
 import { promptInjectionPatterns } from '../../dlp/patterns/prompt-injection.js';
 import { syncRemotePatterns, startPeriodicSync } from '../../dlp/remote-sync.js';
+import { isPollingRequest } from '../../proxy/providers/classify.js';
 import { createLogger } from '../../utils/logger.js';
 import type Database from 'better-sqlite3';
 
@@ -216,6 +217,14 @@ export function createDlpScannerPlugin(db: Database.Database, config: DlpScanner
 
       // Apply action: block or redact the response
       if (result.action === 'block') {
+        // Polling responses: return empty result instead of 403 to keep client connected
+        if (isPollingRequest(context.request.provider, context.request.path)) {
+          log.warn('DLP blocked polling response, returning empty result', {
+            requestId: context.request.id,
+            findings: result.findings.map((f) => f.patternName),
+          });
+          return { modifiedBody: JSON.stringify({ ok: true, result: [] }) };
+        }
         return {
           blocked: {
             reason: `Response blocked: sensitive data detected (${result.findings.map((f) => f.patternName).join(', ')})`,
