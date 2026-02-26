@@ -42,6 +42,76 @@ function analyzeToolCalls(body: string, isStreaming: boolean, rules: ToolGuardRu
   }));
 }
 
+/**
+ * Replace blocked tool_use blocks with text warnings in the response body.
+ * Supports Anthropic (content[].type=tool_use) and OpenAI (choices[].message.tool_calls) formats.
+ */
+function replaceBlockedToolCalls(
+  parsedBody: Record<string, unknown> | null,
+  blockable: MatchedToolCall[],
+): string {
+  const blockedNames = new Set(blockable.map(m => m.tc.toolName));
+
+  if (!parsedBody) {
+    // Can't parse — return a simple warning
+    const warnings = blockable.map(m =>
+      `[BLOCKED by Bastion Tool Guard] Tool "${m.tc.toolName}" was blocked: ${m.ruleMatch!.rule.name} (${m.ruleMatch!.rule.severity})`,
+    );
+    return JSON.stringify({ type: 'error', error: { type: 'tool_guard_blocked', message: warnings.join('; ') } });
+  }
+
+  const body = JSON.parse(JSON.stringify(parsedBody)); // deep clone
+
+  // Anthropic format: content[] array with type=tool_use blocks
+  if (Array.isArray(body.content)) {
+    body.content = body.content.map((block: Record<string, unknown>) => {
+      if (block.type === 'tool_use' && blockedNames.has(block.name as string)) {
+        const match = blockable.find(m => m.tc.toolName === block.name);
+        const warning = `[BLOCKED by Bastion Tool Guard] Tool "${block.name}" was blocked: ${match?.ruleMatch?.rule.name ?? 'unknown rule'} (${match?.ruleMatch?.rule.severity ?? 'unknown'})`;
+        return { type: 'text', text: warning };
+      }
+      return block;
+    });
+    // Change stop_reason from tool_use to end_turn since tools were removed
+    if (body.stop_reason === 'tool_use') {
+      body.stop_reason = 'end_turn';
+    }
+    return JSON.stringify(body);
+  }
+
+  // OpenAI format: choices[].message.tool_calls
+  if (Array.isArray(body.choices)) {
+    const warnings: string[] = [];
+    for (const choice of body.choices as Record<string, unknown>[]) {
+      const msg = choice.message as Record<string, unknown> | undefined;
+      if (!msg?.tool_calls || !Array.isArray(msg.tool_calls)) continue;
+
+      const kept: unknown[] = [];
+      for (const tc of msg.tool_calls as Record<string, unknown>[]) {
+        const fn = tc.function as Record<string, unknown> | undefined;
+        const name = fn?.name as string | undefined;
+        if (name && blockedNames.has(name)) {
+          const match = blockable.find(m => m.tc.toolName === name);
+          warnings.push(`[BLOCKED by Bastion Tool Guard] Tool "${name}" was blocked: ${match?.ruleMatch?.rule.name ?? 'unknown rule'} (${match?.ruleMatch?.rule.severity ?? 'unknown'})`);
+        } else {
+          kept.push(tc);
+        }
+      }
+      msg.tool_calls = kept.length > 0 ? kept : undefined;
+      if (warnings.length > 0) {
+        msg.content = ((msg.content as string) ?? '') + '\n' + warnings.join('\n');
+      }
+      if (kept.length === 0) {
+        choice.finish_reason = 'stop';
+      }
+    }
+    return JSON.stringify(body);
+  }
+
+  // Unknown format — return body with warning prepended
+  return JSON.stringify(body);
+}
+
 export function createToolGuardPlugin(db: Database.Database, config: ToolGuardConfig): Plugin {
   const repo = new ToolCallsRepository(db);
   const rulesRepo = new ToolGuardRulesRepository(db);
@@ -176,7 +246,6 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
         const reasons = blockable.map(m =>
           `${m.tc.toolName}: ${m.ruleMatch!.rule.name} (${m.ruleMatch!.rule.severity})`,
         );
-        const reason = `Response blocked by Tool Guard: dangerous tool call detected — ${reasons.join('; ')}`;
         log.warn('Blocking response', { requestId: context.request.id, blocked: reasons });
 
         // Auto-audit on tool-guard block (same pattern as DLP scanner)
@@ -192,7 +261,10 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
           log.warn('Failed to write tool-guard auto-audit', { error: (err as Error).message });
         }
 
-        return { blocked: { reason } };
+        // Replace dangerous tool_use blocks with text warnings in the response body
+        // (consistent with streaming guard behavior — client sees warning, not 403)
+        const modified = replaceBlockedToolCalls(context.parsedBody, blockable);
+        return { modifiedBody: modified };
       }
     },
 

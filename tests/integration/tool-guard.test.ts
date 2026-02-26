@@ -186,11 +186,14 @@ describe('Integration: Tool Guard Pipeline', () => {
     currentFixture = dangerousFixture;
     const result = await sendRequest();
 
-    // action=block + severity=critical → should be blocked
-    expect(result.statusCode).toBe(403);
+    // action=block + severity=critical → tool_use replaced with warning text
+    expect(result.statusCode).toBe(200);
     const body = JSON.parse(result.body);
-    expect(body.error.type).toBe('gateway_response_blocked');
-    expect(body.error.message).toContain('Tool Guard');
+    // tool_use block should be replaced with text warning
+    const warningBlock = body.content?.find((b: { type: string; text?: string }) => b.type === 'text' && b.text?.includes('BLOCKED by Bastion Tool Guard'));
+    expect(warningBlock).toBeDefined();
+    // stop_reason should be changed from tool_use to end_turn
+    expect(body.stop_reason).toBe('end_turn');
   });
 
   it('records the blocked tool call in DB', async () => {
