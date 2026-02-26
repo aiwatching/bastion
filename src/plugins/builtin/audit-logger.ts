@@ -31,8 +31,8 @@ export function createAuditLoggerPlugin(db: Database.Database, config: AuditLogg
       const requestBody = pendingRequests.get(context.request.id) ?? '';
       pendingRequests.delete(context.request.id);
 
-      // Skip high-frequency polling requests (e.g., Telegram getUpdates)
-      if (isPollingRequest(context.request.provider, context.request.path)) return;
+      // Skip high-frequency polling requests — unless DLP flagged sensitive data
+      if (isPollingRequest(context.request.provider, context.request.path) && !context.request.dlpHit) return;
 
       try {
         // Avoid duplicates — DLP auto-audit may have already stored this request
