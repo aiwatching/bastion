@@ -1432,7 +1432,7 @@ async function refreshAudit(){
           '<td class="mono" style="font-size:11px">'+e.request_id.slice(0,12)+'...</td>'+
           '<td>'+summaryText+'</td>'+
           '<td>'+dlpTag+tgTag+(e.model?'<span class="tag" style="background:#1a2a3d;color:#58a6ff">'+esc(e.model)+'</span>':'')+'</td>'+
-          '<td class="mono">'+bytes(e.request_length)+'</td>'+
+          '<td class="mono">'+bytes(e.request_length)+' / '+bytes(e.response_length)+'</td>'+
           '<td style="color:#58a6ff">View</td></tr>';
         }).join('');
     }
@@ -1545,6 +1545,7 @@ async function loadSessionTimeline(sessionId){
             '<span class="mono" style="font-size:11px;color:#7d8590">'+esc(model)+'</span>'+
             stopTag+dlpTag+tgTag+
             (tokens?'<span style="font-size:11px;color:#7d8590">'+fmt(tokens)+' tok</span>':'')+
+            '<span style="font-size:11px;color:#484f58">'+bytes(m.request_length||0)+' / '+bytes(m.response_length||0)+'</span>'+
           '</div>'+
           '<span style="font-size:11px;color:#484f58">'+ago(m.created_at)+(m.latency_ms?' · '+m.latency_ms+'ms':'')+'</span>'+
         '</div>'+

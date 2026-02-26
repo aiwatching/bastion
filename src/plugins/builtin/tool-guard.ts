@@ -9,7 +9,7 @@ import type {
 import { ToolCallsRepository } from '../../storage/repositories/tool-calls.js';
 import { ToolGuardRulesRepository } from '../../storage/repositories/tool-guard-rules.js';
 import { AuditLogRepository } from '../../storage/repositories/audit-log.js';
-import { extractToolCalls, type ExtractedToolCall } from '../../tool-guard/extractor.js';
+import { extractToolCalls, extractToolCallsFromParsedEvents, type ExtractedToolCall } from '../../tool-guard/extractor.js';
 import { matchRules, BUILTIN_RULES, type ToolGuardRule, type RuleMatch } from '../../tool-guard/rules.js';
 import { dispatchAlert, shouldAlert, type AlertConfig } from '../../tool-guard/alert.js';
 import { createLogger } from '../../utils/logger.js';
@@ -201,23 +201,27 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
       // Skip if onResponse already recorded (non-streaming + action=block)
       if (context.request._toolGuardRecorded) return;
 
-      // Skip re-analysis for very large streaming bodies to avoid blocking the event loop
-      if (context.isStreaming && context.body.length > 1024 * 1024) {
-        log.debug('Skipping tool guard analysis for large streaming response', {
-          requestId: context.request.id,
-          bodyLength: context.body.length,
-        });
-        return;
-      }
-
       try {
         const rules = context.request._toolGuardRules ?? rulesRepo.getEnabled();
-        const matches = analyzeToolCalls(context.body, context.isStreaming, rules);
+
+        // Use pre-parsed SSE events when available (avoids expensive body re-parsing)
+        let matches: MatchedToolCall[];
+        if (context.sseEvents && context.sseEvents.length > 0) {
+          const toolCalls = extractToolCallsFromParsedEvents(context.sseEvents);
+          matches = toolCalls.map(tc => ({
+            tc,
+            ruleMatch: matchRules(tc.toolName, tc.toolInput, rules),
+          }));
+        } else {
+          matches = analyzeToolCalls(context.body, context.isStreaming, rules);
+        }
+
         log.debug('onResponseComplete', {
           requestId: context.request.id,
           isStreaming: context.isStreaming,
           toolCalls: matches.length,
           bodyLen: context.body.length,
+          usedPreParsed: Boolean(context.sseEvents?.length),
         });
         if (matches.length === 0) return;
 

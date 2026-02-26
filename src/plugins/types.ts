@@ -41,6 +41,8 @@ export interface ResponseCompleteContext {
   };
   latencyMs: number;
   isStreaming: boolean;
+  /** Pre-parsed SSE events from streaming responses (avoids re-parsing body) */
+  sseEvents?: Record<string, unknown>[];
 }
 
 export interface ShortCircuitResponse {

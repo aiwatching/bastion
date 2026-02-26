@@ -274,6 +274,7 @@ async function handleStreamingResponse(
         usage,
         latencyMs,
         isStreaming: true,
+        sseEvents,
       };
 
       await pluginManager.runOnResponseComplete(completeContext);
