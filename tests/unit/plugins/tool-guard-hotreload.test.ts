@@ -100,8 +100,8 @@ describe('Tool Guard: action mode hot-reload', () => {
     const result = await plugin.onResponse!(resCtx);
 
     expect(result).toBeDefined();
-    expect(result!.blocked).toBeDefined();
-    expect(result!.blocked!.reason).toContain('Tool Guard');
+    expect(result!.modifiedBody).toBeDefined();
+    expect(result!.modifiedBody).toContain('BLOCKED by Bastion Tool Guard');
   });
 
   it('allows dangerous tool call when action=audit (hot-reload)', async () => {
@@ -130,7 +130,8 @@ describe('Tool Guard: action mode hot-reload', () => {
     await plugin.onRequest!(reqCtx1);
     const resCtx1 = makeResponseContext(reqCtx1);
     const result1 = await plugin.onResponse!(resCtx1);
-    expect(result1?.blocked).toBeDefined();
+    expect(result1?.modifiedBody).toBeDefined();
+    expect(result1!.modifiedBody).toContain('BLOCKED by Bastion Tool Guard');
 
     // Change action to 'audit' (simulates Dashboard config change)
     liveConfig.action = 'audit';
@@ -150,7 +151,8 @@ describe('Tool Guard: action mode hot-reload', () => {
     await plugin.onRequest!(reqCtx3);
     const resCtx3 = makeResponseContext(reqCtx3);
     const result3 = await plugin.onResponse!(resCtx3);
-    expect(result3?.blocked).toBeDefined();
+    expect(result3?.modifiedBody).toBeDefined();
+    expect(result3!.modifiedBody).toContain('BLOCKED by Bastion Tool Guard');
   });
 
   it('streaming guard is only created when action=block', async () => {
