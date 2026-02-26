@@ -19,8 +19,8 @@ export const highConfidencePatterns: DlpPattern[] = [
   {
     name: 'github-token',
     category: 'high-confidence',
-    regex: /ghp_[A-Za-z0-9]{36}/g,
-    description: 'GitHub Personal Access Token',
+    regex: /(?:ghp|gho|ghs|ghr)_[A-Za-z0-9]{36}/g,
+    description: 'GitHub Personal Access Token (ghp_/gho_/ghs_/ghr_)',
   },
   {
     name: 'github-fine-grained-token',
@@ -37,8 +37,8 @@ export const highConfidencePatterns: DlpPattern[] = [
   {
     name: 'stripe-secret-key',
     category: 'high-confidence',
-    regex: /sk_live_[A-Za-z0-9]{24,}/g,
-    description: 'Stripe Secret Key',
+    regex: /sk_(?:live|test)_[A-Za-z0-9]{24,}/g,
+    description: 'Stripe Secret Key (sk_live_/sk_test_)',
   },
   {
     name: 'private-key',

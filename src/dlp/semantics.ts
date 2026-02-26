@@ -42,6 +42,9 @@ const BUILTIN_NON_SENSITIVE = new Set([
   'n', 'presence_penalty', 'frequency_penalty', 'text',
   'index', 'object', 'finish_reason', 'logprobs', 'usage',
   'prompt_tokens', 'completion_tokens', 'total_tokens',
+  'system_fingerprint', 'created_at', 'updated_at', 'choices',
+  'response_format', 'seed', 'tool_choice', 'function_call',
+  'safety_ratings', 'candidates',
 ]);
 
 // ── User-configurable extras (mutable at runtime) ──
