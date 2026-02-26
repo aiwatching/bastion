@@ -5,10 +5,11 @@
  * buffered until complete, then evaluated against rules.
  * Dangerous tool calls are replaced with a text block warning.
  *
- * Supports both Anthropic and OpenAI SSE formats.
+ * Supports Anthropic, OpenAI Chat Completions, and OpenAI Responses API formats.
  *
- * Anthropic: content_block_start → content_block_delta → content_block_stop (per block)
- * OpenAI:    choices[].delta.tool_calls[] accumulates until finish_reason appears
+ * Anthropic:        content_block_start → content_block_delta → content_block_stop (per block)
+ * OpenAI Chat:      choices[].delta.tool_calls[] accumulates until finish_reason appears
+ * OpenAI Responses: response.output_item.added(function_call) → response.function_call_arguments.delta → .done
  */
 
 import { matchRules, BUILTIN_RULES, type ToolGuardRule, type RuleMatch } from './rules.js';
@@ -40,10 +41,16 @@ export class StreamingToolGuard {
   private toolInput = '';
   private toolIndex = -1;
 
-  // ── OpenAI buffering state ──
+  // ── OpenAI Chat Completions buffering state ──
   private oaiBuffering = false;
   private oaiBufferEvents: string[] = [];
   private oaiToolCalls: Map<number, { name: string; args: string }> = new Map();
+
+  // ── OpenAI Responses API buffering state ──
+  private respBuffering = false;
+  private respBufferEvents: string[] = [];
+  private respToolName = '';
+  private respToolArgs = '';
 
   // Results for post-stream reporting
   public results: StreamingGuardResult[] = [];
@@ -153,6 +160,70 @@ export class StreamingToolGuard {
       }
     }
 
+    // ═══════════════════════════════════════════
+    // OpenAI Responses API format (has .type starting with "response.")
+    // ═══════════════════════════════════════════
+    if (eventType?.startsWith('response.')) {
+      // response.output_item.added with type=function_call → start buffering
+      if (eventType === 'response.output_item.added') {
+        const item = parsed.item as Record<string, unknown> | undefined;
+        if (item?.type === 'function_call') {
+          this.respBuffering = true;
+          this.respBufferEvents = [rawEvent];
+          this.respToolName = (item.name as string) ?? '';
+          this.respToolArgs = '';
+          return;
+        }
+        this.onForward(rawEvent);
+        return;
+      }
+
+      // response.function_call_arguments.delta → accumulate args
+      if (eventType === 'response.function_call_arguments.delta') {
+        if (this.respBuffering) {
+          this.respBufferEvents.push(rawEvent);
+          this.respToolArgs += (parsed.delta as string) ?? '';
+          return;
+        }
+        this.onForward(rawEvent);
+        return;
+      }
+
+      // response.function_call_arguments.done → evaluate
+      if (eventType === 'response.function_call_arguments.done') {
+        if (this.respBuffering) {
+          this.respBufferEvents.push(rawEvent);
+          // Use complete data from .done event
+          this.respToolName = (parsed.name as string) ?? this.respToolName;
+          this.respToolArgs = (parsed.arguments as string) ?? this.respToolArgs;
+          this.evaluateAndFlushResponses();
+          return;
+        }
+        this.onForward(rawEvent);
+        return;
+      }
+
+      // response.output_item.done — if we missed .arguments.done, flush here
+      if (eventType === 'response.output_item.done') {
+        if (this.respBuffering) {
+          this.respBufferEvents.push(rawEvent);
+          const item = parsed.item as Record<string, unknown> | undefined;
+          if (item?.type === 'function_call') {
+            this.respToolName = (item.name as string) ?? this.respToolName;
+            this.respToolArgs = (item.arguments as string) ?? this.respToolArgs;
+          }
+          this.evaluateAndFlushResponses();
+          return;
+        }
+        this.onForward(rawEvent);
+        return;
+      }
+
+      // All other response.* events — forward
+      this.onForward(rawEvent);
+      return;
+    }
+
     // ── All other events (message_start, message_delta, ping, etc.) ──
     this.onForward(rawEvent);
   }
@@ -249,11 +320,49 @@ export class StreamingToolGuard {
     this.oaiToolCalls.clear();
   }
 
+  /** Evaluate buffered OpenAI Responses API tool call and either flush or replace. */
+  private evaluateAndFlushResponses(): void {
+    let input: Record<string, unknown> | string = this.respToolArgs;
+    try { input = JSON.parse(this.respToolArgs); } catch { /* keep as string */ }
+
+    const ruleMatch = matchRules(this.respToolName, input, this.rules);
+    const shouldBlock = ruleMatch && shouldAlert(ruleMatch.rule.severity, this.config.blockMinSeverity);
+
+    if (ruleMatch) {
+      this.results.push({ toolName: this.respToolName, ruleMatch, blocked: Boolean(shouldBlock) });
+    }
+
+    if (shouldBlock) {
+      log.warn('Blocking streaming tool call', {
+        toolName: this.respToolName,
+        rule: ruleMatch!.rule.id,
+        severity: ruleMatch!.rule.severity,
+      });
+
+      // Replace the function call with a text output item warning
+      const warning = `[BLOCKED by Bastion Tool Guard] Tool "${this.respToolName}" was blocked: ${ruleMatch!.rule.name} (${ruleMatch!.rule.severity})`;
+      const replacement =
+        `data: ${JSON.stringify({ type: 'response.output_text.delta', delta: warning })}\n\n` +
+        `data: ${JSON.stringify({ type: 'response.output_text.done', text: warning })}\n\n`;
+      this.onForward(replacement);
+    } else {
+      // Safe — flush all buffered events
+      for (const evt of this.respBufferEvents) {
+        this.onForward(evt);
+      }
+    }
+
+    // Reset Responses API buffer state
+    this.respBuffering = false;
+    this.respBufferEvents = [];
+    this.respToolName = '';
+    this.respToolArgs = '';
+  }
+
   /** Flush any remaining buffered data (e.g., if stream ended mid-block). */
   flush(): void {
     // Anthropic pending buffer
     if (this.buffering && this.bufferEvents.length > 0) {
-      // Stream ended mid-block — forward as-is (incomplete, can't evaluate)
       for (const evt of this.bufferEvents) {
         this.onForward(evt);
       }
@@ -261,15 +370,25 @@ export class StreamingToolGuard {
       this.bufferEvents = [];
     }
 
-    // OpenAI pending buffer
+    // OpenAI Chat Completions pending buffer
     if (this.oaiBuffering && this.oaiBufferEvents.length > 0) {
-      // Stream ended without finish_reason — forward as-is
       for (const evt of this.oaiBufferEvents) {
         this.onForward(evt);
       }
       this.oaiBuffering = false;
       this.oaiBufferEvents = [];
       this.oaiToolCalls.clear();
+    }
+
+    // OpenAI Responses API pending buffer
+    if (this.respBuffering && this.respBufferEvents.length > 0) {
+      for (const evt of this.respBufferEvents) {
+        this.onForward(evt);
+      }
+      this.respBuffering = false;
+      this.respBufferEvents = [];
+      this.respToolName = '';
+      this.respToolArgs = '';
     }
   }
 }

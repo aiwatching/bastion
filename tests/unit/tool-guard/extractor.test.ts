@@ -3,6 +3,7 @@ import {
   extractToolCallsFromJSON,
   extractToolCallsFromSSE,
   extractToolCalls,
+  extractToolCallsFromParsedEvents,
 } from '../../../src/tool-guard/extractor.js';
 
 describe('extractToolCallsFromJSON', () => {
@@ -173,6 +174,45 @@ describe('extractToolCallsFromSSE', () => {
     expect(calls[0].toolInput).toEqual({ command: 'rm -rf /' });
     expect(calls[0].provider).toBe('gemini');
     expect(calls[1].toolName).toBe('read_file');
+  });
+
+  it('extracts OpenAI Responses API SSE tool calls', () => {
+    const sse = [
+      'data: {"type":"response.output_item.added","output_index":0,"item":{"id":"fc_1","type":"function_call","name":"bash","call_id":"call_1"}}',
+      '',
+      'data: {"type":"response.function_call_arguments.delta","item_id":"fc_1","output_index":0,"delta":"{\\"com"}',
+      '',
+      'data: {"type":"response.function_call_arguments.delta","item_id":"fc_1","output_index":0,"delta":"mand\\":\\"rm -rf /\\"}"}',
+      '',
+      'data: {"type":"response.function_call_arguments.done","item_id":"fc_1","output_index":0,"name":"bash","arguments":"{\\"command\\":\\"rm -rf /\\"}"}',
+      '',
+      'data: {"type":"response.output_item.done","output_index":0,"item":{"id":"fc_1","type":"function_call","name":"bash","arguments":"{\\"command\\":\\"rm -rf /\\"}"}}',
+      '',
+    ].join('\n');
+
+    const calls = extractToolCallsFromSSE(sse);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].toolName).toBe('bash');
+    expect(calls[0].toolInput).toEqual({ command: 'rm -rf /' });
+    expect(calls[0].provider).toBe('openai');
+  });
+
+  it('extracts OpenAI Responses API tool calls from pre-parsed events', () => {
+    const events = [
+      { type: 'response.created', response: { id: 'resp_1' } },
+      { type: 'response.output_item.added', output_index: 0, item: { id: 'fc_1', type: 'function_call', name: 'bash', call_id: 'call_1' } },
+      { type: 'response.function_call_arguments.delta', item_id: 'fc_1', delta: '{"command":' },
+      { type: 'response.function_call_arguments.delta', item_id: 'fc_1', delta: '"ls -la"}' },
+      { type: 'response.function_call_arguments.done', item_id: 'fc_1', name: 'bash', arguments: '{"command":"ls -la"}' },
+      { type: 'response.output_item.done', output_index: 0, item: { id: 'fc_1', type: 'function_call', name: 'bash', arguments: '{"command":"ls -la"}' } },
+      { type: 'response.done', response: { id: 'resp_1' } },
+    ];
+
+    const calls = extractToolCallsFromParsedEvents(events as Record<string, unknown>[]);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].toolName).toBe('bash');
+    expect(calls[0].toolInput).toEqual({ command: 'ls -la' });
+    expect(calls[0].provider).toBe('openai');
   });
 
   it('returns empty for non-tool SSE', () => {

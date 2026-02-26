@@ -188,6 +188,54 @@ function extractOpenAISSE(events: Record<string, unknown>[]): ExtractedToolCall[
   return results;
 }
 
+/**
+ * OpenAI Responses API SSE format (used by chatgpt.com/backend-api/codex/responses):
+ *   response.output_item.added  → item.type === 'function_call', item.name
+ *   response.function_call_arguments.delta → delta (partial JSON)
+ *   response.function_call_arguments.done  → name, arguments (complete)
+ *   response.output_item.done   → item with complete function call
+ */
+function extractOpenAIResponsesSSE(events: Record<string, unknown>[]): ExtractedToolCall[] {
+  // Strategy: use .done events as ground truth (they have complete name + arguments)
+  const results: ExtractedToolCall[] = [];
+
+  for (const d of events) {
+    const eventType = d.type as string | undefined;
+
+    // response.function_call_arguments.done has complete data
+    if (eventType === 'response.function_call_arguments.done') {
+      const name = d.name as string | undefined;
+      const args = d.arguments as string | undefined;
+      if (name) {
+        let input: Record<string, unknown> | string = args ?? '';
+        try { input = JSON.parse(args ?? '{}'); } catch { /* keep as string */ }
+        results.push({ toolName: name, toolInput: input, provider: 'openai' });
+      }
+      continue;
+    }
+
+    // Fallback: response.output_item.done with type=function_call
+    if (eventType === 'response.output_item.done') {
+      const item = d.item as Record<string, unknown> | undefined;
+      if (item?.type === 'function_call') {
+        const name = (item.name as string) ?? '';
+        const args = (item.arguments as string) ?? '';
+        if (name) {
+          // Check if we already captured this via function_call_arguments.done
+          const alreadyCaptured = results.some(r => r.toolName === name);
+          if (!alreadyCaptured) {
+            let input: Record<string, unknown> | string = args;
+            try { input = JSON.parse(args); } catch { /* keep as string */ }
+            results.push({ toolName: name, toolInput: input, provider: 'openai' });
+          }
+        }
+      }
+    }
+  }
+
+  return results;
+}
+
 function extractGeminiSSE(events: Record<string, unknown>[]): ExtractedToolCall[] {
   // Each Gemini SSE event has the same candidates[] structure as the JSON response
   const results: ExtractedToolCall[] = [];
@@ -201,35 +249,38 @@ function extractGeminiSSE(events: Record<string, unknown>[]): ExtractedToolCall[
 export function extractToolCallsFromSSE(body: string): ExtractedToolCall[] {
   const events = parseSSEEvents(body);
   if (events.length === 0) return [];
+  return extractToolCallsFromParsedEventsInternal(events);
+}
 
-  // Detect provider from event shape
+// ---------- Pre-parsed events (skip text parsing) ----------
+
+/** Shared detection logic for pre-parsed events */
+function extractToolCallsFromParsedEventsInternal(events: Record<string, unknown>[]): ExtractedToolCall[] {
+  // Anthropic: content_block_start / message_start
   const hasAnthropicEvents = events.some(e => e.type === 'content_block_start' || e.type === 'message_start');
   if (hasAnthropicEvents) return extractAnthropicSSE(events);
 
+  // OpenAI Chat Completions: choices[]
   const hasOpenAIEvents = events.some(e => Array.isArray((e as Record<string, unknown>).choices));
   if (hasOpenAIEvents) return extractOpenAISSE(events);
 
+  // OpenAI Responses API: response.output_item.added / response.function_call_arguments.*
+  const hasResponsesEvents = events.some(e => {
+    const t = e.type as string | undefined;
+    return t?.startsWith('response.');
+  });
+  if (hasResponsesEvents) return extractOpenAIResponsesSSE(events);
+
+  // Gemini: candidates[]
   const hasGeminiEvents = events.some(e => Array.isArray((e as Record<string, unknown>).candidates));
   if (hasGeminiEvents) return extractGeminiSSE(events);
 
   return [];
 }
 
-// ---------- Pre-parsed events (skip text parsing) ----------
-
 export function extractToolCallsFromParsedEvents(events: Record<string, unknown>[]): ExtractedToolCall[] {
   if (events.length === 0) return [];
-
-  const hasAnthropicEvents = events.some(e => e.type === 'content_block_start' || e.type === 'message_start');
-  if (hasAnthropicEvents) return extractAnthropicSSE(events);
-
-  const hasOpenAIEvents = events.some(e => Array.isArray((e as Record<string, unknown>).choices));
-  if (hasOpenAIEvents) return extractOpenAISSE(events);
-
-  const hasGeminiEvents = events.some(e => Array.isArray((e as Record<string, unknown>).candidates));
-  if (hasGeminiEvents) return extractGeminiSSE(events);
-
-  return [];
+  return extractToolCallsFromParsedEventsInternal(events);
 }
 
 // ---------- Auto-detect ----------
