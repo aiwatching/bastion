@@ -92,9 +92,9 @@ tr:hover{background:#1c2128}
 <div style="display:flex;align-items:center;gap:8px">
 <label style="font-size:12px;color:#7d8590">Time Range:</label>
 <select id="time-range" style="background:#161b22;border:1px solid #30363d;color:#e1e4e8;padding:6px 10px;border-radius:6px;font-size:12px">
-<option value="24h">Today (24h)</option>
-<option value="7d">7 days</option>
-<option value="30d">30 days</option>
+<option value="24h">Last 24h</option>
+<option value="7d">Last 7 days</option>
+<option value="30d">Last 30 days</option>
 <option value="all">All</option>
 </select>
 </div>
@@ -600,16 +600,11 @@ function esc(s){if(!s)return'';const d=document.createElement('div');d.textConte
 
 // Time range
 let timeRange='24h';
-function sinceForRange(r){
-  if(r==='all')return '';
-  const h=r==='24h'?24:r==='7d'?168:720;
-  return new Date(Date.now()-h*3600000).toISOString().replace('T',' ').slice(0,19);
-}
 function hoursForRange(r){return r==='24h'?24:r==='7d'?168:r==='30d'?720:0}
 document.getElementById('time-range').addEventListener('change',function(){
   timeRange=this.value;_lastJson={};refreshActiveTab();
 });
-function sinceParam(){const s=sinceForRange(timeRange);return s?'since='+encodeURIComponent(s):'';}
+function sinceParam(){const h=hoursForRange(timeRange);return h?'hours='+h:'';}
 
 // Tab switching
 document.querySelectorAll('.tab').forEach(t=>{

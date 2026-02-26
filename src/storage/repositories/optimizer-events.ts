@@ -58,11 +58,11 @@ export class OptimizerEventsRepository {
     };
   }
 
-  getRecent(limit: number = 20, since?: string): OptimizerEventRecord[] {
-    if (since) {
+  getRecent(limit: number = 20, sinceHours?: number): OptimizerEventRecord[] {
+    if (sinceHours) {
       return this.db.prepare(`
-        SELECT * FROM optimizer_events WHERE created_at > ? ORDER BY created_at DESC LIMIT ?
-      `).all(since, limit) as OptimizerEventRecord[];
+        SELECT * FROM optimizer_events WHERE created_at > datetime('now', '-' || ? || ' hours') ORDER BY created_at DESC LIMIT ?
+      `).all(sinceHours, limit) as OptimizerEventRecord[];
     }
     return this.db.prepare(`
       SELECT * FROM optimizer_events ORDER BY created_at DESC LIMIT ?

@@ -64,11 +64,11 @@ export class ToolCallsRepository {
     ).all(requestId) as ToolCallRecord[];
   }
 
-  getRecent(limit: number = 50, since?: string): ToolCallRecord[] {
-    if (since) {
+  getRecent(limit: number = 50, sinceHours?: number): ToolCallRecord[] {
+    if (sinceHours) {
       return this.db.prepare(`
-        SELECT * FROM tool_calls WHERE created_at > ? ORDER BY created_at DESC LIMIT ?
-      `).all(since, limit) as ToolCallRecord[];
+        SELECT * FROM tool_calls WHERE created_at > datetime('now', '-' || ? || ' hours') ORDER BY created_at DESC LIMIT ?
+      `).all(sinceHours, limit) as ToolCallRecord[];
     }
     return this.db.prepare(`
       SELECT * FROM tool_calls ORDER BY created_at DESC LIMIT ?

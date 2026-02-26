@@ -33,16 +33,16 @@ export class DlpEventsRepository {
     return this.db.prepare('SELECT * FROM dlp_events WHERE request_id = ?').all(requestId) as DlpEventRecord[];
   }
 
-  getRecent(limit: number = 20, since?: string): (DlpEventRecord & { provider?: string; model?: string; session_id?: string; session_label?: string })[] {
-    if (since) {
+  getRecent(limit: number = 20, sinceHours?: number): (DlpEventRecord & { provider?: string; model?: string; session_id?: string; session_label?: string })[] {
+    if (sinceHours) {
       return this.db.prepare(`
         SELECT d.*, r.provider, r.model, r.session_id, s.label as session_label
         FROM dlp_events d
         LEFT JOIN requests r ON r.id = d.request_id
         LEFT JOIN sessions s ON s.id = r.session_id
-        WHERE d.created_at > ?
-        ORDER BY d.created_at ASC LIMIT ?
-      `).all(since, limit) as (DlpEventRecord & { provider?: string; model?: string; session_id?: string; session_label?: string })[];
+        WHERE d.created_at > datetime('now', '-' || ? || ' hours')
+        ORDER BY d.created_at DESC LIMIT ?
+      `).all(sinceHours, limit) as (DlpEventRecord & { provider?: string; model?: string; session_id?: string; session_label?: string })[];
     }
     return this.db.prepare(`
       SELECT d.*, r.provider, r.model, r.session_id, s.label as session_label

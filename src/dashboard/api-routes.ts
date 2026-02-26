@@ -67,9 +67,8 @@ export function createApiRouter(
       const hours = url.searchParams.get('hours');
       const sinceHours = hours ? parseInt(hours, 10) : undefined;
 
-      const since = url.searchParams.get('since') ?? undefined;
       const stats = requestsRepo.getStats({ sinceHours, sessionId, apiKeyHash });
-      const recent = requestsRepo.getRecent(20, since);
+      const recent = requestsRepo.getRecent(20, sinceHours);
       const cacheStats = cacheRepo.getStats();
       const dlpStats = dlpRepo.getStats();
 
@@ -94,8 +93,9 @@ export function createApiRouter(
     // GET /api/dlp/recent
     if (req.method === 'GET' && path === '/api/dlp/recent') {
       const limit = parseInt(url.searchParams.get('limit') ?? '50', 10);
-      const since = url.searchParams.get('since') ?? undefined;
-      sendJson(res, dlpRepo.getRecent(limit, since));
+      const hours = url.searchParams.get('hours');
+      const sinceHours = hours ? parseInt(hours, 10) : undefined;
+      sendJson(res, dlpRepo.getRecent(limit, sinceHours));
       return true;
     }
 
@@ -143,23 +143,26 @@ export function createApiRouter(
     // GET /api/optimizer/recent
     if (req.method === 'GET' && path === '/api/optimizer/recent') {
       const limit = parseInt(url.searchParams.get('limit') ?? '50', 10);
-      const since = url.searchParams.get('since') ?? undefined;
-      sendJson(res, optimizerRepo.getRecent(limit, since));
+      const hours = url.searchParams.get('hours');
+      const sinceHours = hours ? parseInt(hours, 10) : undefined;
+      sendJson(res, optimizerRepo.getRecent(limit, sinceHours));
       return true;
     }
 
     // GET /api/audit/recent
     if (req.method === 'GET' && path === '/api/audit/recent') {
       const limit = parseInt(url.searchParams.get('limit') ?? '50', 10);
-      const since = url.searchParams.get('since') ?? undefined;
-      sendJson(res, auditRepo.getRecent(limit, since));
+      const hours = url.searchParams.get('hours');
+      const sinceHours = hours ? parseInt(hours, 10) : undefined;
+      sendJson(res, auditRepo.getRecent(limit, sinceHours));
       return true;
     }
 
     // GET /api/audit/sessions — list sessions with audit data
     if (req.method === 'GET' && path === '/api/audit/sessions') {
-      const since = url.searchParams.get('since') ?? undefined;
-      sendJson(res, auditRepo.getAuditSessions(30, since));
+      const hours = url.searchParams.get('hours');
+      const sinceHours = hours ? parseInt(hours, 10) : undefined;
+      sendJson(res, auditRepo.getAuditSessions(30, sinceHours));
       return true;
     }
 
@@ -515,8 +518,9 @@ export function createApiRouter(
     // GET /api/tool-guard/recent — recent tool calls
     if (req.method === 'GET' && path === '/api/tool-guard/recent') {
       const limit = parseInt(url.searchParams.get('limit') ?? '50', 10);
-      const since = url.searchParams.get('since') ?? undefined;
-      sendJson(res, toolCallsRepo.getRecent(limit, since));
+      const hours = url.searchParams.get('hours');
+      const sinceHours = hours ? parseInt(hours, 10) : undefined;
+      sendJson(res, toolCallsRepo.getRecent(limit, sinceHours));
       return true;
     }
 
