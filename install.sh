@@ -5,6 +5,7 @@ INSTALL_DIR="${BASTION_INSTALL_DIR:-$HOME/.bastion/app}"
 BIN_DIR="${BASTION_BIN_DIR:-/usr/local/bin}"
 REPO_URL="${BASTION_REPO_URL:-https://github.com/aiwatching/bastion.git}"
 LOCAL_SOURCE=""
+REMOTE_BRANCH=""
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -18,6 +19,24 @@ while [[ $# -gt 0 ]]; do
         LOCAL_SOURCE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)"
         shift
       fi
+      ;;
+    -remote|--remote)
+      if [[ -n "${2:-}" && "$2" != -* ]]; then
+        REMOTE_BRANCH="$2"
+        shift 2
+      else
+        echo "Error: -remote requires a branch name" >&2
+        exit 1
+      fi
+      ;;
+    -h|--help)
+      echo "Usage: install.sh [options]"
+      echo ""
+      echo "Options:"
+      echo "  -local [path]       Install from local source directory"
+      echo "  -remote <branch>    Install from a specific git branch"
+      echo "  -h, --help          Show this help message"
+      exit 0
       ;;
     *)
       shift
@@ -82,6 +101,21 @@ if [ -n "$LOCAL_SOURCE" ]; then
     rsync -a --exclude node_modules --exclude .git "$LOCAL_SOURCE/" "$INSTALL_DIR/"
   fi
   cd "$INSTALL_DIR"
+elif [ -n "$REMOTE_BRANCH" ]; then
+  # -remote mode: clone or fetch, then checkout specified branch
+  if [ -d "$INSTALL_DIR/.git" ]; then
+    info "Fetching and switching to branch: $REMOTE_BRANCH"
+    cd "$INSTALL_DIR"
+    git fetch origin
+    git checkout "$REMOTE_BRANCH" 2>/dev/null || git checkout -b "$REMOTE_BRANCH" "origin/$REMOTE_BRANCH"
+    git pull origin "$REMOTE_BRANCH" --ff-only
+  else
+    info "Cloning repository (branch: $REMOTE_BRANCH)..."
+    mkdir -p "$(dirname "$INSTALL_DIR")"
+    rm -rf "$INSTALL_DIR"
+    git clone -b "$REMOTE_BRANCH" "$REPO_URL" "$INSTALL_DIR"
+    cd "$INSTALL_DIR"
+  fi
 elif [ -d "$INSTALL_DIR/.git" ]; then
   info "Updating existing installation..."
   cd "$INSTALL_DIR"

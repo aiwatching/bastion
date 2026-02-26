@@ -1,6 +1,21 @@
 # install.ps1 — PowerShell installer for Bastion AI Gateway
-# Usage: powershell -ExecutionPolicy Bypass -File install.ps1
+# Usage: powershell -ExecutionPolicy Bypass -File install.ps1 [-Local [path]] [-Remote branch]
+param(
+    [string]$Local,
+    [string]$Remote,
+    [switch]$Help
+)
 $ErrorActionPreference = "Stop"
+
+if ($Help) {
+    Write-Host "Usage: install.ps1 [options]"
+    Write-Host ""
+    Write-Host "Options:"
+    Write-Host "  -Local [path]       Install from local source directory"
+    Write-Host "  -Remote <branch>    Install from a specific git branch"
+    Write-Host "  -Help               Show this help message"
+    exit 0
+}
 
 $InstallDir = if ($env:BASTION_INSTALL_DIR) { $env:BASTION_INSTALL_DIR } else { "$env:USERPROFILE\.bastion\app" }
 $RepoUrl = if ($env:BASTION_REPO_URL) { $env:BASTION_REPO_URL } else { "https://github.com/aiwatching/bastion.git" }
@@ -30,7 +45,42 @@ if ($nodeMajor % 2 -ne 0) {
 Info "Installing Bastion AI Gateway..."
 
 # --- Download / Update ---
-if (Test-Path "$InstallDir\.git") {
+if ($Local) {
+    # -Local mode: use local source directory
+    $LocalSource = if ($Local -eq "True") {
+        Split-Path -Parent $MyInvocation.MyCommand.Path
+    } else {
+        (Resolve-Path $Local).Path
+    }
+    if (-not (Test-Path "$LocalSource\package.json")) {
+        Err "Not a valid Bastion source directory: $LocalSource (no package.json found)"
+    }
+    if ($LocalSource -eq $InstallDir) {
+        Info "Local source is already the install directory"
+    } else {
+        Info "Installing from local source: $LocalSource"
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $InstallDir) | Out-Null
+        if (Test-Path $InstallDir) { Remove-Item -Recurse -Force $InstallDir }
+        robocopy $LocalSource $InstallDir /E /XD node_modules .git /NFL /NDL /NJH /NJS /NC /NS /NP | Out-Null
+    }
+    Push-Location $InstallDir
+} elseif ($Remote) {
+    # -Remote mode: clone or fetch, then checkout specified branch
+    if (Test-Path "$InstallDir\.git") {
+        Info "Fetching and switching to branch: $Remote"
+        Push-Location $InstallDir
+        git fetch origin
+        git checkout $Remote 2>$null
+        if ($LASTEXITCODE -ne 0) { git checkout -b $Remote "origin/$Remote" }
+        git pull origin $Remote --ff-only
+    } else {
+        Info "Cloning repository (branch: $Remote)..."
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $InstallDir) | Out-Null
+        if (Test-Path $InstallDir) { Remove-Item -Recurse -Force $InstallDir }
+        git clone -b $Remote $RepoUrl $InstallDir
+        Push-Location $InstallDir
+    }
+} elseif (Test-Path "$InstallDir\.git") {
     Info "Updating existing installation..."
     Push-Location $InstallDir
     git pull --ff-only
@@ -44,7 +94,6 @@ if (Test-Path "$InstallDir\.git") {
         Info "Installing from local source: $ScriptDir"
         New-Item -ItemType Directory -Force -Path (Split-Path -Parent $InstallDir) | Out-Null
         if (Test-Path $InstallDir) { Remove-Item -Recurse -Force $InstallDir }
-        # Exclude node_modules and .git — symlinks inside node_modules/.bin break on copy
         robocopy $ScriptDir $InstallDir /E /XD node_modules .git /NFL /NDL /NJH /NJS /NC /NS /NP | Out-Null
         Push-Location $InstallDir
     } else {
