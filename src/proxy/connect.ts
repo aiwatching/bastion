@@ -237,8 +237,11 @@ function createMITMRequestHandler(
     // Try to match a known provider route
     const route = resolveRoute(req);
 
-    if (req.method === 'POST') {
-      // POST requests always go through plugin pipeline (DLP, audit)
+    // If scanMethods is configured and non-empty, only scan listed methods
+    const scanMethods = config.server.scanMethods ?? [];
+    const shouldScan = scanMethods.length === 0 || scanMethods.includes(req.method ?? '');
+
+    if (shouldScan) {
       const provider = route?.provider ?? createFallbackProvider(hostname);
       const upstreamUrl = route
         ? route.upstreamUrl
@@ -260,7 +263,7 @@ function createMITMRequestHandler(
         }
       }
     } else {
-      // GET/OPTIONS/etc — forward directly (health checks, model listing, etc.)
+      // Method excluded from scanning — forward directly
       directForward(req, res, hostname, config.timeouts.upstream);
     }
   };

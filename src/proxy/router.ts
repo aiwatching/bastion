@@ -10,9 +10,9 @@ export interface RouteResult {
   upstreamUrl: string;
 }
 
-export function resolveRoute(req: IncomingMessage): RouteResult | null {
+export function resolveRoute(req: IncomingMessage, opts?: { excludeMessaging?: boolean }): RouteResult | null {
   const path = req.url ?? '/';
-  const match = getProvider(path);
+  const match = getProvider(path, opts);
 
   if (!match) {
     log.warn('No provider matched', { path });

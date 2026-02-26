@@ -93,6 +93,9 @@ export function createDlpScannerPlugin(db: Database.Database, config: DlpScanner
 
     // ── Request-side: scan outgoing requests to LLM ──
     async onRequest(context: RequestContext): Promise<PluginRequestResult | void> {
+      // GET/HEAD have no meaningful request body to scan
+      if (context.method === 'GET' || context.method === 'HEAD') return;
+
       const patterns = patternsRepo.getEnabled();
       const result = scanText(context.body, patterns, getAction());
 

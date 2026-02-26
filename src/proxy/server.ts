@@ -5,7 +5,8 @@ import type { PluginManager } from '../plugins/index.js';
 import type { ConfigManager } from '../config/manager.js';
 import { resolveRoute, sendError } from './router.js';
 import { forwardRequest } from './forwarder.js';
-import { passthroughRequest } from './passthrough.js';
+import { passthroughRequest, detectUpstream } from './passthrough.js';
+import type { ProviderConfig } from './providers/index.js';
 import { handleHealthCheck, setupGracefulShutdown } from './safety.js';
 import { serveDashboard } from '../dashboard/page.js';
 import { createApiRouter } from '../dashboard/api-routes.js';
@@ -58,17 +59,12 @@ export function createProxyServer(
       if (apiRouter(req, res)) return;
     }
 
-    // Only accept POST requests for provider endpoints
-    if (req.method !== 'POST') {
-      // Unknown GET/PUT/etc — passthrough to upstream (e.g. auth flows)
-      passthroughRequest(req, res, config.timeouts.upstream);
-      return;
-    }
+    // Route to known provider path (exclude messaging providers in direct HTTP mode)
+    const route = resolveRoute(req, { excludeMessaging: true });
 
-    // Route to known provider path
-    const route = resolveRoute(req);
-    if (!route) {
-      // Unknown POST path — passthrough to upstream
+    // If scanMethods is configured and non-empty, only scan listed methods
+    const scanMethods = config.server.scanMethods ?? [];
+    if (scanMethods.length > 0 && !scanMethods.includes(req.method ?? '')) {
       passthroughRequest(req, res, config.timeouts.upstream);
       return;
     }
@@ -76,10 +72,44 @@ export function createProxyServer(
     // For direct HTTP mode, read session from X-Bastion-Session header
     const sessionId = req.headers['x-bastion-session'] as string | undefined;
 
+    // Determine provider and upstream URL — use route if matched,
+    // otherwise create fallback provider so unmatched paths (e.g. GET /v1/models)
+    // still go through the plugin pipeline for audit/DLP scanning
+    let provider: ProviderConfig;
+    let upstreamUrl: string;
+
+    if (route) {
+      provider = route.provider;
+      upstreamUrl = route.upstreamUrl;
+    } else {
+      const upstream = detectUpstream(req.headers);
+      upstreamUrl = upstream + (req.url ?? '/');
+      const hostname = new URL(upstream).hostname;
+      provider = {
+        name: hostname.replace(/\./g, '-'),
+        baseUrl: upstream,
+        authHeader: '',
+        transformHeaders(headers: Record<string, string>): Record<string, string> {
+          const result: Record<string, string> = {};
+          for (const [key, value] of Object.entries(headers)) {
+            const lower = key.toLowerCase();
+            if (lower !== 'host' && lower !== 'connection' && lower !== 'transfer-encoding') {
+              result[key] = value;
+            }
+          }
+          return result;
+        },
+        extractModel(): string { return hostname; },
+        extractUsage(): { inputTokens: number; outputTokens: number } {
+          return { inputTokens: 0, outputTokens: 0 };
+        },
+      };
+    }
+
     try {
       await forwardRequest(req, res, {
-        provider: route.provider,
-        upstreamUrl: route.upstreamUrl,
+        provider,
+        upstreamUrl,
         upstreamTimeout: config.timeouts.upstream,
         pluginManager,
         sessionId,
