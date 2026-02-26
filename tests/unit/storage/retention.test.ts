@@ -38,7 +38,7 @@ describe('Data Retention', () => {
       expect(repo.getRecent(10)[0].id).toBe('r2');
     });
 
-    it('getRecent with since filters by time', () => {
+    it('getRecent with sinceHours filters by time', () => {
       db = createTestDatabase();
       const repo = new RequestsRepository(db);
 
@@ -47,8 +47,7 @@ describe('Data Retention', () => {
 
       insertAt(db, 'requests', 'r1', 48);
 
-      const since = new Date(Date.now() - 24 * 3600000).toISOString().replace('T', ' ').slice(0, 19);
-      const recent = repo.getRecent(10, since);
+      const recent = repo.getRecent(10, 24);
       expect(recent).toHaveLength(1);
       expect(recent[0].id).toBe('r2');
     });
@@ -85,7 +84,7 @@ describe('Data Retention', () => {
       expect(repo.getRecent(10)).toHaveLength(1);
     });
 
-    it('getRecent with since filters by time', () => {
+    it('getRecent with sinceHours filters by time', () => {
       db = createTestDatabase();
       const repo = new OptimizerEventsRepository(db);
 
@@ -94,8 +93,7 @@ describe('Data Retention', () => {
 
       insertAt(db, 'optimizer_events', 'o1', 48);
 
-      const since = new Date(Date.now() - 24 * 3600000).toISOString().replace('T', ' ').slice(0, 19);
-      const recent = repo.getRecent(10, since);
+      const recent = repo.getRecent(10, 24);
       expect(recent).toHaveLength(1);
       expect(recent[0].id).toBe('o2');
     });
@@ -120,7 +118,7 @@ describe('Data Retention', () => {
   });
 
   describe('AuditLogRepository', () => {
-    it('getRecent with since filters by time', () => {
+    it('getRecent with sinceHours filters by time', () => {
       db = createTestDatabase();
       const repo = new AuditLogRepository(db);
 
@@ -129,8 +127,7 @@ describe('Data Retention', () => {
 
       insertAt(db, 'audit_log', 'a1', 48);
 
-      const since = new Date(Date.now() - 24 * 3600000).toISOString().replace('T', ' ').slice(0, 19);
-      const recent = repo.getRecent(10, since);
+      const recent = repo.getRecent(10, 24);
       expect(recent).toHaveLength(1);
       expect(recent[0].id).toBe('a2');
     });
@@ -151,7 +148,7 @@ describe('Data Retention', () => {
   });
 
   describe('ToolCallsRepository', () => {
-    it('getRecent with since filters by time', () => {
+    it('getRecent with sinceHours filters by time', () => {
       db = createTestDatabase();
       const repo = new ToolCallsRepository(db);
 
@@ -160,8 +157,7 @@ describe('Data Retention', () => {
 
       insertAt(db, 'tool_calls', 't1', 48);
 
-      const since = new Date(Date.now() - 24 * 3600000).toISOString().replace('T', ' ').slice(0, 19);
-      const recent = repo.getRecent(10, since);
+      const recent = repo.getRecent(10, 24);
       expect(recent).toHaveLength(1);
       expect(recent[0].id).toBe('t2');
     });

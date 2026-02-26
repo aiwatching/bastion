@@ -581,16 +581,16 @@ export class AuditLogRepository {
     return row ?? null;
   }
 
-  getRecent(limit: number = 20, since?: string): AuditLogMeta[] {
-    if (since) {
+  getRecent(limit: number = 20, sinceHours?: number): AuditLogMeta[] {
+    if (sinceHours) {
       return this.db.prepare(`
         SELECT a.id, a.request_id, a.request_length, a.response_length, a.dlp_hit, a.tool_guard_hit, a.summary, a.created_at,
                r.session_id, r.model, r.status_code, r.latency_ms
         FROM audit_log a
         LEFT JOIN requests r ON r.id = a.request_id
-        WHERE a.created_at > ?
+        WHERE a.created_at > datetime('now', '-' || ? || ' hours')
         ORDER BY a.created_at DESC LIMIT ?
-      `).all(since, limit) as AuditLogMeta[];
+      `).all(sinceHours, limit) as AuditLogMeta[];
     }
     return this.db.prepare(`
       SELECT a.id, a.request_id, a.request_length, a.response_length, a.dlp_hit, a.tool_guard_hit, a.summary, a.created_at,
@@ -614,8 +614,8 @@ export class AuditLogRepository {
   }
 
   /** Get sessions that have audit entries, ordered by most recent */
-  getAuditSessions(limit: number = 30, since?: string): AuditSession[] {
-    if (since) {
+  getAuditSessions(limit: number = 30, sinceHours?: number): AuditSession[] {
+    if (sinceHours) {
       return this.db.prepare(`
         SELECT r.session_id, COUNT(*) as request_count,
                MIN(a.created_at) as first_at, MAX(a.created_at) as last_at,
@@ -624,11 +624,11 @@ export class AuditLogRepository {
         FROM audit_log a
         INNER JOIN requests r ON r.id = a.request_id
         LEFT JOIN sessions s ON s.id = r.session_id
-        WHERE r.session_id IS NOT NULL AND a.created_at > ?
+        WHERE r.session_id IS NOT NULL AND a.created_at > datetime('now', '-' || ? || ' hours')
         GROUP BY r.session_id
         ORDER BY last_at DESC
         LIMIT ?
-      `).all(since, limit) as AuditSession[];
+      `).all(sinceHours, limit) as AuditSession[];
     }
     return this.db.prepare(`
       SELECT r.session_id, COUNT(*) as request_count,

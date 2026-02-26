@@ -133,11 +133,11 @@ export class RequestsRepository {
     return { ...totals, by_provider, by_model };
   }
 
-  getRecent(limit: number = 10, since?: string): RequestRecord[] {
-    if (since) {
+  getRecent(limit: number = 10, sinceHours?: number): RequestRecord[] {
+    if (sinceHours) {
       return this.db.prepare(`
-        SELECT * FROM requests WHERE created_at > ? ORDER BY created_at DESC LIMIT ?
-      `).all(since, limit) as RequestRecord[];
+        SELECT * FROM requests WHERE created_at > datetime('now', '-' || ? || ' hours') ORDER BY created_at DESC LIMIT ?
+      `).all(sinceHours, limit) as RequestRecord[];
     }
     return this.db.prepare(`
       SELECT * FROM requests ORDER BY created_at DESC LIMIT ?
