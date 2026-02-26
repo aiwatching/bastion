@@ -406,7 +406,7 @@ tr:hover{background:#1c2128}
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
       <h2 style="margin:0">Sessions</h2>
       <div style="display:flex;gap:8px;align-items:center">
-        <input id="audit-session-filter" type="text" placeholder="Filter by Session ID..." style="padding:4px 10px;font-size:12px;background:#0d1117;color:#e1e4e8;border:1px solid #30363d;border-radius:6px;width:260px;font-family:monospace">
+        <input id="audit-session-filter" type="text" placeholder="Search by Session ID or Request ID..." style="padding:4px 10px;font-size:12px;background:#0d1117;color:#e1e4e8;border:1px solid #30363d;border-radius:6px;width:320px;font-family:monospace">
         <button id="audit-session-filter-btn" style="padding:4px 12px;font-size:12px;cursor:pointer;color:#58a6ff;background:none;border:1px solid #30363d;border-radius:6px">Search</button>
         <button id="audit-session-filter-clear" style="padding:4px 12px;font-size:12px;cursor:pointer;color:#7d8590;background:none;border:1px solid #30363d;border-radius:6px;display:none">Clear</button>
       </div>
@@ -1429,9 +1429,9 @@ async function refreshAudit(){
         '<td style="color:#58a6ff">View</td></tr>';
     }).join('');
     // Also show non-session entries
-    const recentR=await apiFetch('/api/audit/recent'+(sp?'?'+sp:''));
+    const recentR=await apiFetch('/api/audit/recent?limit=200'+(sp?'&'+sp:''));
     const recent=await recentR.json();
-    const noSession=recent.filter(e=>!e.session_id);
+    const noSession=recent.filter(e=>!e.session_id).slice(0,20);
     if(noSession.length>0){
       document.getElementById('audit-sessions').innerHTML+=
         '<tr><td colspan="6" style="color:#7d8590;font-size:11px;padding-top:12px">Requests without session:</td></tr>'+
@@ -1458,26 +1458,44 @@ document.getElementById('audit-sessions').addEventListener('click',function(e){
 });
 
 // Session ID filter
-function applyAuditSessionFilter(){
+function applyAuditFilter(){
   const q=document.getElementById('audit-session-filter').value.trim().toLowerCase();
   const clearBtn=document.getElementById('audit-session-filter-clear');
-  const rows=document.querySelectorAll('#audit-sessions tr');
   if(!q){
+    const rows=document.querySelectorAll('#audit-sessions tr');
     rows.forEach(r=>r.style.display='');
     clearBtn.style.display='none';
     return;
   }
   clearBtn.style.display='';
-  let hasMatch=false;
+  // Try as request ID first: look in non-session rows and attempt direct load
+  const noSessionRows=document.querySelectorAll('#audit-sessions tr[data-rid]');
+  let ridMatch=false;
+  noSessionRows.forEach(r=>{
+    if((r.dataset.rid||'').toLowerCase().includes(q)){ridMatch=true;}
+  });
+  if(ridMatch||q.length>=32){
+    // Looks like a request ID — try to load directly
+    loadSingleAudit(q).catch(()=>{
+      // Not a valid request ID, fall back to session filter
+      filterSessionRows(q);
+    });
+    return;
+  }
+  filterSessionRows(q);
+}
+function filterSessionRows(q){
+  const rows=document.querySelectorAll('#audit-sessions tr');
   rows.forEach(r=>{
     const sid=r.dataset.sid||'';
+    const rid=r.dataset.rid||'';
     if(sid&&sid.toLowerCase().includes(q)){
       r.style.display='';
-      hasMatch=true;
-    }else if(r.dataset.sid!==undefined){
+    }else if(rid&&rid.toLowerCase().includes(q)){
+      r.style.display='';
+    }else if(r.dataset.sid!==undefined||r.dataset.rid!==undefined){
       r.style.display='none';
     }else{
-      // non-session header rows or entries: hide when filtering
       r.style.display='none';
     }
   });
@@ -1487,11 +1505,11 @@ function applyAuditSessionFilter(){
     loadSessionTimeline(visible[0].dataset.sid);
   }
 }
-document.getElementById('audit-session-filter-btn').addEventListener('click',applyAuditSessionFilter);
-document.getElementById('audit-session-filter').addEventListener('keydown',e=>{if(e.key==='Enter')applyAuditSessionFilter()});
+document.getElementById('audit-session-filter-btn').addEventListener('click',applyAuditFilter);
+document.getElementById('audit-session-filter').addEventListener('keydown',e=>{if(e.key==='Enter')applyAuditFilter()});
 document.getElementById('audit-session-filter-clear').addEventListener('click',()=>{
   document.getElementById('audit-session-filter').value='';
-  applyAuditSessionFilter();
+  applyAuditFilter();
 });
 
 async function loadSessionTimeline(sessionId){
@@ -1575,9 +1593,10 @@ document.getElementById('audit-timeline-content').addEventListener('click',funct
 });
 
 async function loadSingleAudit(requestId){
+  const r=await apiFetch('/api/audit/'+requestId+'?dlp=true&tg=true');
+  const data=await r.json();
+  if(data.error){throw new Error(data.error);}
   try{
-    const r=await apiFetch('/api/audit/'+requestId+'?dlp=true&tg=true');
-    const data=await r.json();
     document.querySelector('#tab-audit .section').style.display='none';
     document.getElementById('audit-timeline').style.display=auditCurrentSession?'none':'none';
     document.getElementById('audit-detail').style.display='block';
