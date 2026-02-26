@@ -91,6 +91,8 @@ export function createDlpScannerPlugin(db: Database.Database, config: DlpScanner
   return {
     name: 'dlp-scanner',
     priority: 20,
+    version: '1.0.0',
+    apiVersion: 2,
 
     // ── Request-side: scan outgoing requests to LLM ──
     async onRequest(context: RequestContext): Promise<PluginRequestResult | void> {
