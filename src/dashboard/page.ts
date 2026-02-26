@@ -884,7 +884,7 @@ async function refreshFindings(){
   try{
     const sp=sinceParam();
     const dlpUrl='/api/dlp/recent?limit=200'+(sp?'&'+sp:'');
-    const recentR=await fetch(dlpUrl);
+    const recentR=await apiFetch(dlpUrl);
     const newFindings=await recentR.json();
     if(!skipIfSame('findings-list',newFindings)){
       findingsAll=newFindings;
@@ -1269,7 +1269,7 @@ document.getElementById('sig-log-toggle').addEventListener('click',()=>{
 async function refreshSignature(checkRemote){
   try{
     const url=checkRemote?'/api/dlp/signature?check=true':'/api/dlp/signature';
-    const r=await fetch(url);
+    const r=await apiFetch(url);
     const s=await r.json();
     const badge=document.getElementById('sig-badge');
     const upd=document.getElementById('sig-update');
@@ -1373,7 +1373,7 @@ async function refreshOptimizer(){
   try{
     const sp=sinceParam();
     const optUrl='/api/optimizer/recent'+(sp?'?'+sp:'');
-    const [statsR,recentR]=await Promise.all([apiFetch('/api/optimizer/stats'),fetch(optUrl)]);
+    const [statsR,recentR]=await Promise.all([apiFetch('/api/optimizer/stats'),apiFetch(optUrl)]);
     const stats=await statsR.json();
     const recent=await recentR.json();
 
@@ -1780,7 +1780,7 @@ async function refreshToolGuard(){
   try{
     const sp=sinceParam();
     const tgUrl='/api/tool-guard/recent?limit=100'+(sp?'&'+sp:'');
-    const [statsR,recentR,cfgR]=await Promise.all([apiFetch('/api/tool-guard/stats'),fetch(tgUrl),apiFetch('/api/config')]);
+    const [statsR,recentR,cfgR]=await Promise.all([apiFetch('/api/tool-guard/stats'),apiFetch(tgUrl),apiFetch('/api/config')]);
     const stats=await statsR.json();
     const recent=await recentR.json();
     const cfgData=await cfgR.json();
