@@ -21,6 +21,8 @@ export function createAuditLoggerPlugin(db: Database.Database, config: AuditLogg
   return {
     name: 'audit-logger',
     priority: 25,
+    version: '1.0.0',
+    apiVersion: 2,
 
     async onRequest(context: RequestContext): Promise<PluginRequestResult | void> {
       // Capture request body for later storage

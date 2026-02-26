@@ -199,6 +199,8 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
   return {
     name: 'tool-guard',
     priority: 15,
+    version: '1.0.0',
+    apiVersion: 2,
 
     // ── Load rules from DB and set streaming block flag ──
     async onRequest(context: RequestContext): Promise<PluginRequestResult | void> {
