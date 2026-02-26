@@ -99,7 +99,7 @@ export async function loadExternalPlugins(
       }
 
       // Adapt to internal Plugin interface
-      const adapted = adaptPlugin(externalPlugin, priorityCounter, repo);
+      const adapted = adaptPlugin(externalPlugin, priorityCounter, repo, cfg.package);
       priorityCounter += 1;
       plugins.push(adapted);
 

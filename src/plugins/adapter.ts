@@ -87,12 +87,15 @@ export function adaptPlugin(
   external: BastionPlugin,
   priority: number,
   repo: PluginEventsRepository,
+  packageName?: string,
 ): Plugin {
   const plugin: Plugin = {
     name: external.name,
     priority,
     version: external.version,
     apiVersion: external.apiVersion,
+    source: 'external',
+    packageName,
   };
 
   if (external.onRequest) {

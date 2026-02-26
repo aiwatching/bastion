@@ -569,6 +569,10 @@ tr:hover{background:#1c2128}
         <div class="toggle-label" style="font-size:12px">Audit Log (hours)</div>
         <input type="number" id="ret-audit" min="1" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px">
       </div>
+      <div class="toggle-row" style="flex-direction:column;align-items:flex-start;gap:4px">
+        <div class="toggle-label" style="font-size:12px">Plugin Events (hours)</div>
+        <input type="number" id="ret-plugin-events" min="1" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px">
+      </div>
     </div>
     <button id="ret-save-btn" style="padding:6px 20px;font-size:13px;cursor:pointer;color:#fff;background:#238636;border:1px solid #2ea043;border-radius:6px;font-weight:500">Save Retention Settings</button>
     <span id="ret-status" style="margin-left:8px;font-size:12px;color:#3fb950;display:none">Saved!</span>
@@ -2022,13 +2026,27 @@ async function refreshSettings(){
   try{
     const r=await apiFetch('/api/config');
     const data=await r.json();
-    const ps=data.pluginStatus||{};
+    const info=data.pluginInfo||[];
+    const builtin=info.filter(p=>p.source==='builtin');
+    const external=info.filter(p=>p.source==='external');
 
-    let html='';
-    for(const [name,enabled] of Object.entries(ps)){
-      html+='<div class="toggle-row"><div><div class="toggle-label">'+name+'</div></div>'+
-        '<label class="switch"><input type="checkbox" data-plugin="'+name+'"'+(enabled?' checked':'')+'>'+
+    let html='<div style="font-size:12px;color:#7d8590;margin-bottom:6px;font-weight:500">Built-in</div>';
+    for(const p of builtin){
+      html+='<div class="toggle-row"><div><div class="toggle-label">'+p.name+'</div></div>'+
+        '<label class="switch"><input type="checkbox" data-plugin="'+p.name+'"'+(p.enabled?' checked':'')+'>'+
         '<span class="slider"></span></label></div>';
+    }
+    if(external.length>0){
+      html+='<div style="font-size:12px;color:#7d8590;margin:12px 0 6px;font-weight:500;border-top:1px solid #21262d;padding-top:10px">External</div>';
+      for(const p of external){
+        const meta=[];
+        if(p.version)meta.push('v'+p.version);
+        if(p.packageName)meta.push(p.packageName);
+        const metaStr=meta.length?' <span style="color:#7d8590;font-size:11px">('+meta.join(' &middot; ')+')</span>':'';
+        html+='<div class="toggle-row"><div><div class="toggle-label">'+p.name+metaStr+'</div></div>'+
+          '<label class="switch"><input type="checkbox" data-plugin="'+p.name+'"'+(p.enabled?' checked':'')+'>'+
+          '<span class="slider"></span></label></div>';
+      }
     }
     document.getElementById('plugin-toggles').innerHTML=html;
 
@@ -2052,6 +2070,7 @@ async function refreshSettings(){
     document.getElementById('ret-optimizer').value=ret.optimizerEventsHours||720;
     document.getElementById('ret-sessions').value=ret.sessionsHours||720;
     document.getElementById('ret-audit').value=ret.auditLogHours||24;
+    document.getElementById('ret-plugin-events').value=ret.pluginEventsHours||720;
   }catch(e){}
 }
 
@@ -2063,6 +2082,7 @@ document.getElementById('ret-save-btn').addEventListener('click',async()=>{
     optimizerEventsHours:parseInt(document.getElementById('ret-optimizer').value)||720,
     sessionsHours:parseInt(document.getElementById('ret-sessions').value)||720,
     auditLogHours:parseInt(document.getElementById('ret-audit').value)||24,
+    pluginEventsHours:parseInt(document.getElementById('ret-plugin-events').value)||720,
   };
   await apiFetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({retention})});
   const st=document.getElementById('ret-status');st.style.display='inline';setTimeout(()=>st.style.display='none',2000);

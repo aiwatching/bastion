@@ -8,5 +8,5 @@ export type {
   PluginManifest,
   Logger,
   DatabaseAccess,
-} from '@aiwatching/bastion-plugin-api';
-export { PLUGIN_API_VERSION } from '@aiwatching/bastion-plugin-api';
+} from './types.js';
+export { PLUGIN_API_VERSION } from './types.js';
