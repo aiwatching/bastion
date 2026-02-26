@@ -201,6 +201,15 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
       // Skip if onResponse already recorded (non-streaming + action=block)
       if (context.request._toolGuardRecorded) return;
 
+      // Skip re-analysis for very large streaming bodies to avoid blocking the event loop
+      if (context.isStreaming && context.body.length > 1024 * 1024) {
+        log.debug('Skipping tool guard analysis for large streaming response', {
+          requestId: context.request.id,
+          bodyLength: context.body.length,
+        });
+        return;
+      }
+
       try {
         const rules = context.request._toolGuardRules ?? rulesRepo.getEnabled();
         const matches = analyzeToolCalls(context.body, context.isStreaming, rules);

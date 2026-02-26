@@ -2,6 +2,11 @@ export interface BastionConfig {
   server: {
     host: string;
     port: number;
+    auth: {
+      enabled: boolean;
+      token: string;
+      excludePaths: string[];
+    };
   };
   logging: {
     level: 'debug' | 'info' | 'warn' | 'error';

@@ -231,6 +231,15 @@ export function createDlpScannerPlugin(db: Database.Database, config: DlpScanner
     async onResponseComplete(context: ResponseCompleteContext): Promise<void> {
       if (!context.isStreaming) return;
 
+      // Skip DLP scanning for very large streaming bodies (data already sent, can only warn)
+      if (context.body.length > 1024 * 1024) {
+        log.debug('Skipping DLP scan for large streaming response', {
+          requestId: context.request.id,
+          bodyLength: context.body.length,
+        });
+        return;
+      }
+
       const patterns = patternsRepo.getEnabled();
       const responseResult = scanText(context.body, patterns, 'warn');
       if (responseResult.findings.length === 0) return;

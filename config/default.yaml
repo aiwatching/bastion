@@ -1,6 +1,11 @@
 server:
   host: "0.0.0.0"
   port: 8420
+  auth:
+    enabled: true
+    token: ""
+    excludePaths:
+      - "/health"
 
 logging:
   level: "info"

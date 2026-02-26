@@ -50,6 +50,12 @@ export function loadConfig(overridePath?: string): BastionConfig {
   if (process.env.BASTION_LOG_LEVEL) {
     (config.logging as Record<string, unknown>).level = process.env.BASTION_LOG_LEVEL;
   }
+  if (process.env.BASTION_AUTH_TOKEN) {
+    const serverObj = config.server as Record<string, unknown>;
+    const serverAuth = (serverObj.auth as Record<string, unknown>) ?? {};
+    serverAuth.token = process.env.BASTION_AUTH_TOKEN;
+    serverObj.auth = serverAuth;
+  }
 
   return config as unknown as BastionConfig;
 }
