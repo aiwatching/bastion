@@ -2,6 +2,7 @@ export interface BastionConfig {
   server: {
     host: string;
     port: number;
+    failMode: 'open' | 'closed';
     auth: {
       enabled: boolean;
       token: string;

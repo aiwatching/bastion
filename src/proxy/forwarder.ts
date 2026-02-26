@@ -102,6 +102,19 @@ export async function forwardRequest(
     return requestContext;
   }
 
+  // If a plugin crashed in fail-closed mode
+  if (pluginResult.pluginError) {
+    res.writeHead(502, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({
+      error: {
+        message: 'Security pipeline error',
+        detail: `Plugin ${pluginResult.pluginError.pluginName} failed`,
+        type: 'gateway_pipeline_error',
+      },
+    }));
+    return requestContext;
+  }
+
   // Use modified body if plugins changed it
   if (pluginResult.modifiedBody) {
     bodyStr = pluginResult.modifiedBody;
@@ -337,6 +350,16 @@ async function handleBufferedResponse(
           error: {
             message: hookResult.blocked.reason,
             type: 'gateway_response_blocked',
+          },
+        }));
+      } else if (hookResult.pluginError) {
+        // Plugin crashed in fail-closed mode
+        clientRes.writeHead(502, { 'content-type': 'application/json' });
+        clientRes.end(JSON.stringify({
+          error: {
+            message: 'Security pipeline error',
+            detail: `Plugin ${hookResult.pluginError.pluginName} failed`,
+            type: 'gateway_pipeline_error',
           },
         }));
       } else {

@@ -67,7 +67,7 @@ export async function startGateway(): Promise<void> {
   registerMessagingProviders();
 
   // Initialize plugin manager — register all plugins, disable those not enabled
-  const pluginManager = new PluginManager(config.timeouts.plugin);
+  const pluginManager = new PluginManager(config.timeouts.plugin, config.server.failMode ?? 'open');
 
   pluginManager.register(createMetricsCollectorPlugin(db));
   if (!config.plugins.metrics.enabled) pluginManager.disable('metrics-collector');
@@ -116,6 +116,11 @@ export async function startGateway(): Promise<void> {
     },
   }));
   if (!config.plugins.toolGuard?.enabled) pluginManager.disable('tool-guard');
+
+  // Sync failMode changes at runtime
+  configManager.onChange((c) => {
+    pluginManager.setFailMode(c.server.failMode ?? 'open');
+  });
 
   // Create and start server
   const server = createProxyServer(config, pluginManager, () => {

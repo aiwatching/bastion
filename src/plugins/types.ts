@@ -54,6 +54,7 @@ export interface ShortCircuitResponse {
 export interface PluginRequestResult {
   shortCircuit?: ShortCircuitResponse;
   blocked?: { reason: string };
+  pluginError?: { pluginName: string; reason: string };
   modifiedBody?: string;
 }
 
@@ -68,6 +69,7 @@ export interface ResponseInterceptContext {
 
 export interface PluginResponseResult {
   blocked?: { reason: string };
+  pluginError?: { pluginName: string; reason: string };
   modifiedBody?: string;
 }
 

@@ -11,6 +11,7 @@ import { registerWrapCommand } from './commands/wrap.js';
 import { registerTrustCaCommand } from './commands/trust-ca.js';
 import { registerProxyCommand } from './commands/proxy.js';
 import { registerOpenclawCommand } from './commands/openclaw.js';
+import { registerTokenCommand } from './commands/token.js';
 import { getVersion } from '../version.js';
 
 const program = new Command();
@@ -31,5 +32,6 @@ registerWrapCommand(program);
 registerTrustCaCommand(program);
 registerProxyCommand(program);
 registerOpenclawCommand(program);
+registerTokenCommand(program);
 
 program.parse();
