@@ -175,6 +175,10 @@ export async function forwardRequest(
   });
 }
 
+// Cap accumulated body for post-send plugin processing.
+// Client always receives the full stream; only onResponseComplete sees the truncated body.
+const MAX_STREAMING_BODY = 2 * 1024 * 1024; // 2MB
+
 async function handleStreamingResponse(
   upstreamRes: IncomingMessage,
   clientRes: ServerResponse,
@@ -184,6 +188,7 @@ async function handleStreamingResponse(
   startTime: number,
 ): Promise<void> {
   let fullResponseData = '';
+  let bodyCapReached = false;
   const sseEvents: Record<string, unknown>[] = [];
 
   // Streaming tool guard: intercept tool_use SSE blocks when action=block
@@ -215,7 +220,14 @@ async function handleStreamingResponse(
   return new Promise<void>((resolve) => {
     upstreamRes.on('data', (chunk: Buffer) => {
       const chunkStr = chunk.toString('utf-8');
-      fullResponseData += chunkStr;
+
+      // Cap accumulated body for post-send analysis; client still gets all data
+      if (!bodyCapReached) {
+        fullResponseData += chunkStr;
+        if (fullResponseData.length > MAX_STREAMING_BODY) {
+          bodyCapReached = true;
+        }
+      }
 
       if (guard) {
         // Let the parser drive the guard (events are processed in the SSEParser callback)

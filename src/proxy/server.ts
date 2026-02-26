@@ -36,6 +36,23 @@ export function createProxyServer(
       return;
     }
 
+    // Auth check for /api/* routes
+    if (req.url?.startsWith('/api/') && configManager) {
+      const authCfg = configManager.get().server.auth;
+      if (authCfg?.enabled !== false && authCfg?.token) {
+        const excluded = (authCfg.excludePaths ?? []).some(p => req.url!.startsWith(p));
+        if (!excluded) {
+          const authHeader = req.headers['authorization'] as string | undefined;
+          const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+          if (token !== authCfg.token) {
+            res.writeHead(401, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Unauthorized' }));
+            return;
+          }
+        }
+      }
+    }
+
     // API routes (GET, PUT)
     if (apiRouter && (req.url?.startsWith('/api/') ?? false)) {
       if (apiRouter(req, res)) return;

@@ -578,6 +578,12 @@ tr:hover{background:#1c2128}
 <p class="footer">Bastion <span id="ver">v0.1.0</span> &mdash; <span id="uptime"></span> uptime &mdash; <span id="mem"></span> MB memory</p>
 
 <script>
+let _authToken=localStorage.getItem('bastion_token')||'';
+function apiFetch(url,opts){
+  opts=opts||{};
+  if(_authToken){opts.headers=Object.assign(opts.headers||{},{'Authorization':'Bearer '+_authToken});}
+  return fetch(url,opts);
+}
 let activeTab='overview';
 let _lastJson={}; // keyed by element ID — skip DOM rebuild if data unchanged
 function skipIfSame(id,json){const s=JSON.stringify(json);if(_lastJson[id]===s)return true;_lastJson[id]=s;return false}
@@ -642,7 +648,7 @@ document.querySelectorAll('#dlp-sub-tabs .sub-tab').forEach(t=>{
 let sessions=[];
 async function loadSessions(){
   try{
-    const r=await fetch('/api/sessions');
+    const r=await apiFetch('/api/sessions');
     sessions=await r.json();
     const sel=document.getElementById('session-filter');
     const cur=sel.value;
@@ -667,7 +673,7 @@ async function refresh(){
     const h=hoursForRange(timeRange);
     if(h)parts.push('hours='+h);
     const params=parts.length?'?'+parts.join('&'):'';
-    const r=await fetch('/api/stats'+params);
+    const r=await apiFetch('/api/stats'+params);
     const d=await r.json();
     const s=d.stats;
 
@@ -768,7 +774,7 @@ function populateDlpForm(config,enabled){
 }
 
 async function loadDlpConfig(){
-  const r=await fetch('/api/config');
+  const r=await apiFetch('/api/config');
   const data=await r.json();
   const config=data.config?.plugins?.dlp||{};
   const enabled=data.pluginStatus?.['dlp-scanner']!==false;
@@ -777,7 +783,7 @@ async function loadDlpConfig(){
   // Load builtins once
   if(!dlpBuiltinsLoaded){
     try{
-      const bRes=await fetch('/api/dlp/semantics/builtins');
+      const bRes=await apiFetch('/api/dlp/semantics/builtins');
       const b=await bRes.json();
       document.getElementById('dlp-builtin-sensitive').innerHTML=
         b.sensitivePatterns.map(p=>'<code style="background:#21262d;padding:2px 6px;border-radius:4px;font-size:11px;color:#7d8590">'+esc(p)+'</code>').join('');
@@ -800,7 +806,7 @@ document.getElementById('dlp-apply-btn').addEventListener('click',async()=>{
       nonSensitiveNames:f.nonsensitive.split('\\n').map(s=>s.trim()).filter(Boolean),
     }
   };
-  await fetch('/api/dlp/config/apply',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+  await apiFetch('/api/dlp/config/apply',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
   await loadDlpConfig();
   loadDlpHistory();
 });
@@ -827,7 +833,7 @@ document.getElementById('dlp-history-toggle').addEventListener('click',()=>{
 
 async function loadDlpHistory(){
   try{
-    const r=await fetch('/api/dlp/config/history');
+    const r=await apiFetch('/api/dlp/config/history');
     const entries=await r.json();
     document.getElementById('dlp-history-count').textContent='('+entries.length+')';
     document.getElementById('no-history').style.display=entries.length?'none':'';
@@ -849,7 +855,7 @@ document.getElementById('dlp-history-body').addEventListener('click',async funct
   const btn=e.target.closest('.dlp-restore-btn');
   if(!btn)return;
   if(!confirm('Restore this configuration?'))return;
-  await fetch('/api/dlp/config/restore/'+btn.dataset.hid,{method:'POST'});
+  await apiFetch('/api/dlp/config/restore/'+btn.dataset.hid,{method:'POST'});
   await loadDlpConfig();
   loadDlpHistory();
 });
@@ -857,7 +863,7 @@ document.getElementById('dlp-history-body').addEventListener('click',async funct
 // DLP tab — config + patterns only
 async function refreshDlp(){
   try{
-    const statsR=await fetch('/api/stats');
+    const statsR=await apiFetch('/api/stats');
     const stats=(await statsR.json()).dlp;
     if(!skipIfSame('dlp-cards',stats)){
       const ba=stats.by_action||{};
@@ -934,7 +940,7 @@ document.getElementById('findings-list').addEventListener('click',async function
   detailRow.appendChild(td);
   parentRow.after(detailRow);
   try{
-    const r=await fetch('/api/audit/'+rid+'?dlp=true');
+    const r=await apiFetch('/api/audit/'+rid+'?dlp=true');
     const data=await r.json();
     td.innerHTML=renderInlineAudit(data,rid);
   }catch(ex){
@@ -1142,7 +1148,7 @@ document.getElementById('scan-btn').addEventListener('click',async()=>{
   const btn=document.getElementById('scan-btn');
   btn.textContent='Scanning...';btn.disabled=true;
   try{
-    const r=await fetch('/api/dlp/scan',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text,action,trace:enableTrace})});
+    const r=await apiFetch('/api/dlp/scan',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text,action,trace:enableTrace})});
     const data=await r.json();
     if(data.error){alert(data.error);return;}
     const resultEl=document.getElementById('scan-result');
@@ -1190,7 +1196,7 @@ document.getElementById('scan-input').addEventListener('keydown',e=>{
 let _allPatterns=[];
 async function refreshPatterns(){
   try{
-    const r=await fetch('/api/dlp/patterns');
+    const r=await apiFetch('/api/dlp/patterns');
     _allPatterns=await r.json();
     // Populate category filter (preserve selection)
     const sel=document.getElementById('dlp-cat-filter');
@@ -1222,7 +1228,7 @@ function renderPatterns(){
 document.getElementById('dlp-patterns').addEventListener('change',async function(e){
   const cb=e.target.closest('input[type=checkbox][data-pid]');
   if(!cb)return;
-  await fetch('/api/dlp/patterns/'+encodeURIComponent(cb.dataset.pid),{
+  await apiFetch('/api/dlp/patterns/'+encodeURIComponent(cb.dataset.pid),{
     method:'PUT',headers:{'content-type':'application/json'},
     body:JSON.stringify({enabled:cb.checked})
   });
@@ -1231,7 +1237,7 @@ document.getElementById('dlp-patterns').addEventListener('click',async function(
   const btn=e.target.closest('.dlp-del-btn');
   if(!btn)return;
   if(!confirm('Delete this custom pattern?'))return;
-  await fetch('/api/dlp/patterns/'+encodeURIComponent(btn.dataset.id),{method:'DELETE'});
+  await apiFetch('/api/dlp/patterns/'+encodeURIComponent(btn.dataset.id),{method:'DELETE'});
   refreshPatterns();
 });
 document.getElementById('dlp-cat-filter').addEventListener('change',renderPatterns);
@@ -1297,7 +1303,7 @@ async function refreshSignature(checkRemote){
       if(checkRemote&&s.local)addSigLog('Already up to date (#'+s.local.version+')',true);
     }
     // Auto-sync toggle
-    const cfgR=await fetch('/api/config');
+    const cfgR=await apiFetch('/api/config');
     const cfg=await cfgR.json();
     const rp=cfg.config?.plugins?.dlp?.remotePatterns||{};
     document.getElementById('sig-auto-sync').checked=rp.syncOnStart!==false;
@@ -1309,7 +1315,7 @@ async function syncSignature(){
   syncBtn.textContent='Syncing...';syncBtn.disabled=true;
   addSigLog('Sync started...',null);
   try{
-    const r=await fetch('/api/dlp/signature/sync',{method:'POST'});
+    const r=await apiFetch('/api/dlp/signature/sync',{method:'POST'});
     const data=await r.json();
     if(data.ok){
       addSigLog('Sync complete: '+data.synced+' patterns synced'+(data.signature?' (v#'+data.signature.version+')':''),true);
@@ -1329,7 +1335,7 @@ document.getElementById('sig-check-btn').addEventListener('click',()=>{
 document.getElementById('sig-auto-sync').addEventListener('change',async function(){
   const enabled=this.checked;
   try{
-    await fetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({plugins:{dlp:{remotePatterns:{syncOnStart:enabled}}}})});
+    await apiFetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({plugins:{dlp:{remotePatterns:{syncOnStart:enabled}}}})});
     addSigLog('Auto-sync '+(enabled?'enabled':'disabled'),true);
   }catch(e){addSigLog('Failed to update auto-sync: '+e.message,false)}
 });
@@ -1351,7 +1357,7 @@ document.getElementById('dlp-save-btn').addEventListener('click',async()=>{
   if(!name||!regex){errEl.textContent='Name and Regex are required';return}
   try{new RegExp(regex)}catch(e){errEl.textContent='Invalid regex: '+e.message;return}
   const payload={name,regex_source:regex,description:desc||null,require_context:ctx?JSON.stringify(ctx.split(',').map(s=>s.trim()).filter(Boolean)):null};
-  const r=await fetch('/api/dlp/patterns',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+  const r=await apiFetch('/api/dlp/patterns',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
   const data=await r.json();
   if(!r.ok){errEl.textContent=data.error||'Failed to save';return}
   document.getElementById('dlp-add-form').style.display='none';
@@ -1367,7 +1373,7 @@ async function refreshOptimizer(){
   try{
     const sp=sinceParam();
     const optUrl='/api/optimizer/recent'+(sp?'?'+sp:'');
-    const [statsR,recentR]=await Promise.all([fetch('/api/optimizer/stats'),fetch(optUrl)]);
+    const [statsR,recentR]=await Promise.all([apiFetch('/api/optimizer/stats'),fetch(optUrl)]);
     const stats=await statsR.json();
     const recent=await recentR.json();
 
@@ -1393,7 +1399,7 @@ let auditCurrentSession=null;
 async function refreshAudit(){
   try{
     const sp=sinceParam();
-    const r=await fetch('/api/audit/sessions'+(sp?'?'+sp:''));
+    const r=await apiFetch('/api/audit/sessions'+(sp?'?'+sp:''));
     const sessions=await r.json();
     document.getElementById('no-audit').style.display=sessions.length?'none':'';
     document.getElementById('audit-sessions').innerHTML=sessions.map(s=>{
@@ -1412,7 +1418,7 @@ async function refreshAudit(){
         '<td style="color:#58a6ff">View</td></tr>';
     }).join('');
     // Also show non-session entries
-    const recentR=await fetch('/api/audit/recent'+(sp?'?'+sp:''));
+    const recentR=await apiFetch('/api/audit/recent'+(sp?'?'+sp:''));
     const recent=await recentR.json();
     const noSession=recent.filter(e=>!e.session_id);
     if(noSession.length>0){
@@ -1480,7 +1486,7 @@ document.getElementById('audit-session-filter-clear').addEventListener('click',(
 async function loadSessionTimeline(sessionId){
   auditCurrentSession=sessionId;
   try{
-    const r=await fetch('/api/audit/session/'+sessionId);
+    const r=await apiFetch('/api/audit/session/'+sessionId);
     const data=await r.json();
     const timeline=data.timeline||data;
     const sessionMeta=data.session||null;
@@ -1558,7 +1564,7 @@ document.getElementById('audit-timeline-content').addEventListener('click',funct
 
 async function loadSingleAudit(requestId){
   try{
-    const r=await fetch('/api/audit/'+requestId+'?dlp=true&tg=true');
+    const r=await apiFetch('/api/audit/'+requestId+'?dlp=true&tg=true');
     const data=await r.json();
     document.querySelector('#tab-audit .section').style.display='none';
     document.getElementById('audit-timeline').style.display=auditCurrentSession?'none':'none';
@@ -1728,7 +1734,7 @@ function renderParsedAudit(data){
 // Tool Guard — alert polling
 async function pollToolGuardAlerts(){
   try{
-    const r=await fetch('/api/tool-guard/alerts');
+    const r=await apiFetch('/api/tool-guard/alerts');
     const data=await r.json();
     const badge=document.getElementById('tg-badge');
     const banner=document.getElementById('tg-alert-banner');
@@ -1751,7 +1757,7 @@ async function pollToolGuardAlerts(){
 }
 
 document.getElementById('tg-ack-btn').addEventListener('click',async()=>{
-  await fetch('/api/tool-guard/alerts/ack',{method:'POST'});
+  await apiFetch('/api/tool-guard/alerts/ack',{method:'POST'});
   pollToolGuardAlerts();
 });
 
@@ -1774,7 +1780,7 @@ async function refreshToolGuard(){
   try{
     const sp=sinceParam();
     const tgUrl='/api/tool-guard/recent?limit=100'+(sp?'&'+sp:'');
-    const [statsR,recentR,cfgR]=await Promise.all([fetch('/api/tool-guard/stats'),fetch(tgUrl),fetch('/api/config')]);
+    const [statsR,recentR,cfgR]=await Promise.all([apiFetch('/api/tool-guard/stats'),fetch(tgUrl),apiFetch('/api/config')]);
     const stats=await statsR.json();
     const recent=await recentR.json();
     const cfgData=await cfgR.json();
@@ -1876,7 +1882,7 @@ document.querySelectorAll('#tg-sub-tabs .sub-tab').forEach(t=>{
 // Tool Guard Rules management
 async function refreshToolGuardRules(){
   try{
-    const r=await fetch('/api/tool-guard/rules');
+    const r=await apiFetch('/api/tool-guard/rules');
     const rules=await r.json();
     document.getElementById('no-tg-rules').style.display=rules.length?'none':'';
     if(skipIfSame('tg-rules-table',rules))return;
@@ -1898,7 +1904,7 @@ async function refreshToolGuardRules(){
 document.getElementById('tg-rules-table').addEventListener('change',async function(e){
   const cb=e.target.closest('.tgr-toggle');
   if(!cb)return;
-  await fetch('/api/tool-guard/rules/'+encodeURIComponent(cb.dataset.id),{
+  await apiFetch('/api/tool-guard/rules/'+encodeURIComponent(cb.dataset.id),{
     method:'PUT',headers:{'content-type':'application/json'},
     body:JSON.stringify({enabled:cb.checked})
   });
@@ -1908,7 +1914,7 @@ document.getElementById('tg-rules-table').addEventListener('click',async functio
   if(!btn)return;
   e.stopPropagation();
   if(!confirm('Delete this custom rule?'))return;
-  await fetch('/api/tool-guard/rules/'+encodeURIComponent(btn.dataset.id),{method:'DELETE'});
+  await apiFetch('/api/tool-guard/rules/'+encodeURIComponent(btn.dataset.id),{method:'DELETE'});
   _lastJson={};refreshToolGuardRules();
 });
 
@@ -1950,7 +1956,7 @@ document.getElementById('tgr-save').addEventListener('click',async()=>{
     severity:document.getElementById('tgr-severity').value,
     category:document.getElementById('tgr-category').value||'custom',
   };
-  const r=await fetch('/api/tool-guard/rules',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+  const r=await apiFetch('/api/tool-guard/rules',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
   const res=await r.json();
   if(res.error){errEl.textContent=res.error;errEl.style.display='inline';return;}
   document.getElementById('tg-rule-form').style.display='none';
@@ -1970,7 +1976,7 @@ document.getElementById('tgr-save').addEventListener('click',async()=>{
     }}};
     try{
       console.log('[Bastion] Saving toolGuard config:',JSON.stringify(payload));
-      const r=await fetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+      const r=await apiFetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
       if(!r.ok){console.error('[Bastion] Config save failed:',r.status,await r.text());return;}
       const result=await r.json();
       console.log('[Bastion] Config saved, effective toolGuard:',JSON.stringify(result.config?.plugins?.toolGuard));
@@ -1983,7 +1989,7 @@ document.getElementById('tgr-save').addEventListener('click',async()=>{
 // Settings tab
 async function refreshSettings(){
   try{
-    const r=await fetch('/api/config');
+    const r=await apiFetch('/api/config');
     const data=await r.json();
     const ps=data.pluginStatus||{};
 
@@ -1999,7 +2005,7 @@ async function refreshSettings(){
       cb.addEventListener('change',async()=>{
         const payload={pluginStatus:{}};
         payload.pluginStatus[cb.dataset.plugin]=cb.checked;
-        await fetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+        await apiFetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
       });
     });
 
@@ -2023,23 +2029,47 @@ document.getElementById('ret-save-btn').addEventListener('click',async()=>{
     sessionsHours:parseInt(document.getElementById('ret-sessions').value)||720,
     auditLogHours:parseInt(document.getElementById('ret-audit').value)||24,
   };
-  await fetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({retention})});
+  await apiFetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({retention})});
   const st=document.getElementById('ret-status');st.style.display='inline';setTimeout(()=>st.style.display='none',2000);
 });
 
-loadSessions();
-refresh();
-pollToolGuardAlerts();
-// Only refresh the active tab + alerts; sessions reload every 15s
-// Guard against overlapping refreshes & skip when tab is hidden
-let _refreshBusy=false;
-setInterval(async()=>{
-  if(document.hidden||_refreshBusy)return;
-  _refreshBusy=true;
-  try{await refreshActiveTab();await pollToolGuardAlerts();}
-  finally{_refreshBusy=false;}
-},3000);
-setInterval(()=>{if(!document.hidden)loadSessions()},15000);
+async function checkAuth(){
+  const r=await apiFetch('/api/stats');
+  if(r.status===401){
+    const t=prompt('Enter Bastion Dashboard token:');
+    if(t){
+      _authToken=t.trim();
+      localStorage.setItem('bastion_token',_authToken);
+      const r2=await apiFetch('/api/stats');
+      if(r2.status===401){
+        localStorage.removeItem('bastion_token');
+        _authToken='';
+        document.body.innerHTML='<div style="color:#f85149;text-align:center;padding:60px;font-size:16px">Invalid token. Reload to try again.</div>';
+        return false;
+      }
+    }else{
+      document.body.innerHTML='<div style="color:#7d8590;text-align:center;padding:60px;font-size:16px">Authentication required. Reload to enter token.</div>';
+      return false;
+    }
+  }
+  return true;
+}
+(async()=>{
+  if(!await checkAuth())return;
+  loadSessions();
+  refresh();
+  pollToolGuardAlerts();
+  // Only refresh the active tab + alerts; sessions reload every 15s
+  // Guard against overlapping refreshes & skip when tab is hidden
+  let _refreshBusy=false;
+  setInterval(async()=>{
+    if(document.hidden||_refreshBusy)return;
+    _refreshBusy=true;
+    try{await refreshActiveTab();await pollToolGuardAlerts();}
+    finally{_refreshBusy=false;}
+  },3000);
+  setInterval(()=>{if(!document.hidden)loadSessions()},15000);
+})();
 </script>
 </body>
 </html>`;

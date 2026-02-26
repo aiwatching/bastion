@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { loadConfig } from './config/index.js';
 import { ConfigManager } from './config/manager.js';
 import { setLogLevel } from './utils/logger.js';
@@ -38,6 +39,14 @@ export async function startGateway(): Promise<void> {
 
   // Initialize config manager for runtime updates
   const configManager = new ConfigManager(config);
+
+  // Auto-generate auth token if auth enabled but no token configured
+  if (config.server.auth?.enabled !== false && !config.server.auth?.token) {
+    const token = crypto.randomBytes(32).toString('hex');
+    configManager.update({ server: { auth: { token } } });
+    console.log(`\n  Dashboard token generated: ${token}`);
+    console.log('  Set server.auth.token in config.yaml to use a custom token\n');
+  }
 
   // Apply initial semantic config + listen for changes
   if (config.plugins.dlp.semantics) {
