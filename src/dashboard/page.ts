@@ -617,13 +617,13 @@ document.querySelectorAll('.tab').forEach(t=>{
     refreshActiveTab();
   });
 });
-function refreshActiveTab(){
-  if(activeTab==='overview')refresh();
-  else if(activeTab==='dlp')refreshDlp();
-  else if(activeTab==='optimizer')refreshOptimizer();
-  else if(activeTab==='audit')refreshAudit();
-  else if(activeTab==='toolguard')refreshToolGuard();
-  else if(activeTab==='settings')refreshSettings();
+async function refreshActiveTab(){
+  if(activeTab==='overview')await refresh();
+  else if(activeTab==='dlp')await refreshDlp();
+  else if(activeTab==='optimizer')await refreshOptimizer();
+  else if(activeTab==='audit')await refreshAudit();
+  else if(activeTab==='toolguard')await refreshToolGuard();
+  else if(activeTab==='settings')await refreshSettings();
 }
 
 // DLP sub-tab switching
@@ -646,12 +646,13 @@ async function loadSessions(){
     sessions=await r.json();
     const sel=document.getElementById('session-filter');
     const cur=sel.value;
-    sel.innerHTML='<option value="">All sessions</option>';
+    const opts=['<option value="">All sessions</option>'];
     sessions.forEach(s=>{
       const name=s.label||s.session_id.slice(0,8)+'...';
       const label=name+' ('+s.request_count+' reqs, '+cost(s.total_cost_usd)+')';
-      sel.innerHTML+='<option value="'+s.session_id+'">'+esc(label)+'</option>';
+      opts.push('<option value="'+s.session_id+'">'+esc(label)+'</option>');
     });
+    sel.innerHTML=opts.join('');
     sel.value=cur;
   }catch(e){}
 }
@@ -665,7 +666,6 @@ async function refresh(){
     if(sid)parts.push('session_id='+encodeURIComponent(sid));
     const h=hoursForRange(timeRange);
     if(h)parts.push('hours='+h);
-    const sp=sinceParam();if(sp)parts.push(sp);
     const params=parts.length?'?'+parts.join('&'):'';
     const r=await fetch('/api/stats'+params);
     const d=await r.json();
@@ -842,16 +842,17 @@ async function loadDlpHistory(){
         '<td>'+sp+'</td><td>'+ns+'</td>'+
         '<td><button class="dlp-restore-btn" data-hid="'+e.id+'" style="padding:2px 8px;font-size:11px;cursor:pointer;color:#58a6ff;background:none;border:1px solid #30363d;border-radius:4px">Restore</button></td></tr>';
     }).join('');
-    document.querySelectorAll('.dlp-restore-btn').forEach(btn=>{
-      btn.addEventListener('click',async()=>{
-        if(!confirm('Restore this configuration?'))return;
-        await fetch('/api/dlp/config/restore/'+btn.dataset.hid,{method:'POST'});
-        await loadDlpConfig();
-        loadDlpHistory();
-      });
-    });
   }catch(e){}
 }
+// Event delegation for DLP history restore (set up once)
+document.getElementById('dlp-history-body').addEventListener('click',async function(e){
+  const btn=e.target.closest('.dlp-restore-btn');
+  if(!btn)return;
+  if(!confirm('Restore this configuration?'))return;
+  await fetch('/api/dlp/config/restore/'+btn.dataset.hid,{method:'POST'});
+  await loadDlpConfig();
+  loadDlpHistory();
+});
 
 // DLP tab — config + patterns only
 async function refreshDlp(){
@@ -867,7 +868,7 @@ async function refreshDlp(){
         card('Warned',fmt(ba.warn||0));
     }
     await loadDlpConfig();
-    refreshFindings();
+    await refreshFindings();
   }catch(e){}
 }
 
@@ -904,42 +905,42 @@ function renderFindings(){
       '<td><div class="snippet">'+esc(e.original_snippet||'-')+'</div></td>'+
       '<td><div class="snippet">'+esc(e.redacted_snippet||'-')+'</div></td></tr>';
   }).join('');
-  document.querySelectorAll('.findings-expand-audit').forEach(el=>{
-    el.addEventListener('click',async()=>{
-      const rid=el.dataset.rid;
-      if(!rid)return;
-      const parentRow=el.closest('tr');
-      const existing=parentRow.nextElementSibling;
-      if(existing&&existing.classList.contains('findings-audit-row')){
-        existing.remove();
-        el.innerHTML='&#9654; '+esc(rid.slice(0,8))+'...';
-        return;
-      }
-      // Remove any other expanded rows
-      document.querySelectorAll('.findings-audit-row').forEach(r=>{
-        const prev=r.previousElementSibling;
-        if(prev){const s=prev.querySelector('.findings-expand-audit');if(s)s.innerHTML='&#9654; '+esc(s.dataset.rid.slice(0,8))+'...';}
-        r.remove();
-      });
-      el.innerHTML='&#9660; '+esc(rid.slice(0,8))+'...';
-      const detailRow=document.createElement('tr');
-      detailRow.className='findings-audit-row';
-      const td=document.createElement('td');
-      td.colSpan=9;
-      td.style.cssText='padding:0;border:none';
-      td.innerHTML='<div style="margin:4px 12px 12px;padding:12px;background:#0d1117;border:1px solid #30363d;border-radius:6px"><span style="color:#7d8590">Loading audit log...</span></div>';
-      detailRow.appendChild(td);
-      parentRow.after(detailRow);
-      try{
-        const r=await fetch('/api/audit/'+rid+'?dlp=true');
-        const data=await r.json();
-        td.innerHTML=renderInlineAudit(data,rid);
-      }catch(e){
-        td.innerHTML='<div style="margin:4px 12px 12px;padding:12px;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#f85149">Failed to load audit log</div>';
-      }
-    });
-  });
 }
+// Event delegation for findings expand (set up once)
+document.getElementById('findings-list').addEventListener('click',async function(e){
+  const el=e.target.closest('.findings-expand-audit');
+  if(!el)return;
+  const rid=el.dataset.rid;
+  if(!rid)return;
+  const parentRow=el.closest('tr');
+  const existing=parentRow.nextElementSibling;
+  if(existing&&existing.classList.contains('findings-audit-row')){
+    existing.remove();
+    el.innerHTML='&#9654; '+esc(rid.slice(0,8))+'...';
+    return;
+  }
+  document.querySelectorAll('.findings-audit-row').forEach(r=>{
+    const prev=r.previousElementSibling;
+    if(prev){const s=prev.querySelector('.findings-expand-audit');if(s)s.innerHTML='&#9654; '+esc(s.dataset.rid.slice(0,8))+'...';}
+    r.remove();
+  });
+  el.innerHTML='&#9660; '+esc(rid.slice(0,8))+'...';
+  const detailRow=document.createElement('tr');
+  detailRow.className='findings-audit-row';
+  const td=document.createElement('td');
+  td.colSpan=9;
+  td.style.cssText='padding:0;border:none';
+  td.innerHTML='<div style="margin:4px 12px 12px;padding:12px;background:#0d1117;border:1px solid #30363d;border-radius:6px"><span style="color:#7d8590">Loading audit log...</span></div>';
+  detailRow.appendChild(td);
+  parentRow.after(detailRow);
+  try{
+    const r=await fetch('/api/audit/'+rid+'?dlp=true');
+    const data=await r.json();
+    td.innerHTML=renderInlineAudit(data,rid);
+  }catch(ex){
+    td.innerHTML='<div style="margin:4px 12px 12px;padding:12px;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#f85149">Failed to load audit log</div>';
+  }
+});
 
 // Escape text with DLP match highlighting
 function escHL(text,highlights){
@@ -1216,24 +1217,23 @@ function renderPatterns(){
       '<td style="font-size:12px;color:#7d8590">'+esc(p.description||'-')+'</td>'+
       '<td>'+delBtn+'</td></tr>';
   }).join('');
-  // Bind toggle switches
-  document.querySelectorAll('#dlp-patterns input[type=checkbox]').forEach(cb=>{
-    cb.addEventListener('change',async()=>{
-      await fetch('/api/dlp/patterns/'+encodeURIComponent(cb.dataset.pid),{
-        method:'PUT',headers:{'content-type':'application/json'},
-        body:JSON.stringify({enabled:cb.checked})
-      });
-    });
-  });
-  // Bind delete buttons
-  document.querySelectorAll('.dlp-del-btn').forEach(btn=>{
-    btn.addEventListener('click',async()=>{
-      if(!confirm('Delete this custom pattern?'))return;
-      await fetch('/api/dlp/patterns/'+encodeURIComponent(btn.dataset.id),{method:'DELETE'});
-      refreshPatterns();
-    });
-  });
 }
+// Event delegation for DLP patterns (set up once)
+document.getElementById('dlp-patterns').addEventListener('change',async function(e){
+  const cb=e.target.closest('input[type=checkbox][data-pid]');
+  if(!cb)return;
+  await fetch('/api/dlp/patterns/'+encodeURIComponent(cb.dataset.pid),{
+    method:'PUT',headers:{'content-type':'application/json'},
+    body:JSON.stringify({enabled:cb.checked})
+  });
+});
+document.getElementById('dlp-patterns').addEventListener('click',async function(e){
+  const btn=e.target.closest('.dlp-del-btn');
+  if(!btn)return;
+  if(!confirm('Delete this custom pattern?'))return;
+  await fetch('/api/dlp/patterns/'+encodeURIComponent(btn.dataset.id),{method:'DELETE'});
+  refreshPatterns();
+});
 document.getElementById('dlp-cat-filter').addEventListener('change',renderPatterns);
 
 // Signature management
@@ -1430,22 +1430,15 @@ async function refreshAudit(){
           '<td style="color:#58a6ff">View</td></tr>';
         }).join('');
     }
-    bindAuditSessionClicks();
-    bindAuditSingleClicks();
   }catch(e){ console.error('Audit refresh error',e) }
 }
-
-function bindAuditSessionClicks(){
-  document.querySelectorAll('#audit-sessions tr[data-sid]').forEach(row=>{
-    row.addEventListener('click',()=>loadSessionTimeline(row.dataset.sid));
-  });
-}
-
-function bindAuditSingleClicks(){
-  document.querySelectorAll('#audit-sessions tr[data-rid]').forEach(row=>{
-    row.addEventListener('click',()=>loadSingleAudit(row.dataset.rid));
-  });
-}
+// Event delegation for audit sessions table (set up once)
+document.getElementById('audit-sessions').addEventListener('click',function(e){
+  const sidRow=e.target.closest('tr[data-sid]');
+  if(sidRow){loadSessionTimeline(sidRow.dataset.sid);return;}
+  const ridRow=e.target.closest('tr[data-rid]');
+  if(ridRow){loadSingleAudit(ridRow.dataset.rid);}
+});
 
 // Session ID filter
 function applyAuditSessionFilter(){
@@ -1555,13 +1548,13 @@ async function loadSessionTimeline(sessionId){
     });
 
     document.getElementById('audit-timeline-content').innerHTML=html;
-
-    // Bind clicks on timeline cards
-    document.querySelectorAll('#audit-timeline-content .card[data-rid]').forEach(card=>{
-      card.addEventListener('click',()=>loadSingleAudit(card.dataset.rid));
-    });
   }catch(e){ console.error('Session load error',e) }
 }
+// Event delegation for timeline cards (set up once)
+document.getElementById('audit-timeline-content').addEventListener('click',function(e){
+  const card=e.target.closest('.card[data-rid]');
+  if(card)loadSingleAudit(card.dataset.rid);
+});
 
 async function loadSingleAudit(requestId){
   try{
@@ -1763,6 +1756,7 @@ document.getElementById('tg-ack-btn').addEventListener('click',async()=>{
 });
 
 // Tool Guard tab
+let _tgRecent=[];
 function severityTag(s){
   if(!s)return '<span class="tag" style="background:#21262d;color:#484f58">none</span>';
   const colors={critical:'background:#3d1a1a;color:#f85149',high:'background:#3d2e1a;color:#d29922',medium:'background:#2a2a1a;color:#ffd43b',low:'background:#1a2a3d;color:#58a6ff',info:'background:#1a2d1a;color:#3fb950'};
@@ -1805,6 +1799,7 @@ async function refreshToolGuard(){
 
     document.getElementById('no-tg').style.display=recent.length?'none':'';
     if(skipIfSame('tg-table',recent))return;
+    _tgRecent=recent;
     document.getElementById('tg-table').innerHTML=recent.map(e=>{
       const inputPreview=e.tool_input?(e.tool_input.length>80?esc(e.tool_input.slice(0,80))+'...':esc(e.tool_input)):'';
       const sid=e.session_id?e.session_id.slice(0,8)+'...':'-';
@@ -1817,52 +1812,49 @@ async function refreshToolGuard(){
         '<td>'+(e.category?'<span style="color:#7d8590">'+esc(e.category)+'</span>':'-')+'</td>'+
         '<td class="mono" style="font-size:11px;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(e.tool_input||'')+'">'+inputPreview+'</td></tr>';
     }).join('');
-
-    // Click to expand detail
-    document.querySelectorAll('#tg-table tr[data-tg-idx]').forEach(row=>{
-      row.addEventListener('click',()=>{
-        const entry=recent.find(e=>e.id===row.dataset.tgIdx);
-        if(!entry)return;
-        document.querySelector('#tg-sub-calls .section').style.display='none';
-        document.getElementById('tg-cards').style.display='none';
-        document.getElementById('tg-detail').style.display='block';
-
-        let inputFormatted=entry.tool_input||'';
-        try{inputFormatted=JSON.stringify(JSON.parse(inputFormatted),null,2)}catch{}
-
-        document.getElementById('tg-detail-content').innerHTML=
-          '<div class="audit-kv"><span class="k">Tool</span><span class="v">'+esc(entry.tool_name)+'</span></div>'+
-          '<div class="audit-kv"><span class="k">Provider</span><span class="v">'+esc(entry.provider||'unknown')+'</span></div>'+
-          '<div class="audit-kv"><span class="k">Action</span><span class="v">'+actionTag(entry.action)+'</span></div>'+
-          '<div class="audit-kv"><span class="k">Severity</span><span class="v">'+severityTag(entry.severity)+'</span></div>'+
-          '<div class="audit-kv"><span class="k">Rule</span><span class="v">'+(entry.rule_name?esc(entry.rule_name)+' ('+esc(entry.rule_id)+')':'<span style="color:#484f58">none</span>')+'</span></div>'+
-          '<div class="audit-kv"><span class="k">Category</span><span class="v">'+(entry.category?esc(entry.category):'-')+'</span></div>'+
-          '<div class="audit-kv"><span class="k">Request ID</span><span class="v"><a href="#" class="tg-audit-link" data-rid="'+esc(entry.request_id)+'" style="color:#58a6ff;text-decoration:underline;cursor:pointer">'+esc(entry.request_id)+'</a></span></div>'+
-          '<div class="audit-kv"><span class="k">Session</span><span class="v">'+esc(entry.session_id||'-')+'</span></div>'+
-          '<div class="audit-kv"><span class="k">Time</span><span class="v">'+esc(entry.created_at)+'</span></div>'+
-          '<div style="margin-top:12px"><a href="#" class="tg-audit-link" data-rid="'+esc(entry.request_id)+'" style="display:inline-block;padding:6px 14px;background:#1a3a5c;color:#58a6ff;border:1px solid #264d73;border-radius:6px;text-decoration:none;font-size:12px;font-weight:600;cursor:pointer;margin-bottom:12px">View Audit Log</a></div>'+
-          '<div><div class="label">Input</div><pre class="snippet" style="max-height:400px;overflow:auto">'+esc(inputFormatted)+'</pre></div>';
-
-        // Attach click handlers for audit links
-        document.querySelectorAll('.tg-audit-link').forEach(link=>{
-          link.addEventListener('click',e=>{
-            e.preventDefault();
-            const rid=link.dataset.rid;
-            if(!rid)return;
-            // Switch to Audit tab and load the audit detail
-            document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(x=>x.classList.remove('active'));
-            const auditTab=document.querySelector('.tab[data-tab="audit"]');
-            auditTab.classList.add('active');
-            activeTab='audit';
-            document.getElementById('tab-audit').classList.add('active');
-            loadSingleAudit(rid);
-          });
-        });
-      });
-    });
   }catch(e){console.error('Tool Guard refresh error',e)}
 }
+// Event delegation for TG table rows (set up once)
+function showTgDetail(entry){
+  document.querySelector('#tg-sub-calls .section').style.display='none';
+  document.getElementById('tg-cards').style.display='none';
+  document.getElementById('tg-detail').style.display='block';
+  let inputFormatted=entry.tool_input||'';
+  try{inputFormatted=JSON.stringify(JSON.parse(inputFormatted),null,2)}catch{}
+  document.getElementById('tg-detail-content').innerHTML=
+    '<div class="audit-kv"><span class="k">Tool</span><span class="v">'+esc(entry.tool_name)+'</span></div>'+
+    '<div class="audit-kv"><span class="k">Provider</span><span class="v">'+esc(entry.provider||'unknown')+'</span></div>'+
+    '<div class="audit-kv"><span class="k">Action</span><span class="v">'+actionTag(entry.action)+'</span></div>'+
+    '<div class="audit-kv"><span class="k">Severity</span><span class="v">'+severityTag(entry.severity)+'</span></div>'+
+    '<div class="audit-kv"><span class="k">Rule</span><span class="v">'+(entry.rule_name?esc(entry.rule_name)+' ('+esc(entry.rule_id)+')':'<span style="color:#484f58">none</span>')+'</span></div>'+
+    '<div class="audit-kv"><span class="k">Category</span><span class="v">'+(entry.category?esc(entry.category):'-')+'</span></div>'+
+    '<div class="audit-kv"><span class="k">Request ID</span><span class="v"><a href="#" class="tg-audit-link" data-rid="'+esc(entry.request_id)+'" style="color:#58a6ff;text-decoration:underline;cursor:pointer">'+esc(entry.request_id)+'</a></span></div>'+
+    '<div class="audit-kv"><span class="k">Session</span><span class="v">'+esc(entry.session_id||'-')+'</span></div>'+
+    '<div class="audit-kv"><span class="k">Time</span><span class="v">'+esc(entry.created_at)+'</span></div>'+
+    '<div style="margin-top:12px"><a href="#" class="tg-audit-link" data-rid="'+esc(entry.request_id)+'" style="display:inline-block;padding:6px 14px;background:#1a3a5c;color:#58a6ff;border:1px solid #264d73;border-radius:6px;text-decoration:none;font-size:12px;font-weight:600;cursor:pointer;margin-bottom:12px">View Audit Log</a></div>'+
+    '<div><div class="label">Input</div><pre class="snippet" style="max-height:400px;overflow:auto">'+esc(inputFormatted)+'</pre></div>';
+}
+document.getElementById('tg-table').addEventListener('click',function(e){
+  const row=e.target.closest('tr[data-tg-idx]');
+  if(!row)return;
+  const entry=_tgRecent.find(r=>r.id===row.dataset.tgIdx);
+  if(entry)showTgDetail(entry);
+});
+// Event delegation for TG audit links (set up once on parent)
+document.getElementById('tg-detail-content').addEventListener('click',function(e){
+  const link=e.target.closest('.tg-audit-link');
+  if(!link)return;
+  e.preventDefault();
+  const rid=link.dataset.rid;
+  if(!rid)return;
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(x=>x.classList.remove('active'));
+  const auditTab=document.querySelector('.tab[data-tab="audit"]');
+  auditTab.classList.add('active');
+  activeTab='audit';
+  document.getElementById('tab-audit').classList.add('active');
+  loadSingleAudit(rid);
+});
 
 document.getElementById('tg-back').addEventListener('click',()=>{
   document.getElementById('tg-detail').style.display='none';
@@ -1900,27 +1892,25 @@ async function refreshToolGuardRules(){
         '<td>'+typeLabel+'</td>'+
         '<td>'+(r.is_builtin?'':'<button class="tgr-del" data-id="'+esc(r.id)+'" style="padding:2px 8px;font-size:11px;cursor:pointer;color:#f85149;background:none;border:1px solid #f85149;border-radius:4px">Del</button>')+'</td></tr>';
     }).join('');
-
-    // Toggle handlers
-    document.querySelectorAll('.tgr-toggle').forEach(cb=>{
-      cb.addEventListener('change',async()=>{
-        await fetch('/api/tool-guard/rules/'+encodeURIComponent(cb.dataset.id),{
-          method:'PUT',headers:{'content-type':'application/json'},
-          body:JSON.stringify({enabled:cb.checked})
-        });
-      });
-    });
-    // Delete handlers
-    document.querySelectorAll('.tgr-del').forEach(btn=>{
-      btn.addEventListener('click',async(e)=>{
-        e.stopPropagation();
-        if(!confirm('Delete this custom rule?'))return;
-        await fetch('/api/tool-guard/rules/'+encodeURIComponent(btn.dataset.id),{method:'DELETE'});
-        _lastJson={};refreshToolGuardRules();
-      });
-    });
   }catch(e){console.error('Tool Guard rules refresh error',e)}
 }
+// Event delegation for TG rules (set up once)
+document.getElementById('tg-rules-table').addEventListener('change',async function(e){
+  const cb=e.target.closest('.tgr-toggle');
+  if(!cb)return;
+  await fetch('/api/tool-guard/rules/'+encodeURIComponent(cb.dataset.id),{
+    method:'PUT',headers:{'content-type':'application/json'},
+    body:JSON.stringify({enabled:cb.checked})
+  });
+});
+document.getElementById('tg-rules-table').addEventListener('click',async function(e){
+  const btn=e.target.closest('.tgr-del');
+  if(!btn)return;
+  e.stopPropagation();
+  if(!confirm('Delete this custom rule?'))return;
+  await fetch('/api/tool-guard/rules/'+encodeURIComponent(btn.dataset.id),{method:'DELETE'});
+  _lastJson={};refreshToolGuardRules();
+});
 
 // Add Rule form
 document.getElementById('tg-add-rule-btn').addEventListener('click',()=>{
@@ -2041,8 +2031,15 @@ loadSessions();
 refresh();
 pollToolGuardAlerts();
 // Only refresh the active tab + alerts; sessions reload every 15s
-setInterval(()=>{refreshActiveTab();pollToolGuardAlerts()},3000);
-setInterval(loadSessions,15000);
+// Guard against overlapping refreshes & skip when tab is hidden
+let _refreshBusy=false;
+setInterval(async()=>{
+  if(document.hidden||_refreshBusy)return;
+  _refreshBusy=true;
+  try{await refreshActiveTab();await pollToolGuardAlerts();}
+  finally{_refreshBusy=false;}
+},3000);
+setInterval(()=>{if(!document.hidden)loadSessions()},15000);
 </script>
 </body>
 </html>`;
