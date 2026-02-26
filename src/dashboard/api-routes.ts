@@ -237,10 +237,13 @@ export function createApiRouter(
     if (req.method === 'GET' && path === '/api/config') {
       const config = configManager.get();
       const pluginStatus: Record<string, boolean> = {};
+      const pluginInfo: Array<{ name: string; enabled: boolean; source: string; version?: string; packageName?: string; priority: number }> = [];
       for (const p of pluginManager.getPlugins()) {
-        pluginStatus[p.name] = !pluginManager.isDisabled(p.name);
+        const enabled = !pluginManager.isDisabled(p.name);
+        pluginStatus[p.name] = enabled;
+        pluginInfo.push({ name: p.name, enabled, source: p.source ?? 'builtin', version: p.version, packageName: p.packageName, priority: p.priority });
       }
-      sendJson(res, { config, pluginStatus });
+      sendJson(res, { config, pluginStatus, pluginInfo });
       return true;
     }
 
@@ -269,10 +272,13 @@ export function createApiRouter(
 
           const config = configManager.get();
           const pluginStatus: Record<string, boolean> = {};
+          const pluginInfo: Array<{ name: string; enabled: boolean; source: string; version?: string; packageName?: string; priority: number }> = [];
           for (const p of pluginManager.getPlugins()) {
-            pluginStatus[p.name] = !pluginManager.isDisabled(p.name);
+            const enabled = !pluginManager.isDisabled(p.name);
+            pluginStatus[p.name] = enabled;
+            pluginInfo.push({ name: p.name, enabled, source: p.source ?? 'builtin', version: p.version, packageName: p.packageName, priority: p.priority });
           }
-          sendJson(res, { config, pluginStatus });
+          sendJson(res, { config, pluginStatus, pluginInfo });
         } catch (err) {
           sendJson(res, { error: (err as Error).message }, 400);
         }
