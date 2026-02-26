@@ -19,7 +19,7 @@ const UPSTREAM_MAP: Record<string, string> = {
   'x-goog-api-key': 'https://generativelanguage.googleapis.com',
 };
 
-function detectUpstream(headers: Record<string, string | string[] | undefined>): string {
+export function detectUpstream(headers: Record<string, string | string[] | undefined>): string {
   for (const [header, upstream] of Object.entries(UPSTREAM_MAP)) {
     if (headers[header]) return upstream;
   }

@@ -216,10 +216,17 @@ describe('Integration: Proxy Pipeline', () => {
     expect([200, 400, 401, 403, 404, 502]).toContain(result.statusCode);
   });
 
-  it('passes through non-POST requests to upstream', async () => {
-    // GET to provider paths are forwarded (e.g. model listing)
+  it('routes GET requests through plugin pipeline', async () => {
+    // GET to provider paths now go through the plugin pipeline (audit, DLP response scan, metrics)
     const result = await httpGet(gatewayPort, '/v1/messages');
     expect([200, 400, 401, 403, 404, 405, 502]).toContain(result.statusCode);
+
+    // Verify the GET request was recorded in metrics
+    await new Promise((r) => setTimeout(r, 100));
+    const repo = new RequestsRepository(db);
+    const recent = repo.getRecent(50);
+    const getEntry = recent.find((r) => r.method === 'GET' && r.path === '/v1/messages');
+    expect(getEntry).toBeDefined();
   });
 
   it('serves the dashboard page', async () => {

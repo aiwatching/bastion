@@ -16,18 +16,21 @@ export interface ProviderConfig {
   };
 }
 
+const MESSAGING_NAMES = new Set(['telegram', 'discord', 'slack', 'whatsapp', 'line']);
+
 const providers = new Map<string, ProviderConfig>();
 
 export function registerProvider(pathPrefix: string, provider: ProviderConfig): void {
   providers.set(pathPrefix, provider);
 }
 
-export function getProvider(path: string): { provider: ProviderConfig; pathPrefix: string } | undefined {
+export function getProvider(path: string, opts?: { excludeMessaging?: boolean }): { provider: ProviderConfig; pathPrefix: string } | undefined {
   // Match longest prefix first
   let bestMatch: { provider: ProviderConfig; pathPrefix: string } | undefined;
   let bestLen = 0;
 
   for (const [prefix, provider] of providers) {
+    if (opts?.excludeMessaging && MESSAGING_NAMES.has(provider.name)) continue;
     if (path.startsWith(prefix) && prefix.length > bestLen) {
       bestMatch = { provider, pathPrefix: prefix };
       bestLen = prefix.length;

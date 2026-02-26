@@ -47,6 +47,9 @@ export function createTokenOptimizerPlugin(db: Database.Database, config: TokenO
     priority: 30,
 
     async onRequest(context: RequestContext): Promise<PluginRequestResult | void> {
+      // GET/HEAD have no request body to optimize/cache
+      if (context.method === 'GET' || context.method === 'HEAD') return;
+
       const originalLength = context.body.length;
 
       // Skip cache for non-LLM providers, streaming requests, and agentic loops

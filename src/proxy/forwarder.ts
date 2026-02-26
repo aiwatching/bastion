@@ -125,7 +125,10 @@ export async function forwardRequest(
   const isHttps = url.protocol === 'https:';
   const outgoingHeaders = provider.transformHeaders(req.headers as Record<string, string>);
   outgoingHeaders['host'] = url.host;
-  outgoingHeaders['content-length'] = Buffer.byteLength(bodyStr).toString();
+  const hasBody = req.method !== 'GET' && req.method !== 'HEAD';
+  if (hasBody) {
+    outgoingHeaders['content-length'] = Buffer.byteLength(bodyStr).toString();
+  }
 
   const makeRequest = isHttps ? httpsRequest : httpRequest;
 
@@ -183,7 +186,9 @@ export async function forwardRequest(
       resolve(requestContext);
     });
 
-    upstreamReq.write(bodyStr);
+    if (hasBody) {
+      upstreamReq.write(bodyStr);
+    }
     upstreamReq.end();
   });
 }
