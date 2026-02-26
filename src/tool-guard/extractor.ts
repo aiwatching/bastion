@@ -215,6 +215,23 @@ export function extractToolCallsFromSSE(body: string): ExtractedToolCall[] {
   return [];
 }
 
+// ---------- Pre-parsed events (skip text parsing) ----------
+
+export function extractToolCallsFromParsedEvents(events: Record<string, unknown>[]): ExtractedToolCall[] {
+  if (events.length === 0) return [];
+
+  const hasAnthropicEvents = events.some(e => e.type === 'content_block_start' || e.type === 'message_start');
+  if (hasAnthropicEvents) return extractAnthropicSSE(events);
+
+  const hasOpenAIEvents = events.some(e => Array.isArray((e as Record<string, unknown>).choices));
+  if (hasOpenAIEvents) return extractOpenAISSE(events);
+
+  const hasGeminiEvents = events.some(e => Array.isArray((e as Record<string, unknown>).candidates));
+  if (hasGeminiEvents) return extractGeminiSSE(events);
+
+  return [];
+}
+
 // ---------- Auto-detect ----------
 
 export function extractToolCalls(body: string, isStreaming: boolean): ExtractedToolCall[] {
