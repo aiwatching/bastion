@@ -3,16 +3,23 @@ import type { PluginEventBus } from './event-bus.js';
 import type { PluginEventsRepository } from '../storage/repositories/plugin-events.js';
 import { createLogger } from '../utils/logger.js';
 
+export interface PluginContextInternal extends PluginContext {
+  _getState<T>(key: string): T | undefined;
+}
+
 export function createPluginContext(
   pluginName: string,
   config: Record<string, unknown>,
   repo: PluginEventsRepository,
   eventBus: PluginEventBus,
-): PluginContext {
+): PluginContextInternal {
   const logger = createLogger(`plugin:${pluginName}`);
   const state = new Map<string, unknown>();
 
   return {
+    _getState<T>(key: string): T | undefined {
+      return state.get(key) as T | undefined;
+    },
     config,
     logger,
     db: {

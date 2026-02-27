@@ -18,6 +18,7 @@ import { getLocalSignatureMeta, checkForUpdates, syncRemotePatterns } from '../d
 import type { ConfigManager } from '../config/manager.js';
 import type { PluginManager } from '../plugins/index.js';
 import { getVersion } from '../version.js';
+import { verifyLicenseToken } from '../license/verify.js';
 import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('api-routes');
@@ -44,6 +45,7 @@ export function createApiRouter(
   db: Database.Database,
   configManager: ConfigManager,
   pluginManager: PluginManager,
+  getPluginState?: (pluginName: string, key: string) => unknown | undefined,
 ): (req: IncomingMessage, res: ServerResponse) => boolean {
   const requestsRepo = new RequestsRepository(db);
   const dlpRepo = new DlpEventsRepository(db);
@@ -59,6 +61,12 @@ export function createApiRouter(
   return (req: IncomingMessage, res: ServerResponse): boolean => {
     const url = parseUrl(req);
     const path = url.pathname;
+
+    // GET /api/dev — dev mode check (only true when started with --dev)
+    if (req.method === 'GET' && path === '/api/dev') {
+      sendJson(res, { dev: process.env.BASTION_DEV === '1' });
+      return true;
+    }
 
     // GET /api/stats — Enhanced with filters
     if (req.method === 'GET' && path === '/api/stats') {
@@ -627,6 +635,28 @@ export function createApiRouter(
         sendJson(res, { ok: true });
       } catch (err) {
         sendJson(res, { error: (err as Error).message }, 400);
+      }
+      return true;
+    }
+
+    // GET /api/license — Pro license status
+    if (req.method === 'GET' && path === '/api/license') {
+      const proPlugin = pluginManager.getPlugins().find(p =>
+        p.source === 'external' && p.packageName?.match(/bastion-pro|@bastion\/pro/)
+      );
+      if (!proPlugin || pluginManager.isDisabled(proPlugin.name)) {
+        sendJson(res, { pro: false });
+        return true;
+      }
+      // The Pro plugin stores a signed token — we verify the signature
+      // so a forged plugin cannot simply claim valid: true.
+      const licenseState = getPluginState ? getPluginState(proPlugin.name, 'license') as Record<string, unknown> | undefined : undefined;
+      const token = licenseState?.token;
+      const result = verifyLicenseToken(token);
+      if (result.valid && result.payload) {
+        sendJson(res, { pro: true, plan: result.payload.plan, expiresAt: result.payload.expiresAt, features: result.payload.features });
+      } else {
+        sendJson(res, { pro: false, installed: true, reason: result.reason });
       }
       return true;
     }

@@ -4,7 +4,7 @@ import { PLUGIN_API_VERSION } from '../plugin-api/index.js';
 import type { Plugin } from './types.js';
 import type { PluginEventBus } from './event-bus.js';
 import { PluginEventsRepository } from '../storage/repositories/plugin-events.js';
-import { createPluginContext } from './context.js';
+import { createPluginContext, type PluginContextInternal } from './context.js';
 import { adaptPlugin } from './adapter.js';
 import { createLogger } from '../utils/logger.js';
 
@@ -20,9 +20,10 @@ export async function loadExternalPlugins(
   externalConfigs: ExternalPluginConfig[],
   db: Database.Database,
   eventBus: PluginEventBus,
-): Promise<{ plugins: Plugin[]; destroyCallbacks: Array<() => Promise<void>> }> {
+): Promise<{ plugins: Plugin[]; destroyCallbacks: Array<() => Promise<void>>; getPluginState: (pluginName: string, key: string) => unknown | undefined }> {
   const plugins: Plugin[] = [];
   const destroyCallbacks: Array<() => Promise<void>> = [];
+  const contextMap = new Map<string, PluginContextInternal>();
   const repo = new PluginEventsRepository(db);
   let priorityCounter = 50;
 
@@ -85,6 +86,7 @@ export async function loadExternalPlugins(
         repo,
         eventBus,
       );
+      contextMap.set(externalPlugin.name, context);
 
       try {
         if (externalPlugin.onInit) {
@@ -116,5 +118,10 @@ export async function loadExternalPlugins(
     }
   }
 
-  return { plugins, destroyCallbacks };
+  function getPluginState(pluginName: string, key: string): unknown | undefined {
+    const ctx = contextMap.get(pluginName);
+    return ctx ? ctx._getState(key) : undefined;
+  }
+
+  return { plugins, destroyCallbacks, getPluginState };
 }
