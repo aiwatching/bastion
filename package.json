@@ -1,5 +1,5 @@
 {
-  "name": "bastion-ai-gateway",
+  "name": "@aiwatching/bastion",
   "version": "0.1.0",
   "description": "Local-first AI gateway for proxying LLM provider requests",
   "main": "dist/index.js",
