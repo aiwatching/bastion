@@ -1,0 +1,14 @@
+{
+  "name": "@aiwatching/bastion-plugin-api",
+  "version": "2.0.0",
+  "description": "Type definitions for Bastion AI Gateway plugins",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}

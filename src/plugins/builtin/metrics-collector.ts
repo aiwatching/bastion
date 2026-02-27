@@ -52,6 +52,8 @@ export function createMetricsCollectorPlugin(db: Database.Database): Plugin {
   return {
     name: 'metrics-collector',
     priority: 10,
+    version: '1.0.0',
+    apiVersion: 2,
 
     async onResponseComplete(context: ResponseCompleteContext): Promise<void> {
       // Skip high-frequency polling requests (e.g., Telegram getUpdates)

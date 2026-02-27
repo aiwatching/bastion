@@ -45,6 +45,8 @@ export function createTokenOptimizerPlugin(db: Database.Database, config: TokenO
   return {
     name: 'token-optimizer',
     priority: 30,
+    version: '1.0.0',
+    apiVersion: 2,
 
     async onRequest(context: RequestContext): Promise<PluginRequestResult | void> {
       // GET/HEAD have no request body to optimize/cache
