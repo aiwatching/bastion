@@ -40,6 +40,7 @@ export class StreamingToolGuard {
   private toolName = '';
   private toolInput = '';
   private toolIndex = -1;
+  private anthropicBlocked = false; // true after a tool_use block was blocked, so message_delta can be fixed
 
   // ── OpenAI Chat Completions buffering state ──
   private oaiBuffering = false;
@@ -51,6 +52,7 @@ export class StreamingToolGuard {
   private respBufferEvents: string[] = [];
   private respToolName = '';
   private respToolArgs = '';
+  private responsesApiBlocked = false; // true after a function_call was blocked, so output_item.done can be suppressed
 
   // Results for post-stream reporting
   public results: StreamingGuardResult[] = [];
@@ -215,6 +217,13 @@ export class StreamingToolGuard {
           this.evaluateAndFlushResponses();
           return;
         }
+        // If a function_call was blocked earlier via .arguments.done, suppress this event.
+        // Without this, OpenClaw sees output_item.done for a function_call it never received
+        // arguments for, and hangs waiting to submit tool results.
+        if (this.responsesApiBlocked) {
+          const item = parsed.item as Record<string, unknown> | undefined;
+          if (item?.type === 'function_call') return; // suppress leaked function_call signal
+        }
         this.onForward(rawEvent);
         return;
       }
@@ -222,6 +231,22 @@ export class StreamingToolGuard {
       // All other response.* events — forward
       this.onForward(rawEvent);
       return;
+    }
+
+    // ── message_delta: fix stop_reason if a tool_use block was blocked ──
+    // Non-streaming path already rewrites stop_reason in replaceBlockedToolCalls().
+    // For streaming, the guard replaced the tool_use content block with a text block,
+    // but the upstream still sends stop_reason="tool_use". Clients like OpenClaw see
+    // no tool_use block yet stop_reason=tool_use and hang waiting for tool execution.
+    if (eventType === 'message_delta' && this.anthropicBlocked) {
+      const delta = parsed.delta as Record<string, unknown> | undefined;
+      if (delta?.stop_reason === 'tool_use') {
+        const modified = JSON.parse(JSON.stringify(parsed)) as Record<string, unknown>;
+        (modified.delta as Record<string, unknown>).stop_reason = 'end_turn';
+        const prefix = rawEvent.startsWith('event:') ? 'event: message_delta\n' : '';
+        this.onForward(`${prefix}data: ${JSON.stringify(modified)}\n\n`);
+        return;
+      }
     }
 
     // ── All other events (message_start, message_delta, ping, etc.) ──
@@ -246,6 +271,8 @@ export class StreamingToolGuard {
         rule: ruleMatch!.rule.id,
         severity: ruleMatch!.rule.severity,
       });
+
+      this.anthropicBlocked = true;
 
       // Replace the tool_use block with a text warning block
       const warning = `[BLOCKED by Bastion Tool Guard] Tool "${this.toolName}" was blocked: ${ruleMatch!.rule.name} (${ruleMatch!.rule.severity})`;
@@ -338,6 +365,8 @@ export class StreamingToolGuard {
         rule: ruleMatch!.rule.id,
         severity: ruleMatch!.rule.severity,
       });
+
+      this.responsesApiBlocked = true;
 
       // Replace the function call with a text output item warning
       const warning = `[BLOCKED by Bastion Tool Guard] Tool "${this.respToolName}" was blocked: ${ruleMatch!.rule.name} (${ruleMatch!.rule.severity})`;
