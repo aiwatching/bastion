@@ -76,6 +76,10 @@ export interface PluginResponseResult {
 export interface Plugin {
   name: string;
   priority: number; // Lower = runs first
+  version?: string;
+  apiVersion?: number;
+  source?: 'builtin' | 'external';
+  packageName?: string;
   onRequest?(context: RequestContext): Promise<PluginRequestResult | void>;
   onResponse?(context: ResponseInterceptContext): Promise<PluginResponseResult | void>;
   onResponseComplete?(context: ResponseCompleteContext): Promise<void>;

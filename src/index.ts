@@ -25,6 +25,9 @@ import { OptimizerEventsRepository } from './storage/repositories/optimizer-even
 import { SessionsRepository } from './storage/repositories/sessions.js';
 import { AuditLogRepository } from './storage/repositories/audit-log.js';
 import { ToolCallsRepository } from './storage/repositories/tool-calls.js';
+import { PluginEventsRepository } from './storage/repositories/plugin-events.js';
+import { PluginEventBus } from './plugins/event-bus.js';
+import { loadExternalPlugins } from './plugins/loader.js';
 import { getVersion } from './version.js';
 
 const log = createLogger('main');
@@ -117,6 +120,20 @@ export async function startGateway(): Promise<void> {
   }));
   if (!config.plugins.toolGuard?.enabled) pluginManager.disable('tool-guard');
 
+  // Load external plugins
+  const eventBus = new PluginEventBus();
+  const externalConfigs = config.plugins.external ?? [];
+  let destroyCallbacks: Array<() => Promise<void>> = [];
+  if (externalConfigs.length > 0) {
+    const result = await loadExternalPlugins(externalConfigs, db, eventBus);
+    destroyCallbacks = result.destroyCallbacks;
+    for (const plugin of result.plugins) {
+      pluginManager.register(plugin);
+    }
+  } else {
+    log.info('No external plugins configured');
+  }
+
   // Sync failMode changes at runtime
   configManager.onChange((c) => {
     pluginManager.setFailMode(c.server.failMode ?? 'open');
@@ -124,6 +141,7 @@ export async function startGateway(): Promise<void> {
 
   // Create and start server
   const server = createProxyServer(config, pluginManager, () => {
+    for (const cb of destroyCallbacks) cb().catch(() => {});
     closeDatabase();
   }, db, configManager);
 
@@ -139,6 +157,7 @@ export async function startGateway(): Promise<void> {
   const sessionsRepo = new SessionsRepository(db);
   const auditLogRepo = new AuditLogRepository(db);
   const toolCallsRepo = new ToolCallsRepository(db);
+  const pluginEventsRepo = new PluginEventsRepository(db);
 
   function runPurge(): void {
     const r = configManager.get().retention;
@@ -150,6 +169,7 @@ export async function startGateway(): Promise<void> {
       total += sessionsRepo.purgeOlderThan(r.sessionsHours);
       total += auditLogRepo.purgeOlderThan(r.auditLogHours);
       total += toolCallsRepo.purgeOlderThan(r.toolCallsHours);
+      total += pluginEventsRepo.purgeOlderThan(r.pluginEventsHours ?? 720);
       if (total > 0) log.info('Data retention purge completed', { purged: total });
     } catch (err) {
       log.warn('Data retention purge failed', { error: (err as Error).message });
