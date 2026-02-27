@@ -21,10 +21,11 @@ export function createProxyServer(
   cleanup: () => void,
   db?: Database.Database,
   configManager?: ConfigManager,
+  getPluginState?: (pluginName: string, key: string) => unknown | undefined,
 ): Server {
   // Set up API router if we have both db and configManager
   const apiRouter = db && configManager
-    ? createApiRouter(db, configManager, pluginManager)
+    ? createApiRouter(db, configManager, pluginManager, getPluginState)
     : null;
 
   const server = createServer(async (req, res) => {
@@ -32,7 +33,8 @@ export function createProxyServer(
     if (handleHealthCheck(req, res)) return;
 
     // Dashboard
-    if (req.method === 'GET' && (req.url === '/dashboard' || req.url === '/dashboard/')) {
+    const dashPath = (req.url ?? '').split('?')[0];
+    if (req.method === 'GET' && (dashPath === '/dashboard' || dashPath === '/dashboard/')) {
       serveDashboard(res);
       return;
     }

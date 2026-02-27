@@ -124,9 +124,11 @@ export async function startGateway(): Promise<void> {
   const eventBus = new PluginEventBus();
   const externalConfigs = config.plugins.external ?? [];
   let destroyCallbacks: Array<() => Promise<void>> = [];
+  let getPluginState: (pluginName: string, key: string) => unknown | undefined = () => undefined;
   if (externalConfigs.length > 0) {
     const result = await loadExternalPlugins(externalConfigs, db, eventBus);
     destroyCallbacks = result.destroyCallbacks;
+    getPluginState = result.getPluginState;
     for (const plugin of result.plugins) {
       pluginManager.register(plugin);
     }
@@ -143,7 +145,7 @@ export async function startGateway(): Promise<void> {
   const server = createProxyServer(config, pluginManager, () => {
     for (const cb of destroyCallbacks) cb().catch(() => {});
     closeDatabase();
-  }, db, configManager);
+  }, db, configManager, getPluginState);
 
   await startServer(server, config);
 

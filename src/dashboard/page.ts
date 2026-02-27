@@ -83,6 +83,14 @@ tr:hover{background:#1c2128}
 .audit-kv .v{color:#e1e4e8;font-family:"SF Mono",Monaco,monospace}
 .timeline-card{margin-bottom:8px;cursor:pointer;transition:border-color .15s}
 .timeline-card:hover{border-color:#58a6ff}
+.pro-feature-row{cursor:pointer;transition:border-color .15s}
+.pro-feature-row:hover{border-color:#58a6ff}
+.pro-feature-row.unlocked .toggle-label{color:#3fb950}
+.btn-upgrade{display:inline-block;padding:8px 24px;background:#238636;color:#fff;border:1px solid #2ea043;border-radius:6px;font-size:13px;font-weight:500;text-decoration:none;cursor:pointer;transition:background .15s}
+.btn-upgrade:hover{background:#2ea043}
+.pro-license-input{display:none;margin:16px auto 0;text-align:center}
+.pro-license-input input{background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:8px 12px;border-radius:6px;font-size:13px;width:260px;margin-right:8px}
+.pro-license-input button{padding:8px 16px;background:#30363d;color:#e1e4e8;border:1px solid #484f58;border-radius:6px;font-size:13px;cursor:pointer}
 </style>
 </head>
 <body>
@@ -542,6 +550,46 @@ tr:hover{background:#1c2128}
     <h2>Plugin Controls</h2>
     <div id="plugin-toggles"></div>
   </div>
+  <div class="section" id="pro-section" style="display:none">
+    <h2>Pro Features</h2>
+    <div id="pro-features">
+      <div class="toggle-row pro-feature-row" data-pro-feature="ai-injection">
+        <div>
+          <div class="toggle-label">&#128274; AI Injection Detection</div>
+          <div class="toggle-desc">Multi-layer AI-driven prompt injection detection with semantic analysis and adversarial testing</div>
+        </div>
+        <span class="tag" style="background:#21262d;color:#484f58;font-size:11px">PRO</span>
+      </div>
+      <div class="toggle-row pro-feature-row" data-pro-feature="budget">
+        <div>
+          <div class="toggle-label">&#128274; Budget Control</div>
+          <div class="toggle-desc">Per-session/user/project usage and cost budget controls with automatic blocking when limits are exceeded</div>
+        </div>
+        <span class="tag" style="background:#21262d;color:#484f58;font-size:11px">PRO</span>
+      </div>
+      <div class="toggle-row pro-feature-row" data-pro-feature="ratelimit">
+        <div>
+          <div class="toggle-label">&#128274; Rate Limiting</div>
+          <div class="toggle-desc">Configurable request rate limiting by API key, session, or global scope with sliding window support</div>
+        </div>
+        <span class="tag" style="background:#21262d;color:#484f58;font-size:11px">PRO</span>
+      </div>
+    </div>
+    <div id="pro-detail" style="display:none;margin-top:12px">
+      <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:24px;text-align:center">
+        <div id="pro-detail-title" style="color:#e1e4e8;font-size:15px;font-weight:600;margin-bottom:8px"></div>
+        <div id="pro-detail-desc" style="color:#7d8590;font-size:13px;line-height:1.6;max-width:480px;margin:0 auto 16px"></div>
+        <div id="pro-detail-unlocked" style="display:none;color:#3fb950;font-size:13px">Feature enabled. Configuration coming soon.</div>
+        <div id="pro-detail-locked">
+          <a class="btn-upgrade" href="https://bastion.dev/pro" target="_blank">Upgrade to Pro &#8594;</a>
+          <div class="pro-license-input" id="pro-detail-license">
+            <input type="text" placeholder="Enter license key" id="pro-license-key">
+            <button onclick="activateLicense('pro-license-key')">Activate</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
   <div class="section">
     <h2>Data Retention</h2>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
@@ -626,6 +674,66 @@ document.getElementById('time-range').addEventListener('change',function(){
   timeRange=this.value;_lastJson={};refreshActiveTab();
 });
 function sinceParam(){const h=hoursForRange(timeRange);return h?'hours='+h:'';}
+
+// Pro license — hidden unless server started with --dev
+let _devMode=false;
+let _proLicense={pro:false};
+var _proFeatures={
+  'ai-injection':{title:'AI Injection Detection',desc:'Multi-layer AI-driven prompt injection detection with L5a semantic analysis and L5b adversarial testing. Protect your LLM applications from sophisticated injection attacks.'},
+  'budget':{title:'Budget Control',desc:'Per-session, per-user, and per-project usage and cost budget controls with automatic blocking when limits are exceeded. Keep your AI spending under control.'},
+  'ratelimit':{title:'Rate Limiting',desc:'Configurable request rate limiting by API key, session, or global scope with sliding window support. Prevent abuse and ensure fair usage across your applications.'}
+};
+async function fetchDevMode(){
+  try{
+    const r=await apiFetch('/api/dev');
+    const d=await r.json();
+    _devMode=!!d.dev;
+  }catch(e){_devMode=false;}
+}
+async function fetchLicense(){
+  try{
+    const r=await apiFetch('/api/license');
+    _proLicense=await r.json();
+  }catch(e){_proLicense={pro:false};}
+  var sec=document.getElementById('pro-section');
+  if(sec)sec.style.display=(_proLicense.pro||_devMode)?'':'none';
+  updateProFeatures();
+}
+function updateProFeatures(){
+  document.querySelectorAll('.pro-feature-row').forEach(function(row){
+    if(_proLicense.pro){
+      row.classList.add('unlocked');
+      var label=row.querySelector('.toggle-label');
+      if(label)label.textContent=label.textContent.replace(/\u{1F512}\s?/u,'');
+      var badge=row.querySelector('.tag');
+      if(badge){badge.style.background='#0d2818';badge.style.color='#3fb950';badge.textContent='ACTIVE';}
+    }
+  });
+}
+function showProDetail(feature){
+  var info=_proFeatures[feature];
+  if(!info)return;
+  document.getElementById('pro-detail-title').textContent=info.title;
+  document.getElementById('pro-detail-desc').textContent=info.desc;
+  var detail=document.getElementById('pro-detail');
+  detail.style.display='block';
+  if(_proLicense.pro){
+    document.getElementById('pro-detail-unlocked').style.display='block';
+    document.getElementById('pro-detail-locked').style.display='none';
+  }else{
+    document.getElementById('pro-detail-unlocked').style.display='none';
+    document.getElementById('pro-detail-locked').style.display='block';
+    document.getElementById('pro-detail-license').style.display=_proLicense.installed?'block':'none';
+  }
+}
+function activateLicense(inputId){
+  var key=document.getElementById(inputId).value.trim();
+  if(!key)return;
+  alert('License activation requires the Bastion Pro plugin. Visit https://bastion.dev/pro for details.');
+}
+document.querySelectorAll('.pro-feature-row').forEach(function(row){
+  row.addEventListener('click',function(){showProDetail(row.dataset.proFeature);});
+});
 
 // Tab switching
 document.querySelectorAll('.tab').forEach(t=>{
@@ -2119,6 +2227,8 @@ async function checkAuth(){
   if(!await checkAuth())return;
   loadSessions();
   refresh();
+  await fetchDevMode();
+  fetchLicense();
   pollToolGuardAlerts();
   // Only refresh the active tab + alerts; sessions reload every 15s
   // Guard against overlapping refreshes & skip when tab is hidden
