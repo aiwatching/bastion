@@ -654,7 +654,8 @@ function fmt(n){return n.toLocaleString()}
 function cost(n){return n<0.01?'$'+n.toFixed(6):'$'+n.toFixed(4)}
 function bytes(n){if(n<1024)return n+'B';if(n<1048576)return(n/1024).toFixed(1)+'KB';return(n/1048576).toFixed(1)+'MB'}
 function ago(ts){
-  const d=new Date(ts+'Z'),now=new Date(),s=Math.floor((now-d)/1000);
+  const d=new Date(/[Z+]/.test(ts)?ts:ts+'Z'),now=new Date(),s=Math.floor((now-d)/1000);
+  if(isNaN(s)||s<0)return '?';
   if(s<60)return s+'s ago';if(s<3600)return Math.floor(s/60)+'m ago';
   if(s<86400)return Math.floor(s/3600)+'h ago';return Math.floor(s/86400)+'d ago';
 }
