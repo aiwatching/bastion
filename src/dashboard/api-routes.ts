@@ -58,6 +58,8 @@ export function createApiRouter(
   const toolCallsRepo = new ToolCallsRepository(db);
   const toolGuardRulesRepo = new ToolGuardRulesRepository(db);
 
+  let devUnlocked = false;
+
   return (req: IncomingMessage, res: ServerResponse): boolean => {
     const url = parseUrl(req);
     const path = url.pathname;
@@ -65,6 +67,29 @@ export function createApiRouter(
     // GET /api/dev — dev mode check (only true when started with --dev)
     if (req.method === 'GET' && path === '/api/dev') {
       sendJson(res, { dev: process.env.BASTION_DEV === '1' });
+      return true;
+    }
+
+    // POST /api/dev/activate — activate dev unlock with token
+    if (req.method === 'POST' && path === '/api/dev/activate') {
+      const expected = process.env.BASTION_DEV_TOKEN;
+      if (!expected) {
+        sendJson(res, { error: 'Dev mode not enabled' }, 403);
+        return true;
+      }
+      bufferBody(req).then((body) => {
+        try {
+          const data = JSON.parse(body);
+          if (data.token === expected) {
+            devUnlocked = true;
+            sendJson(res, { ok: true });
+          } else {
+            sendJson(res, { error: 'Invalid token' }, 403);
+          }
+        } catch {
+          sendJson(res, { error: 'Invalid request' }, 400);
+        }
+      }).catch(() => sendJson(res, { error: 'Internal error' }, 500));
       return true;
     }
 
@@ -641,6 +666,12 @@ export function createApiRouter(
 
     // GET /api/license — Pro license status
     if (req.method === 'GET' && path === '/api/license') {
+      // Dev token unlock — all features available for debugging
+      if (devUnlocked) {
+        sendJson(res, { pro: true, plan: 'dev', expiresAt: '', features: ['ai-injection', 'budget', 'ratelimit'] });
+        return true;
+      }
+
       const proPlugin = pluginManager.getPlugins().find(p =>
         p.source === 'external' && p.packageName?.match(/bastion-pro|@bastion\/pro/)
       );

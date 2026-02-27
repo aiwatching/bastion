@@ -723,13 +723,22 @@ function showProDetail(feature){
   }else{
     document.getElementById('pro-detail-unlocked').style.display='none';
     document.getElementById('pro-detail-locked').style.display='block';
-    document.getElementById('pro-detail-license').style.display=_proLicense.installed?'block':'none';
+    document.getElementById('pro-detail-license').style.display=(_devMode||_proLicense.installed)?'block':'none';
   }
 }
-function activateLicense(inputId){
+async function activateLicense(inputId){
   var key=document.getElementById(inputId).value.trim();
   if(!key)return;
-  alert('License activation requires the Bastion Pro plugin. Visit https://bastion.dev/pro for details.');
+  if(_devMode){
+    try{
+      var r=await apiFetch('/api/dev/activate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({token:key})});
+      var d=await r.json();
+      if(d.ok){await fetchLicense();return;}
+      alert(d.error||'Invalid token');
+    }catch(e){alert('Activation failed');}
+  }else{
+    alert('License activation requires the Bastion Pro plugin. Visit https://bastion.dev/pro for details.');
+  }
 }
 document.querySelectorAll('.pro-feature-row').forEach(function(row){
   row.addEventListener('click',function(){showProDetail(row.dataset.proFeature);});
