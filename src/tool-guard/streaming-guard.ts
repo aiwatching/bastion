@@ -228,6 +228,23 @@ export class StreamingToolGuard {
         return;
       }
 
+      // response.completed — strip blocked function_call items from output[]
+      // The upstream still sends response.completed with the original function_call in output[].
+      // Without stripping it, clients like OpenClaw parse response.completed, find a function_call,
+      // and hang waiting to submit tool results — even though output_item.done was already suppressed.
+      if (eventType === 'response.completed' && this.responsesApiBlocked) {
+        const resp = parsed.response as Record<string, unknown> | undefined;
+        if (resp && Array.isArray(resp.output)) {
+          const modified = JSON.parse(JSON.stringify(parsed)) as Record<string, unknown>;
+          const mResp = modified.response as Record<string, unknown>;
+          mResp.output = (resp.output as Record<string, unknown>[]).filter(
+            (item) => (item as Record<string, unknown>).type !== 'function_call',
+          );
+          this.onForward(`data: ${JSON.stringify(modified)}\n\n`);
+          return;
+        }
+      }
+
       // All other response.* events — forward
       this.onForward(rawEvent);
       return;
