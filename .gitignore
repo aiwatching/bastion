@@ -30,3 +30,5 @@ Thumbs.db
 /integration/openclaw-docker/.instances/
 .doc
 .claude
+.accord
+.accord/*
