@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { type Command, Option } from 'commander';
 import { getDaemonStatus, spawnDaemon } from '../daemon.js';
 import { getVersion } from '../../version.js';
@@ -22,6 +23,10 @@ export function registerStartCommand(program: Command): void {
 
       if (options.dev) {
         process.env.BASTION_DEV = '1';
+        const devToken = crypto.randomBytes(16).toString('hex');
+        process.env.BASTION_DEV_TOKEN = devToken;
+        console.log(`\n  Dev token: ${devToken}`);
+        console.log('  Enter this token in Dashboard → Settings → Pro Features to unlock all features\n');
       }
 
       if (options.foreground) {
