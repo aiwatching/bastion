@@ -10,6 +10,19 @@ export interface ToolGuardRule {
   };
 }
 
+/**
+ * Matches tool names that execute shell commands or interact with the OS.
+ *
+ * Rules tagged with toolName: SHELL_TOOL_PATTERN only fire when the tool
+ * actually runs code — bash, computer, terminal, etc. This prevents false
+ * positives when tools like write_file, str_replace_editor, or search handle
+ * content that merely *mentions* dangerous shell patterns without executing them.
+ *
+ * Intentionally uses substring matching so unconventional names like
+ * "bash_tool" or "run_shell_command" are also covered.
+ */
+const SHELL_TOOL_PATTERN = /bash|shell|exec|terminal|computer|repl/i;
+
 export const BUILTIN_RULES: ToolGuardRule[] = [
   // ── destructive-fs (critical) ──
   {
@@ -18,7 +31,7 @@ export const BUILTIN_RULES: ToolGuardRule[] = [
     description: 'rm -rf targeting / or ~ or /home',
     severity: 'critical',
     category: 'destructive-fs',
-    match: { inputPattern: /rm\s+-[^\n]*r[^\n]*f[^\n]*\s+(?:\/(?:\s|"|$)|\/*(?:\s|"|$)|~\/?(?:\s|"|$)|~\/?\*|\/home)/i },
+    match: { toolName: SHELL_TOOL_PATTERN, inputPattern: /rm\s+-[^\n]*r[^\n]*f[^\n]*\s+(?:\/(?:\s|"|$)|\/*(?:\s|"|$)|~\/?(?:\s|"|$)|~\/?\*|\/home)/i },
   },
   {
     id: 'fs-rm-rf-wildcard',
@@ -26,7 +39,7 @@ export const BUILTIN_RULES: ToolGuardRule[] = [
     description: 'rm -rf with dangerous wildcard patterns',
     severity: 'critical',
     category: 'destructive-fs',
-    match: { inputPattern: /rm\s+-[^\n]*rf\s+(?:\.\s|\.\*|\*\s|\/\*)/i },
+    match: { toolName: SHELL_TOOL_PATTERN, inputPattern: /rm\s+-[^\n]*rf\s+(?:\.\s|\.\*|\*\s|\/\*)/i },
   },
   {
     id: 'fs-chmod-777',
@@ -34,7 +47,7 @@ export const BUILTIN_RULES: ToolGuardRule[] = [
     description: 'Making files world-writable',
     severity: 'high',
     category: 'destructive-fs',
-    match: { inputPattern: /chmod\s+(?:-[^\n]*)?\s*777/i },
+    match: { toolName: SHELL_TOOL_PATTERN, inputPattern: /chmod\s+(?:-[^\n]*)?\s*777/i },
   },
   {
     id: 'fs-mkfs',
@@ -42,7 +55,7 @@ export const BUILTIN_RULES: ToolGuardRule[] = [
     description: 'mkfs on a block device',
     severity: 'critical',
     category: 'destructive-fs',
-    match: { inputPattern: /mkfs\b/i },
+    match: { toolName: SHELL_TOOL_PATTERN, inputPattern: /mkfs\b/i },
   },
   {
     id: 'fs-dd-device',
@@ -50,7 +63,7 @@ export const BUILTIN_RULES: ToolGuardRule[] = [
     description: 'dd writing directly to a device',
     severity: 'critical',
     category: 'destructive-fs',
-    match: { inputPattern: /dd\s+[^\n]*of=\/dev\//i },
+    match: { toolName: SHELL_TOOL_PATTERN, inputPattern: /dd\s+[^\n]*of=\/dev\//i },
   },
 
   // ── code-execution (critical) ──
@@ -60,7 +73,7 @@ export const BUILTIN_RULES: ToolGuardRule[] = [
     description: 'Piping remote content directly to a shell interpreter',
     severity: 'critical',
     category: 'code-execution',
-    match: { inputPattern: /curl\s+[^\n|]*\|\s*(?:bash|sh|zsh|python|perl|ruby|node)/i },
+    match: { toolName: SHELL_TOOL_PATTERN, inputPattern: /curl\s+[^\n|]*\|\s*(?:bash|sh|zsh|python|perl|ruby|node)/i },
   },
   {
     id: 'exec-wget-pipe',
@@ -68,7 +81,7 @@ export const BUILTIN_RULES: ToolGuardRule[] = [
     description: 'Piping wget output to a shell interpreter',
     severity: 'critical',
     category: 'code-execution',
-    match: { inputPattern: /wget\s+[^\n|]*\|\s*(?:bash|sh|zsh|python|perl|ruby|node)/i },
+    match: { toolName: SHELL_TOOL_PATTERN, inputPattern: /wget\s+[^\n|]*\|\s*(?:bash|sh|zsh|python|perl|ruby|node)/i },
   },
   {
     id: 'exec-eval',
@@ -76,7 +89,7 @@ export const BUILTIN_RULES: ToolGuardRule[] = [
     description: 'Using eval on variables or external input',
     severity: 'high',
     category: 'code-execution',
-    match: { inputPattern: /\beval\s*\(/i },
+    match: { toolName: SHELL_TOOL_PATTERN, inputPattern: /\beval\s*\(/i },
   },
   {
     id: 'exec-base64-decode-pipe',
@@ -84,7 +97,7 @@ export const BUILTIN_RULES: ToolGuardRule[] = [
     description: 'Decoding base64 content and piping to shell',
     severity: 'critical',
     category: 'code-execution',
-    match: { inputPattern: /base64\s+(?:-d|--decode)[^\n|]*\|\s*(?:bash|sh|zsh)/i },
+    match: { toolName: SHELL_TOOL_PATTERN, inputPattern: /base64\s+(?:-d|--decode)[^\n|]*\|\s*(?:bash|sh|zsh)/i },
   },
 
   // ── credential-access (high) ──
@@ -94,7 +107,7 @@ export const BUILTIN_RULES: ToolGuardRule[] = [
     description: 'Reading environment files that may contain secrets',
     severity: 'high',
     category: 'credential-access',
-    match: { inputPattern: /(?:cat|less|more|head|tail|bat|type|get-content)\s+[^\n]*\.env\b/i },
+    match: { toolName: SHELL_TOOL_PATTERN, inputPattern: /(?:cat|less|more|head|tail|bat|type|get-content)\s+[^\n]*\.env\b/i },
   },
   {
     id: 'cred-private-key',
@@ -102,7 +115,7 @@ export const BUILTIN_RULES: ToolGuardRule[] = [
     description: 'Reading SSH or TLS private key files',
     severity: 'high',
     category: 'credential-access',
-    match: { inputPattern: /(?:cat|less|more|head|tail|bat|type|get-content)\s+[^\n]*(?:id_rsa|id_ed25519|\.pem|private[_-]?key)/i },
+    match: { toolName: SHELL_TOOL_PATTERN, inputPattern: /(?:cat|less|more|head|tail|bat|type|get-content)\s+[^\n]*(?:id_rsa|id_ed25519|\.pem|private[_-]?key)/i },
   },
   {
     id: 'cred-aws-credentials',
@@ -110,7 +123,7 @@ export const BUILTIN_RULES: ToolGuardRule[] = [
     description: 'Reading AWS credentials or config files',
     severity: 'high',
     category: 'credential-access',
-    match: { inputPattern: /(?:cat|less|more|head|tail|bat|type|get-content)\s+[^\n]*(?:\.aws\/credentials|\.aws\/config)/i },
+    match: { toolName: SHELL_TOOL_PATTERN, inputPattern: /(?:cat|less|more|head|tail|bat|type|get-content)\s+[^\n]*(?:\.aws\/credentials|\.aws\/config)/i },
   },
   {
     id: 'cred-secret-env-var',
@@ -118,17 +131,17 @@ export const BUILTIN_RULES: ToolGuardRule[] = [
     description: 'Printing sensitive environment variables',
     severity: 'high',
     category: 'credential-access',
-    match: { inputPattern: /(?:echo|printf|print)\s+[^\n]*\$(?:AWS_SECRET|PRIVATE_KEY|API_KEY|SECRET_KEY|DATABASE_URL|DB_PASSWORD)/i },
+    match: { toolName: SHELL_TOOL_PATTERN, inputPattern: /(?:echo|printf|print)\s+[^\n]*\$(?:AWS_SECRET|PRIVATE_KEY|API_KEY|SECRET_KEY|DATABASE_URL|DB_PASSWORD)/i },
   },
 
-  // ── network-exfil (high) ──
+  // ── network-exfil ──
   {
     id: 'net-curl-post-data',
     name: 'curl POST with data',
     description: 'Sending data via curl POST to an external endpoint',
     severity: 'medium',
     category: 'network-exfil',
-    match: { inputPattern: /curl\s+[^\n]*(?:-X\s*POST|-d\s|--data)/i },
+    match: { toolName: SHELL_TOOL_PATTERN, inputPattern: /curl\s+[^\n]*(?:-X\s*POST|-d\s|--data)/i },
   },
   {
     id: 'net-exfil-to-ip',
@@ -136,17 +149,18 @@ export const BUILTIN_RULES: ToolGuardRule[] = [
     description: 'Sending data to a raw IP address (potential exfiltration)',
     severity: 'high',
     category: 'network-exfil',
-    match: { inputPattern: /(?:curl|wget|nc|ncat)\s+[^\n]*\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/i },
+    match: { toolName: SHELL_TOOL_PATTERN, inputPattern: /(?:curl|wget|nc|ncat)\s+[^\n]*\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/i },
   },
 
-  // ── git-destructive (high) ──
+  // ── git-destructive ──
   {
     id: 'git-force-push',
     name: 'git force push',
     description: 'Force pushing can overwrite remote history',
     severity: 'high',
     category: 'git-destructive',
-    match: { inputPattern: /git\s+push\s+[^\n]*(?:--force|-f\b)/i },
+    // (?!-with-lease) prevents matching --force-with-lease, which is safe
+    match: { toolName: SHELL_TOOL_PATTERN, inputPattern: /git\s+push\s+[^\n]*(?:--force(?!-with-lease)|-f\b)/i },
   },
   {
     id: 'git-reset-hard',
@@ -154,7 +168,7 @@ export const BUILTIN_RULES: ToolGuardRule[] = [
     description: 'Hard reset discards uncommitted changes',
     severity: 'high',
     category: 'git-destructive',
-    match: { inputPattern: /git\s+reset\s+--hard/i },
+    match: { toolName: SHELL_TOOL_PATTERN, inputPattern: /git\s+reset\s+--hard/i },
   },
   {
     id: 'git-clean-force',
@@ -162,17 +176,17 @@ export const BUILTIN_RULES: ToolGuardRule[] = [
     description: 'Force-cleaning untracked files',
     severity: 'medium',
     category: 'git-destructive',
-    match: { inputPattern: /git\s+clean\s+[^\n]*-[^\n]*f/i },
+    match: { toolName: SHELL_TOOL_PATTERN, inputPattern: /git\s+clean\s+[^\n]*-[^\n]*f/i },
   },
 
-  // ── package-publish (medium) ──
+  // ── package-publish ──
   {
     id: 'pkg-npm-publish',
     name: 'npm publish',
     description: 'Publishing package to npm registry',
     severity: 'medium',
     category: 'package-publish',
-    match: { inputPattern: /npm\s+publish/i },
+    match: { toolName: SHELL_TOOL_PATTERN, inputPattern: /npm\s+publish/i },
   },
   {
     id: 'pkg-pip-upload',
@@ -180,17 +194,17 @@ export const BUILTIN_RULES: ToolGuardRule[] = [
     description: 'Uploading package to PyPI',
     severity: 'medium',
     category: 'package-publish',
-    match: { inputPattern: /(?:twine\s+upload|pip\s+.*upload)/i },
+    match: { toolName: SHELL_TOOL_PATTERN, inputPattern: /(?:twine\s+upload|pip\s+.*upload)/i },
   },
 
-  // ── system-config (medium) ──
+  // ── system-config ──
   {
     id: 'sys-sudo',
     name: 'sudo command',
     description: 'Executing command with elevated privileges',
     severity: 'medium',
     category: 'system-config',
-    match: { inputPattern: /\bsudo\s+/i },
+    match: { toolName: SHELL_TOOL_PATTERN, inputPattern: /\bsudo\s+/i },
   },
   {
     id: 'sys-iptables',
@@ -198,7 +212,7 @@ export const BUILTIN_RULES: ToolGuardRule[] = [
     description: 'Modifying firewall rules',
     severity: 'medium',
     category: 'system-config',
-    match: { inputPattern: /\biptables\s+/i },
+    match: { toolName: SHELL_TOOL_PATTERN, inputPattern: /\biptables\s+/i },
   },
   {
     id: 'sys-systemctl',
@@ -206,20 +220,22 @@ export const BUILTIN_RULES: ToolGuardRule[] = [
     description: 'Starting/stopping/enabling system services',
     severity: 'medium',
     category: 'system-config',
-    match: { inputPattern: /\bsystemctl\s+(?:start|stop|enable|disable|restart)/i },
+    match: { toolName: SHELL_TOOL_PATTERN, inputPattern: /\bsystemctl\s+(?:start|stop|enable|disable|restart)/i },
   },
 
-  // ── file-delete (medium) ──
+  // ── file-delete ──
   {
     id: 'fs-rm',
     name: 'File/directory deletion',
     description: 'Removing files or directories',
     severity: 'medium',
     category: 'file-delete',
-    match: { inputPattern: /\brm\s+/i },
+    match: { toolName: SHELL_TOOL_PATTERN, inputPattern: /\brm\s+/i },
   },
 
   // ── file-write-outside (low) ──
+  // No toolName constraint: writing to /etc/ or /usr/ is suspicious regardless
+  // of whether the tool is a shell executor or a file writer.
   {
     id: 'write-etc',
     name: 'Write to /etc/',

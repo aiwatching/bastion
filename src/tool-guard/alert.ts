@@ -22,7 +22,11 @@ const SEVERITY_RANK: Record<string, number> = {
 };
 
 export function shouldAlert(severity: string, minSeverity: string): boolean {
-  return (SEVERITY_RANK[severity] ?? 0) >= (SEVERITY_RANK[minSeverity] ?? 0);
+  const minRank = SEVERITY_RANK[minSeverity];
+  // Unknown minSeverity (empty string, 'none', undefined coerced to string, etc.) →
+  // treat as "never block" rather than defaulting to rank 0 which would match everything.
+  if (minRank === undefined) return false;
+  return (SEVERITY_RANK[severity] ?? 0) >= minRank;
 }
 
 export interface AlertPayload {

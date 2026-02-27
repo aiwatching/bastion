@@ -23,13 +23,30 @@ export class ToolGuardRulesRepository {
     this.db = db;
   }
 
-  /** Seed built-in rules. INSERT OR IGNORE preserves user toggle state. */
+  /**
+   * Seed built-in rules.
+   *
+   * On first run: inserts all rules with enabled=1.
+   * On subsequent runs: updates rule definitions (patterns, severity, category)
+   * while preserving the user's enabled/disabled toggle state.
+   */
   seedBuiltins(rules: ToolGuardRule[]): void {
     const stmt = this.db.prepare(`
-      INSERT OR IGNORE INTO tool_guard_rules
+      INSERT INTO tool_guard_rules
         (id, name, description, severity, category, tool_name_pattern, tool_name_flags, input_pattern, input_flags, enabled, is_builtin)
       VALUES
         (@id, @name, @description, @severity, @category, @tool_name_pattern, @tool_name_flags, @input_pattern, @input_flags, 1, 1)
+      ON CONFLICT(id) DO UPDATE SET
+        name             = excluded.name,
+        description      = excluded.description,
+        severity         = excluded.severity,
+        category         = excluded.category,
+        tool_name_pattern = excluded.tool_name_pattern,
+        tool_name_flags  = excluded.tool_name_flags,
+        input_pattern    = excluded.input_pattern,
+        input_flags      = excluded.input_flags,
+        is_builtin       = 1
+        -- enabled is intentionally omitted to preserve user toggle state
     `);
 
     const seed = this.db.transaction(() => {
