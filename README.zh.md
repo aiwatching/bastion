@@ -6,7 +6,7 @@
 
 ![Overview](docs/overview.png "Overview")
 
-![DLP Findings](docs/dlp-finding.jpeg "DLP Findings")
+![DLP Findings](docs/dlp-finding-v2.jpeg "DLP Findings")
 
 ![Audit Log](docs/auditlog.png "Audit Log")
 
