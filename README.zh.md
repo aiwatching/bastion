@@ -28,13 +28,13 @@ cd bastion && bash install.sh
 ### Windows (PowerShell)
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File install.ps1
+irm https://raw.githubusercontent.com/aiwatching/bastion/main/install.ps1 -OutFile install.ps1; .\install.ps1
 ```
 
 或从本地源码安装：
 
 ```powershell
-cd bastion; powershell -ExecutionPolicy Bypass -File install.ps1
+cd bastion; .\install.ps1
 ```
 
 需要 **Node.js 22 LTS**（推荐）。Node.js 18+ 可用，但非 LTS 版本可能需要[额外配置](docs/windows-troubleshooting.zh.md#1-better-sqlite3-编译失败非-lts-nodejs)。安装至 `~/.bastion/app/`。

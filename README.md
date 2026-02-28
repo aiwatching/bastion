@@ -34,7 +34,7 @@ You can't watch every request manually. Bastion does it for you.
 curl -fsSL https://raw.githubusercontent.com/aiwatching/bastion/main/install.sh | bash
 
 # Windows (PowerShell)
-powershell -ExecutionPolicy Bypass -File install.ps1
+irm https://raw.githubusercontent.com/aiwatching/bastion/main/install.ps1 -OutFile install.ps1; .\install.ps1
 ```
 
 Requires Node.js 22 LTS (recommended). Node.js 18+ supported. Installs to `~/.bastion/app/`.
