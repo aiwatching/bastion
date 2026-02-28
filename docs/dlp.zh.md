@@ -227,25 +227,134 @@ AI 调用失败时采用 fail-closed 策略：将匹配视为真正的敏感数�
 
 ---
 
+## 消息级缓存
+
+**文件**: `src/dlp/message-cache.ts`
+
+LLM API 请求携带完整的对话历史（`messages[]` 数组）。如果不做缓存，每一轮都会重复扫描所有历史消息 — 累计 O(N²) 的工作量。
+
+### 工作原理
+
+```
+第 1 轮: [msg₁]              → 扫描 msg₁ (1 次扫描)
+第 2 轮: [msg₁, msg₂, msg₃]  → msg₁ 缓存命中, 扫描 msg₂ + msg₃ (2 次扫描)
+第 3 轮: [msg₁–₃, msg₄, msg₅] → msg₁–₃ 缓存命中, 扫描 msg₄ + msg₅ (2 次扫描)
+...
+第 N 轮: N-1 次缓存命中 + 2 次扫描 → 每轮 O(1) 新增工作
+```
+
+缓存采用内容寻址哈希（SHA-256），对每条消息的内容做哈希。不需要会话跟踪 — 相同的消息内容始终产生相同的哈希，无论来自哪个对话或 agent。
+
+### 缓存架构
+
+- **LRU 淘汰** — 默认容量 5000 条，最近最少使用的消息优先淘汰
+- **System prompt 缓存** — Anthropic 的 `system` 字段也会单独缓存
+- **多模态支持** — 内容块数组（text + image）序列化后哈希
+- **跨 Agent 共享** — 单个 `DlpMessageCache` 实例在所有对话间共享，公共 system prompt 只需扫描一次
+
+### CachedDlpResult
+
+缓存区分首次检测和重复检测：
+
+```typescript
+interface CachedDlpResult extends DlpResult {
+  newFindings: DlpFinding[];    // 首次检测（新消息）
+  cachedFindings: DlpFinding[]; // 已在之前的请求中检测过
+}
+```
+
+`dlp-scanner` 插件据此做差异化处理：
+
+| 维度 | newFindings | cachedFindings |
+|------|-----------|----------------|
+| DLP 事件入库 | 记录到数据库 | 跳过（已记录过） |
+| AI 验证（Layer 4） | 发送验证 | 跳过（已验证过） |
+| block / redact 动作 | 执行 | 执行（安全性不妥协） |
+| 审计日志 | 写入 | 跳过 |
+| dlpHit 上下文标志 | 设为 `true` | 不设置 |
+
+### 性能
+
+模拟 10 轮对话（每轮 2 条消息）：
+
+| 指标 | 无缓存 | 有缓存 | 减少 |
+|------|-------|--------|------|
+| 扫描消息数 | 110 | 20 | 82% |
+| 缓存命中率（第 10 轮） | — | 90% | — |
+
+### 诊断日志
+
+每次请求产生逐条消息的详细日志：
+
+```
+msg[0] user HIT          bytes=142 hash=a1b2c3d4 preview="Hello, can you..."
+msg[1] assistant HIT     bytes=89  hash=e5f6a7b8 preview="Sure, I can..."
+msg[2] user SCAN+FINDING bytes=256 hash=c9d0e1f2 findings=["aws-access-key"]
+```
+
+标签含义：`HIT`（缓存命中，无 finding）、`HIT+FINDING`（缓存命中，有 finding）、`SCAN`（新扫描，无 finding）、`SCAN+FINDING`（新扫描，发现敏感数据）、`SKIP`（空消息）。
+
+---
+
+## 误报抑制
+
+### password-assignment 模式
+
+`password-assignment` 模式检测 `key=value` 形式的密钥赋值。通过两种机制防止对 JavaScript/代码内容的误报：
+
+**1. 排除裸关键词 `key`**
+
+关键词列表包含 `_key`、`api_key`、`secret_key` 等，但不包含单独的 `key`。因为 `key` 在代码中过于常见（`localStorage.key()`、`Object.keys()`、`map.key`、循环变量等）。
+
+**2. 代码模式负向前瞻**
+
+正则的值部分排除以 JavaScript 内置对象或语言关键字开头的值：
+
+```
+localStorage, document, window, console, JSON, Object, Array,
+Math, Date, String, Number, Boolean, null, undefined, true, false,
+function, new, this., self., require, import, export, return, typeof, void
+```
+
+这可以防止类似 `_authToken=localStorage.getItem(...)` 或 `_secret=Object.keys(config)` 的误报。
+
+**3. 函数调用排除**
+
+捕获值的字符类 `[^\s'"(]{6,}` 排除了 `(`，因此 `key(i)` 或 `getElementById(...)` 等方法调用不会被当作密钥值捕获。
+
+---
+
 ## 完整调用流程
 
 ```
 dlp-scanner plugin
   │
-  ├─ scanText(text, patterns, action)
+  ├─ messageCache.scanWithCache(body, parsedBody, patterns, action)
   │    │
-  │    ├─ Layer 2: Regex 匹配 (对每个 pattern 循环)
-  │    │    ├─ requireContext? → hasNearbyContext() 近邻检查
-  │    │    ├─ validator? → Luhn / SSN 验证
-  │    │    └─ 收集 findings + 应用 redact
+  │    ├─ 有 messages[]? ─── 否 ──→ scanText(body) 全文扫描
+  │    │         │
+  │    │        是
+  │    │         │
+  │    │    ├─ 逐条消息: hash → 缓存查找
+  │    │    │    ├─ 缓存命中 → 收集 cachedFindings
+  │    │    │    └─ 缓存未命中 → scanText(messageText) → 存入缓存
+  │    │    │         │
+  │    │    │         ├─ Layer 2: Regex 匹配
+  │    │    │         │    ├─ requireContext? → hasNearbyContext()
+  │    │    │         │    ├─ validator? → Luhn / SSN
+  │    │    │         │    └─ 代码模式前瞻过滤
+  │    │    │         │
+  │    │    │         ├─ Layer 0: extractStructuredFields
+  │    │    │         ├─ Layer 1: isHighEntropy
+  │    │    │         └─ Layer 3: isSensitiveFieldName → generic-secret
+  │    │    │
+  │    │    └─ 返回 CachedDlpResult { newFindings, cachedFindings }
   │    │
-  │    ├─ Layer 0: extractStructuredFields(text)
-  │    ├─ Layer 1: isHighEntropy(field.value)
-  │    └─ Layer 3: isSensitiveFieldName(field.key) → generic-secret
-  │
-  ├─ Layer 4: aiValidator.validate(findings) [可选]
-  │
-  └─ 返回 DlpResult { action, findings, redactedBody? }
+  │    ├─ Layer 4: aiValidator.validate(仅 newFindings) [可选]
+  │    │
+  │    ├─ 记录 DLP 事件（仅 newFindings）
+  │    │
+  │    └─ 执行动作: block / redact（所有 findings）
 ```
 
 ## 实际效果示例
@@ -277,4 +386,5 @@ DLP 扫描 Telegram 机器人消息 — 消息体中的敏感凭据在转发前�
 | `src/dlp/semantics.ts` | Layer 3 | 字段名语义分析 |
 | `src/dlp/validators.ts` | Layer 2 | Luhn / SSN 验证器 |
 | `src/dlp/ai-validator.ts` | Layer 4 | LLM 误报过滤 |
+| `src/dlp/message-cache.ts` | — | 消息级 LRU 缓存，去重优化 |
 | `src/dlp/actions.ts` | — | 类型定义 |
