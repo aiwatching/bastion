@@ -17,6 +17,7 @@ import { validatedPatterns } from '../../dlp/patterns/validated.js';
 import { contextAwarePatterns } from '../../dlp/patterns/context-aware.js';
 import { promptInjectionPatterns } from '../../dlp/patterns/prompt-injection.js';
 import { syncRemotePatterns, startPeriodicSync } from '../../dlp/remote-sync.js';
+import { DlpMessageCache, type CachedDlpResult } from '../../dlp/message-cache.js';
 import { isPollingRequest } from '../../proxy/providers/classify.js';
 import { createLogger } from '../../utils/logger.js';
 import type Database from 'better-sqlite3';
@@ -65,6 +66,9 @@ export function createDlpScannerPlugin(db: Database.Database, config: DlpScanner
     ? new AiValidator(config.aiValidation)
     : null;
 
+  // Message-level DLP cache — avoids re-scanning repeated conversation history
+  const messageCache = new DlpMessageCache();
+
   // Seed built-in patterns from the 3 pattern files
   const allBuiltins: DlpPattern[] = [
     ...highConfidencePatterns,
@@ -100,18 +104,22 @@ export function createDlpScannerPlugin(db: Database.Database, config: DlpScanner
       if (context.method === 'GET' || context.method === 'HEAD') return;
 
       const patterns = patternsRepo.getEnabled();
-      const result = scanText(context.body, patterns, getAction());
+      const result: CachedDlpResult = messageCache.scanWithCache(
+        context.body, context.parsedBody, patterns, getAction(),
+      );
 
       if (result.findings.length === 0) return;
 
-      // AI validation: filter out false positives
-      if (aiValidator?.ready) {
-        result.findings = await aiValidator.validate(result.findings, context.body);
+      // AI validation: only validate NEW findings (cached ones were already validated)
+      if (aiValidator?.ready && result.newFindings.length > 0) {
+        result.newFindings = await aiValidator.validate(result.newFindings, context.body);
+        // Rebuild combined findings
+        result.findings = [...result.newFindings, ...result.cachedFindings];
         if (result.findings.length === 0) return;
       }
 
-      // Record DLP events
-      for (const finding of result.findings) {
+      // Record DLP events — only for NEW findings to avoid duplicate records
+      for (const finding of result.newFindings) {
         const firstMatch = finding.matches[0] ?? '';
         const originalSnippet = extractSnippet(context.body, firstMatch);
 
@@ -136,32 +144,50 @@ export function createDlpScannerPlugin(db: Database.Database, config: DlpScanner
       log.info('DLP findings', {
         requestId: context.id,
         action: result.action,
-        findings: result.findings.map((f) => f.patternName),
+        newFindings: result.newFindings.map((f) => f.patternName),
+        cachedFindings: result.cachedFindings.map((f) => f.patternName),
+        totalFindings: result.findings.length,
       });
 
       // Set DLP flags on context for downstream plugins (audit-logger, metrics-collector)
-      context.dlpHit = true;
+      // Only count new findings for dlpHit to avoid noise in audit logs
+      context.dlpHit = result.newFindings.length > 0;
       context.dlpAction = result.action;
-      context.dlpFindings = result.findings.length;
+      context.dlpFindings = result.newFindings.length;
 
-      // Auto-audit on DLP hit
+      // Auto-audit on DLP hit — only for new findings
       if (result.action === 'block') {
-        const blockReason = `Request blocked: sensitive data detected (${result.findings.map((f) => f.patternName).join(', ')})`;
-        try {
-          auditRepo.insert({
-            id: crypto.randomUUID(),
-            request_id: context.id,
-            requestBody: context.body,
-            responseBody: JSON.stringify({ error: blockReason }),
-            dlpHit: true,
+        const allPatterns = result.findings.map((f) => f.patternName).join(', ');
+        const blockReason = `Request blocked: sensitive data detected (${allPatterns})`;
+
+        if (result.newFindings.length > 0) {
+          try {
+            auditRepo.insert({
+              id: crypto.randomUUID(),
+              request_id: context.id,
+              requestBody: context.body,
+              responseBody: JSON.stringify({ error: blockReason }),
+              dlpHit: true,
+            });
+          } catch (err) {
+            log.warn('Failed to write DLP auto-audit for blocked request', { error: (err as Error).message });
+          }
+        } else {
+          log.info('DLP block from cached findings only (no new audit entry)', {
+            requestId: context.id,
+            cachedFindings: result.cachedFindings.map((f) => f.patternName),
           });
-        } catch (err) {
-          log.warn('Failed to write DLP auto-audit for blocked request', { error: (err as Error).message });
         }
         return { blocked: { reason: blockReason } };
       }
 
       if (result.action === 'redact' && result.redactedBody) {
+        if (result.newFindings.length === 0) {
+          log.info('DLP redaction from cached findings only (no new DLP events)', {
+            requestId: context.id,
+            cachedFindings: result.cachedFindings.map((f) => f.patternName),
+          });
+        }
         return { modifiedBody: result.redactedBody };
       }
     },
