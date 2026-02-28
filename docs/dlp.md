@@ -300,11 +300,19 @@ Tags: `HIT` (cache hit, no findings), `HIT+FINDING` (cache hit, has findings), `
 
 ### password-assignment Pattern
 
-The `password-assignment` pattern detects `key=value` assignments where the key suggests a secret. Two mechanisms prevent false positives on JavaScript / code content:
+The `password-assignment` pattern detects `key=value` assignments where the key suggests a secret. Three mechanisms prevent false positives, especially in agent/code scenarios:
 
-**1. Excluded keyword: bare `key`**
+**1. Keyword precision — no bare suffixes**
 
-The keyword list includes `_key`, `api_key`, `secret_key` etc., but NOT the bare word `key`. Standalone `key` is too common in code (`localStorage.key()`, `Object.keys()`, `map.key`, for-loop variables).
+Keywords are categorized by false-positive risk:
+
+| Level | Keywords | In pattern? |
+|-------|----------|-------------|
+| Strong | `password`, `passwd`, `pwd`, `credential` | Yes (high-confidence) |
+| Medium | `secret_key`, `auth_token`, `access_token`, `api_key`, `apikey` | Yes (compound words, low FP) |
+| Weak | `_key`, `_secret`, `_token` | **Removed** (too broad in code) |
+
+Bare suffixes like `_key` match `sort_key`, `primary_key`, `cache_key`, `encryption_key` etc. — all common in agent-generated code. These field names are instead covered by Layer 3 (semantic analysis) which cross-checks entropy.
 
 **2. Code-pattern negative lookahead**
 
@@ -316,11 +324,20 @@ Math, Date, String, Number, Boolean, null, undefined, true, false,
 function, new, this., self., require, import, export, return, typeof, void
 ```
 
-This prevents matches like `_authToken=localStorage.getItem(...)` or `_secret=Object.keys(config)`.
+This prevents matches like `auth_token=localStorage.getItem(...)` or `secret_key=Object.keys(config)`.
 
 **3. Function call exclusion**
 
 The captured value character class `[^\s'"(]{6,}` excludes `(`, so method calls like `key(i)` or `getElementById(...)` are not captured as secret values.
+
+### Design Principle: Prefer False Negatives Over False Positives
+
+In agent scenarios, a false positive (blocking or redacting legitimate code) breaks the entire agent workflow and may render the user's environment unusable. A false negative (missing a secret) is recoverable — it can be caught by audit logs or discovered later.
+
+Therefore, DLP patterns are tuned conservatively:
+- High-confidence patterns (API key prefixes, PEM headers) are precise and rarely false-positive
+- Broad patterns (`password-assignment`) are restricted to compound keywords only
+- Generic secrets are handled by Layer 3 (field name semantics + entropy) which has structural context
 
 ---
 

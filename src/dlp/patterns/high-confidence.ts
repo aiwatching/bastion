@@ -120,7 +120,7 @@ export const highConfidencePatterns: DlpPattern[] = [
   {
     name: 'password-assignment',
     category: 'high-confidence',
-    regex: /(?:password|passwd|pwd|pass_?word|secret_?key|auth_?token|access_?token|api_?key|apikey|_key|_secret|_token|credential)[\s]*[=:]\s*['"]?(?!(?:localStorage|document|window|console|JSON|Object|Array|Math|Date|String|Number|Boolean|null\b|undefined\b|true\b|false\b|function\b|new |this\.|self\.|require|import|export|return |typeof |void ))([^\s'"(]{6,})/gi,
+    regex: /(?:password|passwd|pwd|pass_?word|secret_?key|auth_?token|access_?token|api_?key|apikey|credential)[\s]*[=:]\s*['"]?(?!(?:localStorage|document|window|console|JSON|Object|Array|Math|Date|String|Number|Boolean|null\b|undefined\b|true\b|false\b|function\b|new |this\.|self\.|require|import|export|return |typeof |void ))([^\s'"(]{6,})/gi,
     description: 'Password or secret assignment (key=value pattern)',
   },
 ];

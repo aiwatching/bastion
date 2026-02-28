@@ -300,11 +300,19 @@ msg[2] user SCAN+FINDING bytes=256 hash=c9d0e1f2 findings=["aws-access-key"]
 
 ### password-assignment 模式
 
-`password-assignment` 模式检测 `key=value` 形式的密钥赋值。通过两种机制防止对 JavaScript/代码内容的误报：
+`password-assignment` 模式检测 `key=value` 形式的密钥赋值。通过三种机制防止误报，尤其针对 Agent/代码场景：
 
-**1. 排除裸关键词 `key`**
+**1. 关键词精度 — 移除裸后缀**
 
-关键词列表包含 `_key`、`api_key`、`secret_key` 等，但不包含单独的 `key`。因为 `key` 在代码中过于常见（`localStorage.key()`、`Object.keys()`、`map.key`、循环变量等）。
+关键词按误报风险分级：
+
+| 级别 | 关键词 | 是否保留 |
+|------|--------|---------|
+| 强 | `password`, `passwd`, `pwd`, `credential` | 保留（high-confidence） |
+| 中 | `secret_key`, `auth_token`, `access_token`, `api_key`, `apikey` | 保留（复合词，低误报） |
+| 弱 | `_key`, `_secret`, `_token` | **已移除**（代码中太常见） |
+
+裸后缀如 `_key` 会匹配 `sort_key`、`primary_key`、`cache_key`、`encryption_key` 等——这些在 Agent 生成的代码中大量出现。这些字段名由 Layer 3（语义分析）通过交叉检查熵值来覆盖。
 
 **2. 代码模式负向前瞻**
 
@@ -316,11 +324,20 @@ Math, Date, String, Number, Boolean, null, undefined, true, false,
 function, new, this., self., require, import, export, return, typeof, void
 ```
 
-这可以防止类似 `_authToken=localStorage.getItem(...)` 或 `_secret=Object.keys(config)` 的误报。
+防止类似 `auth_token=localStorage.getItem(...)` 或 `secret_key=Object.keys(config)` 的误报。
 
 **3. 函数调用排除**
 
 捕获值的字符类 `[^\s'"(]{6,}` 排除了 `(`，因此 `key(i)` 或 `getElementById(...)` 等方法调用不会被当作密钥值捕获。
+
+### 设计原则：宁可漏报，不可误报
+
+在 Agent 场景下，误报（拦截或篡改合法代码）会中断整个 Agent 工作流，可能导致用户环境不可用。漏报（遗漏一个密钥）是可恢复的——可以通过审计日志事后发现。
+
+因此 DLP 模式采用保守策略：
+- 高置信度模式（API Key 前缀、PEM 头）精确匹配，极低误报
+- 宽泛模式（`password-assignment`）仅保留复合关键词
+- 通用密钥由 Layer 3（字段名语义 + 熵值）处理，具有结构化上下文
 
 ---
 
