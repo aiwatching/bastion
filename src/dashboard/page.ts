@@ -1,2187 +1,1206 @@
 import type { ServerResponse } from 'node:http';
 
-const HTML = `<!DOCTYPE html>
+// ── HEAD ──────────────────────────────────────────────────────────
+const HEAD = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Bastion AI Gateway</title>
 <style>
+:root{--bg:#0c0c0c;--panel:#111;--panel-head:#0f0f0f;--border:#1a1a1a;--border-l:#222;--text:#a0a0a0;--bright:#e0e0e0;--dim:#555;--muted:#444;--green:#00ff88;--red:#ff4444;--cyan:#00ccff;--yellow:#ffcc00;--purple:#aa66ff;--orange:#ff8844}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0f1117;color:#e1e4e8;padding:20px;max-width:1200px;margin:0 auto}
-h1{font-size:20px;font-weight:600;margin-bottom:4px;color:#f0f3f6}
-.subtitle{color:#7d8590;font-size:13px;margin-bottom:12px}
-.tabs{display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid #30363d;padding-bottom:0}
-.tab{padding:8px 16px;cursor:pointer;color:#7d8590;font-size:13px;font-weight:500;border:none;background:none;border-bottom:2px solid transparent;transition:all .15s}
-.tab:hover{color:#e1e4e8}
-.tab.active{color:#58a6ff;border-bottom-color:#58a6ff}
-.tab-content{display:none}
-.tab-content.active{display:block}
-.sub-tabs{display:flex;gap:2px;margin-bottom:16px;background:#161b22;border-radius:8px;padding:3px;border:1px solid #30363d}
-.sub-tab{padding:6px 14px;cursor:pointer;color:#7d8590;font-size:12px;font-weight:500;border:none;background:none;border-radius:6px;transition:all .15s}
-.sub-tab:hover{color:#e1e4e8}
-.sub-tab.active{color:#e1e4e8;background:#30363d}
-.sub-content{display:none}
-.sub-content.active{display:block}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px}
-.card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px}
-.card .label{font-size:11px;text-transform:uppercase;color:#7d8590;letter-spacing:.5px;margin-bottom:4px}
-.card .value{font-size:24px;font-weight:600;color:#f0f3f6}
-.card .value.cost{color:#3fb950}
-.card .value.warn{color:#d29922}
-.card .value.blue{color:#58a6ff}
-.section{margin-bottom:20px}
-.section h2{font-size:14px;font-weight:600;color:#7d8590;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
-table{width:100%;border-collapse:collapse;font-size:13px}
-th{text-align:left;padding:8px 10px;border-bottom:1px solid #30363d;color:#7d8590;font-weight:500}
-td{padding:6px 10px;border-bottom:1px solid #21262d}
-tr:hover{background:#1c2128}
-.tag{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:500}
-.tag.anthropic{background:#2a1f3d;color:#b388ff}
-.tag.openai{background:#1a2f1a;color:#69db7c}
-.tag.gemini{background:#2a2a1a;color:#ffd43b}
-.tag.cached{background:#0d2818;color:#3fb950}
-.tag.blocked{background:#3d1a1a;color:#f85149}
-.tag.dlp{background:#3d1a3d;color:#f0a0f0}
-.tag.tg{background:#3d2e1a;color:#d29922}
-.tag.warn{background:#3d2e1a;color:#d29922}
-.tag.redact{background:#2a1f3d;color:#b388ff}
-.tag.blue{background:#1a2a3d;color:#58a6ff}
-.tag.orange{background:#3d2a1a;color:#f0883e}
-.mono{font-family:"SF Mono",Monaco,monospace;font-size:12px}
-.bar-container{height:6px;background:#21262d;border-radius:3px;overflow:hidden;margin-top:4px}
-.bar{height:100%;border-radius:3px;transition:width .3s}
-.bar.blue{background:#58a6ff}
-.bar.green{background:#3fb950}
-.bar.purple{background:#b388ff}
-.status{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:#3fb950;animation:pulse 2s infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
-.footer{color:#484f58;font-size:11px;margin-top:24px;text-align:center}
-.empty{color:#484f58;text-align:center;padding:24px}
-.filter-bar{display:flex;gap:8px;align-items:center;margin-bottom:16px}
-.filter-bar select{background:#161b22;border:1px solid #30363d;color:#e1e4e8;padding:6px 10px;border-radius:6px;font-size:12px}
-.filter-bar label{font-size:12px;color:#7d8590}
-.snippet{background:#1c2128;padding:6px 10px;border-radius:4px;font-family:"SF Mono",Monaco,monospace;font-size:11px;white-space:pre-wrap;word-break:break-all;max-width:400px;overflow:hidden}
-.toggle-row{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:#161b22;border:1px solid #30363d;border-radius:8px;margin-bottom:8px}
-.toggle-row .toggle-label{font-size:14px;color:#e1e4e8}
-.toggle-row .toggle-desc{font-size:11px;color:#7d8590;margin-top:2px}
-.switch{position:relative;width:40px;height:22px;flex-shrink:0}
+body{font-family:"SF Mono","Fira Code","JetBrains Mono",Menlo,Consolas,monospace;background:var(--bg);color:var(--text);min-height:100vh}
+.container{max-width:1100px;margin:0 auto;padding:16px 20px}
+.titlebar{display:flex;align-items:center;justify-content:space-between;padding:8px 0;margin-bottom:12px;border-bottom:1px solid var(--border-l)}
+.titlebar-left{display:flex;align-items:center;gap:10px}
+.titlebar h1{font-size:13px;font-weight:700;color:var(--green);letter-spacing:1px}
+.hdr-status{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.hdr-status::before{content:'\\25CF';color:var(--green);font-size:8px}
+.titlebar-right{display:flex;gap:8px;align-items:center}
+.time-sel{background:var(--panel);border:1px solid var(--border);color:var(--dim);font-family:inherit;font-size:10px;padding:2px 6px;cursor:pointer}
+.tab{font-size:11px;color:var(--dim);cursor:pointer;padding:2px 8px;border:1px solid transparent;transition:all .15s;user-select:none}
+.tab:hover{color:#888}
+.tab.active{color:var(--green);border-color:var(--green)}
+.badge{display:none;background:var(--red);color:#fff;border-radius:2px;padding:0 4px;font-size:9px;font-weight:700;margin-left:2px}
+.gauges{display:flex;gap:2px;margin-bottom:16px}
+.gauge{flex:1;background:var(--panel);border:1px solid var(--border);padding:10px 12px}
+.gauge-label{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}
+.gauge-value{font-size:22px;font-weight:700;color:var(--bright);line-height:1}
+.gauge-value.green{color:var(--green)}.gauge-value.red{color:var(--red)}.gauge-value.cyan{color:var(--cyan)}.gauge-value.yellow{color:var(--yellow)}.gauge-value.purple{color:var(--purple)}
+.gauge-sub{font-size:10px;color:var(--muted);margin-top:3px}
+.gauge-bar{height:2px;background:var(--border);margin-top:6px;border-radius:1px;overflow:hidden}
+.gauge-bar-fill{height:100%;border-radius:1px}
+.panes{display:grid;grid-template-columns:1fr 1fr;gap:2px;margin-bottom:16px}
+.section{background:var(--panel);border:1px solid var(--border);margin-bottom:2px}
+.section-head{display:flex;justify-content:space-between;align-items:center;padding:6px 12px;background:var(--panel-head);border-bottom:1px solid var(--border)}
+.section-title{font-size:10px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:1px}
+.section-count{font-size:10px;color:var(--red);font-weight:700}
+.section-body{padding:0}
+.row{display:flex;align-items:center;gap:8px;padding:5px 12px;border-bottom:1px solid var(--bg);font-size:12px;cursor:pointer;transition:background .1s}
+.row:last-child{border-bottom:none}
+.row:hover{background:var(--border)}
+.row-icon{width:14px;text-align:center;flex-shrink:0}
+.row-time{width:55px;color:var(--muted);font-size:11px;flex-shrink:0}
+.row-tag{font-size:9px;font-weight:700;padding:1px 5px;border-radius:2px;flex-shrink:0;text-transform:uppercase;letter-spacing:.5px}
+.row-tag.dlp{background:#1a0033;color:var(--purple)}
+.row-tag.guard{background:#001a33;color:var(--cyan)}
+.row-tag.redact{background:#1a0033;color:var(--purple)}
+.row-tag.block{background:#330000;color:var(--red)}
+.row-tag.audit{background:#0a1a0a;color:var(--green)}
+.row-tag.warn{background:#1a1a00;color:var(--yellow)}
+.row-text{flex:1;color:#888;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row-text b{color:#ccc;font-weight:600}
+.prov-row{display:flex;align-items:center;gap:6px;padding:4px 12px;font-size:11px}
+.prov-name{width:70px;color:#888;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prov-bar{flex:1;height:3px;background:var(--border);overflow:hidden}
+.prov-bar-fill{height:100%}
+.prov-bar-fill.purple{background:var(--purple)}.prov-bar-fill.cyan{background:var(--cyan)}.prov-bar-fill.yellow{background:var(--yellow)}.prov-bar-fill.green{background:var(--green)}
+.prov-pct{width:45px;text-align:right;color:var(--dim);font-size:10px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;padding:5px 12px;color:var(--muted);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border);background:var(--panel-head)}
+td{padding:5px 12px;border-bottom:1px solid var(--panel);color:#888}
+tr:hover td{background:var(--border)}
+.s200{color:var(--green)}.s403{color:var(--red)}.cost-c{color:var(--green)}
+.page{display:none}.page.active{display:block}
+.footer{text-align:center;font-size:10px;color:var(--border-l);margin-top:20px;padding-bottom:16px}
+.empty{color:var(--muted);text-align:center;padding:20px;font-size:12px}
+.mono{font-size:11px}
+.snippet{background:#161b22;padding:6px 10px;border-radius:4px;font-size:11px;white-space:pre-wrap;word-break:break-all;max-width:400px;overflow:hidden}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--panel);border:1px solid var(--border);margin-bottom:4px}
+.toggle-label{font-size:12px;color:var(--bright)}
+.toggle-desc{font-size:10px;color:var(--dim);margin-top:2px}
+.switch{position:relative;width:36px;height:20px;flex-shrink:0}
 .switch input{opacity:0;width:0;height:0}
-.slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#21262d;border:1px solid #30363d;border-radius:11px;transition:.2s}
-.slider:before{position:absolute;content:"";height:16px;width:16px;left:2px;bottom:2px;background:#484f58;border-radius:50%;transition:.2s}
-.switch input:checked+.slider{background:#238636;border-color:#2ea043}
-.switch input:checked+.slider:before{transform:translateX(18px);background:#fff}
-.config-select{background:#161b22;border:1px solid #30363d;color:#e1e4e8;padding:4px 8px;border-radius:4px;font-size:12px}
-.msg-bubble{padding:8px 12px;border-radius:8px;margin-bottom:6px;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
-.msg-bubble.user{background:#1a2a3d;border:1px solid #264166}
-.msg-bubble.assistant{background:#1a2d1a;border:1px solid #264d26}
-.msg-bubble.system{background:#2a2a1a;border:1px solid #4d4d26}
-.msg-role{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#7d8590;margin-bottom:4px;font-weight:600}
-.msg-text{color:#e1e4e8}
-.audit-kv{display:flex;gap:6px;align-items:baseline;margin-bottom:2px;font-size:12px}
-.audit-kv .k{color:#7d8590;min-width:80px}
-.audit-kv .v{color:#e1e4e8;font-family:"SF Mono",Monaco,monospace}
-.timeline-card{margin-bottom:8px;cursor:pointer;transition:border-color .15s}
-.timeline-card:hover{border-color:#58a6ff}
+.slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#21262d;border:1px solid var(--border);border-radius:10px;transition:.2s}
+.slider:before{position:absolute;content:"";height:14px;width:14px;left:2px;bottom:2px;background:var(--muted);border-radius:50%;transition:.2s}
+.switch input:checked+.slider{background:#0a3d0a;border-color:var(--green)}
+.switch input:checked+.slider:before{transform:translateX(16px);background:var(--green)}
+.cfg-select{background:var(--panel);border:1px solid var(--border);color:var(--bright);padding:4px 8px;font-family:inherit;font-size:11px;cursor:pointer}
+.cfg-input{background:var(--bg);border:1px solid var(--border);color:var(--bright);padding:6px 8px;font-family:inherit;font-size:11px;width:100%}
+.cfg-textarea{background:var(--bg);border:1px solid var(--border);color:var(--bright);padding:6px 8px;font-family:inherit;font-size:11px;width:100%;resize:vertical}
+.cfg-btn{padding:4px 14px;font-size:11px;cursor:pointer;font-family:inherit;border-radius:2px}
+.cfg-btn.primary{color:#fff;background:#0a3d0a;border:1px solid var(--green)}
+.cfg-btn.secondary{color:var(--dim);background:none;border:1px solid var(--border)}
+.cfg-btn.danger{color:var(--red);background:none;border:1px solid #330000}
+.setting-toggle{cursor:pointer;user-select:none}
+.sect-arrow{display:inline-block;font-size:10px;color:var(--dim);transition:transform .15s;margin-right:4px}
+.msg-bubble{padding:8px 12px;border-radius:4px;margin-bottom:4px;font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+.msg-bubble.user{background:#0a1a2a;border:1px solid #1a3a5a}
+.msg-bubble.assistant{background:#0a1a0a;border:1px solid #1a3a1a}
+.msg-bubble.system{background:#1a1a0a;border:1px solid #3a3a1a}
+.msg-role{font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:var(--dim);margin-bottom:3px;font-weight:700}
+.msg-text{color:var(--bright)}
+.audit-kv{display:flex;gap:6px;align-items:baseline;margin-bottom:2px;font-size:11px}
+.audit-kv .k{color:var(--dim);min-width:80px}
+.audit-kv .v{color:var(--bright)}
+.timeline-card{margin-bottom:4px;cursor:pointer;transition:border-color .15s;padding:10px 12px}
+.timeline-card:hover{border-color:var(--cyan)}
 .pro-feature-row{cursor:pointer;transition:border-color .15s}
-.pro-feature-row:hover{border-color:#58a6ff}
-.pro-feature-row.unlocked .toggle-label{color:#3fb950}
-.btn-upgrade{display:inline-block;padding:8px 24px;background:#238636;color:#fff;border:1px solid #2ea043;border-radius:6px;font-size:13px;font-weight:500;text-decoration:none;cursor:pointer;transition:background .15s}
-.btn-upgrade:hover{background:#2ea043}
-.pro-license-input{display:none;margin:16px auto 0;text-align:center}
-.pro-license-input input{background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:8px 12px;border-radius:6px;font-size:13px;width:260px;margin-right:8px}
-.pro-license-input button{padding:8px 16px;background:#30363d;color:#e1e4e8;border:1px solid #484f58;border-radius:6px;font-size:13px;cursor:pointer}
+.pro-feature-row:hover{border-color:var(--cyan)}
+.pro-feature-row.unlocked .toggle-label{color:var(--green)}
+.filter-input{background:var(--bg);border:1px solid var(--border);color:var(--bright);padding:4px 10px;font-family:inherit;font-size:11px;width:280px}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
 </style>
-</head>
-<body>
-<div style="display:flex;justify-content:space-between;align-items:center">
-<div><h1><span class="status"></span>Bastion AI Gateway</h1>
-<p class="subtitle">Local-first LLM proxy &mdash; auto-refresh</p></div>
-<div style="display:flex;align-items:center;gap:8px">
-<label style="font-size:12px;color:#7d8590">Time Range:</label>
-<select id="time-range" style="background:#161b22;border:1px solid #30363d;color:#e1e4e8;padding:6px 10px;border-radius:6px;font-size:12px">
-<option value="24h">Last 24h</option>
-<option value="7d">Last 7 days</option>
-<option value="30d">Last 30 days</option>
-<option value="all">All</option>
-</select>
-</div>
-</div>
+</head>`;
 
-<div class="tabs">
-  <button class="tab active" data-tab="overview">Overview</button>
-  <button class="tab" data-tab="dlp">DLP</button>
-  <button class="tab" data-tab="optimizer">Optimizer</button>
-  <button class="tab" data-tab="audit">Audit</button>
-  <button class="tab" data-tab="toolguard">Tool Guard <span id="tg-badge" style="display:none;background:#f85149;color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:4px;font-weight:700"></span></button>
-  <button class="tab" data-tab="settings">Settings</button>
-</div>
+// ── TITLEBAR ──────────────────────────────────────────────────────
+const TITLEBAR = `
+<div class="titlebar">
+  <div class="titlebar-left">
+    <h1>BASTION</h1>
+    <span class="hdr-status" id="hdr-status">RUNNING &mdash; <span id="hdr-ver">v0.1.0</span> &mdash; <span id="hdr-uptime">0s</span></span>
+  </div>
+  <div class="titlebar-right">
+    <select id="time-range" class="time-sel"><option value="24h">24H</option><option value="7d">7D</option><option value="30d">30D</option><option value="all">ALL</option></select>
+    <span class="tab active" data-page="overview">OVERVIEW</span>
+    <span class="tab" data-page="dlp">DLP</span>
+    <span class="tab" data-page="guard">GUARD <span id="guard-badge" class="badge"></span></span>
+    <span class="tab" data-page="log">LOG</span>
+    <span class="tab" data-page="settings">SETTINGS</span>
+  </div>
+</div>`;
 
-<!-- OVERVIEW TAB -->
-<div class="tab-content active" id="tab-overview">
-  <div class="filter-bar">
-    <label>Session:</label>
-    <select id="session-filter"><option value="">All sessions</option></select>
-  </div>
-  <div class="grid" id="cards"></div>
-  <div class="section" id="by-provider-section" style="display:none">
-    <h2>By Provider</h2>
-    <table><thead><tr><th>Provider</th><th>Requests</th><th>Cost</th><th></th></tr></thead><tbody id="by-provider"></tbody></table>
-  </div>
-  <div class="section" id="by-model-section" style="display:none">
-    <h2>By Model</h2>
-    <table><thead><tr><th>Model</th><th>Requests</th><th>Cost</th></tr></thead><tbody id="by-model"></tbody></table>
+// ── PAGE: OVERVIEW ────────────────────────────────────────────────
+const PAGE_OVERVIEW = `
+<div class="page active" id="page-overview">
+<div class="gauges" id="ov-gauges"></div>
+<div class="panes">
+  <div class="section">
+    <div class="section-head"><span class="section-title">Alerts</span><span class="section-count" id="ov-alert-count"></span></div>
+    <div class="section-body" id="ov-alerts"><div class="empty">No alerts</div></div>
   </div>
   <div class="section">
-    <h2>Recent Requests</h2>
-    <table><thead><tr><th>Time</th><th>Provider</th><th>Model</th><th>Status</th><th>Tokens</th><th>Cost</th><th>Latency</th><th>Flags</th></tr></thead><tbody id="recent"></tbody></table>
-    <p class="empty" id="no-requests">No requests yet.</p>
+    <div class="section-head"><span class="section-title">Traffic</span></div>
+    <div class="section-body" id="ov-traffic"></div>
   </div>
 </div>
-
-<!-- DLP TAB -->
-<div class="tab-content" id="tab-dlp">
-  <div class="grid" id="dlp-cards"></div>
-
-  <div class="sub-tabs" id="dlp-sub-tabs">
-    <button class="sub-tab active" data-dlp-sub="findings">Findings</button>
-    <button class="sub-tab" data-dlp-sub="config">Config</button>
-    <button class="sub-tab" data-dlp-sub="signatures">Signatures</button>
-    <button class="sub-tab" data-dlp-sub="test">Test</button>
+<div class="section">
+  <div class="section-head"><span class="section-title">Request Log</span></div>
+  <div class="section-body">
+    <table><thead><tr><th>Time</th><th>Provider</th><th>Model</th><th>St</th><th>Tokens</th><th>Cost</th><th>Lat</th><th>Flags</th></tr></thead><tbody id="ov-recent"></tbody></table>
+    <p class="empty" id="ov-no-requests">No requests yet.</p>
   </div>
+</div>
+</div>`;
 
-  <!-- SUB: Config -->
-  <div class="sub-content" id="dlp-sub-config">
-
-  <!-- Unified DLP Configuration -->
-  <div class="section">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <h2>Configuration</h2>
-      <div style="display:flex;gap:8px;align-items:center">
-        <span id="dlp-dirty" style="display:none;color:#d29922;font-size:12px;font-weight:500">\u25cf Unsaved changes</span>
-        <button id="dlp-revert-btn" style="display:none;padding:4px 12px;font-size:12px;cursor:pointer;color:#7d8590;background:none;border:1px solid #30363d;border-radius:6px">Revert</button>
-        <button id="dlp-apply-btn" style="display:none;padding:4px 16px;font-size:12px;cursor:pointer;color:#fff;background:#238636;border:1px solid #2ea043;border-radius:6px">Apply</button>
-      </div>
-    </div>
-    <div class="toggle-row">
-      <div><div class="toggle-label">DLP Engine</div><div class="toggle-desc">Enable or disable DLP scanning</div></div>
-      <label class="switch"><input type="checkbox" id="dlp-cfg-enabled"><span class="slider"></span></label>
-    </div>
-    <div class="toggle-row">
-      <div><div class="toggle-label">Action Mode</div><div class="toggle-desc">What to do when sensitive data is detected</div></div>
-      <select class="config-select" id="dlp-cfg-action">
-        <option value="pass">Pass (log only)</option>
-        <option value="warn">Warn</option>
-        <option value="redact">Redact</option>
-        <option value="block">Block</option>
-      </select>
-    </div>
-    <div class="toggle-row">
-      <div>
-        <div class="toggle-label">AI Validation <span id="dlp-ai-status" style="font-size:11px;margin-left:6px"></span></div>
-        <div class="toggle-desc">Use LLM to verify DLP matches and filter false positives</div>
-      </div>
-      <label class="switch"><input type="checkbox" id="dlp-cfg-ai"><span class="slider"></span></label>
-    </div>
-    <div style="margin-top:8px;padding:12px 16px;background:#161b22;border:1px solid #30363d;border-radius:8px">
-      <div class="toggle-label" style="margin-bottom:8px">Semantic Detection (Layer 3)</div>
-      <div style="margin-bottom:8px">
-        <div style="font-size:11px;color:#7d8590;margin-bottom:4px">Built-in Sensitive Patterns <span style="color:#484f58">(read-only)</span></div>
-        <div id="dlp-builtin-sensitive" style="display:flex;flex-wrap:wrap;gap:4px"></div>
-      </div>
-      <div style="margin-bottom:8px">
-        <div style="font-size:11px;color:#7d8590;margin-bottom:4px">Extra Sensitive Patterns <span style="color:#484f58">(regex, one per line)</span></div>
-        <textarea id="dlp-cfg-sensitive" rows="2" style="width:100%;background:#0f1117;color:#e6edf3;border:1px solid #30363d;border-radius:4px;padding:6px;font-family:monospace;font-size:11px;resize:vertical" placeholder="e.g. \\bcert\\b"></textarea>
-      </div>
-      <div style="margin-bottom:8px">
-        <div style="font-size:11px;color:#7d8590;margin-bottom:4px">Built-in Non-sensitive Names <span style="color:#484f58">(read-only)</span></div>
-        <div id="dlp-builtin-nonsensitive" style="display:flex;flex-wrap:wrap;gap:4px"></div>
-      </div>
-      <div>
-        <div style="font-size:11px;color:#7d8590;margin-bottom:4px">Extra Non-sensitive Names <span style="color:#484f58">(one per line)</span></div>
-        <textarea id="dlp-cfg-nonsensitive" rows="2" style="width:100%;background:#0f1117;color:#e6edf3;border:1px solid #30363d;border-radius:4px;padding:6px;font-family:monospace;font-size:11px;resize:vertical" placeholder="e.g. my_safe_field"></textarea>
-      </div>
+// ── PAGE: DLP ─────────────────────────────────────────────────────
+const PAGE_DLP = `
+<div class="page" id="page-dlp">
+<div class="gauges" id="dlp-gauges"></div>
+<div class="section">
+  <div class="section-head">
+    <span class="section-title">Findings</span>
+    <div style="display:flex;gap:6px">
+      <select id="findings-action-filter" class="cfg-select"><option value="">All</option><option value="block">Block</option><option value="redact">Redact</option><option value="warn">Warn</option></select>
+      <select id="findings-dir-filter" class="cfg-select"><option value="">All Dir</option><option value="request">Req</option><option value="response">Res</option></select>
     </div>
   </div>
-
-  <!-- Change History -->
-  <div class="section">
-    <h2 style="cursor:pointer;user-select:none" id="dlp-history-toggle">Change History <span id="dlp-history-count" style="font-size:11px;color:#484f58"></span> \u25BE</h2>
-    <div id="dlp-history-list" style="display:none">
-      <table><thead><tr><th>Time</th><th>Action</th><th>AI</th><th>Extra Sensitive</th><th>Extra Non-sensitive</th><th></th></tr></thead><tbody id="dlp-history-body"></tbody></table>
-      <p class="empty" id="no-history">No changes recorded yet.</p>
-    </div>
-  </div>
-
-  </div><!-- /dlp-sub-config -->
-
-  <!-- SUB: Signatures -->
-  <div class="sub-content" id="dlp-sub-signatures">
-
-  <!-- Status + Controls -->
-  <div class="section">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <div style="display:flex;align-items:center;gap:10px">
-        <h2>Signatures</h2>
-        <span id="sig-badge" style="display:none;font-size:11px;padding:2px 8px;border-radius:10px;background:#1f2937;border:1px solid #30363d;color:#7d8590"></span>
-        <span id="sig-update" style="display:none;font-size:11px;padding:2px 8px;border-radius:10px;background:#2a1f00;border:1px solid #d29922;color:#d29922;cursor:pointer" title="Click to sync"></span>
-      </div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <div class="toggle-row" style="padding:0;gap:6px">
-          <div style="font-size:12px;color:#7d8590">Auto-sync</div>
-          <label class="switch"><input type="checkbox" id="sig-auto-sync"><span class="slider"></span></label>
-        </div>
-        <button id="sig-check-btn" style="padding:4px 10px;font-size:11px;cursor:pointer;color:#7d8590;background:none;border:1px solid #30363d;border-radius:6px">Check Update</button>
-        <button id="sig-sync-btn" style="padding:4px 12px;font-size:12px;cursor:pointer;color:#58a6ff;background:none;border:1px solid #1f3a5f;border-radius:6px">Sync Now</button>
-      </div>
-    </div>
-    <div id="sig-status" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
-      <div style="padding:10px 14px;background:#161b22;border:1px solid #30363d;border-radius:8px">
-        <div style="font-size:11px;color:#7d8590;margin-bottom:4px">Version</div>
-        <div id="sig-ver" style="font-size:16px;font-weight:600;color:#e1e4e8">-</div>
-      </div>
-      <div style="padding:10px 14px;background:#161b22;border:1px solid #30363d;border-radius:8px">
-        <div style="font-size:11px;color:#7d8590;margin-bottom:4px">Patterns</div>
-        <div id="sig-count" style="font-size:16px;font-weight:600;color:#e1e4e8">-</div>
-      </div>
-      <div style="padding:10px 14px;background:#161b22;border:1px solid #30363d;border-radius:8px">
-        <div style="font-size:11px;color:#7d8590;margin-bottom:4px">Branch</div>
-        <div id="sig-branch" style="font-size:16px;font-weight:600;color:#e1e4e8">-</div>
-      </div>
-      <div style="padding:10px 14px;background:#161b22;border:1px solid #30363d;border-radius:8px">
-        <div style="font-size:11px;color:#7d8590;margin-bottom:4px">Last Synced</div>
-        <div id="sig-synced" style="font-size:14px;font-weight:500;color:#e1e4e8">-</div>
-      </div>
-    </div>
-    <div id="sig-not-synced" style="display:none;margin-top:12px;padding:12px 16px;text-align:center;color:#7d8590;font-size:13px;background:#161b22;border:1px solid #30363d;border-radius:8px">
-      Not synced yet. Click <strong>Sync Now</strong> to pull the latest signatures.
-    </div>
-  </div>
-
-  <!-- DLP Patterns -->
-  <div class="section">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <h2>DLP Patterns</h2>
-      <button id="dlp-add-btn" style="padding:4px 12px;font-size:12px;cursor:pointer;color:#3fb950;background:none;border:1px solid #3fb950;border-radius:6px">+ Add Pattern</button>
-    </div>
-    <div id="dlp-add-form" style="display:none;margin-bottom:12px;padding:12px 16px;background:#161b22;border:1px solid #30363d;border-radius:8px">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-        <input id="dlp-new-name" placeholder="Name" style="background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 10px;border-radius:4px;font-size:12px">
-        <input id="dlp-new-regex" placeholder="Regex (e.g. \\bSECRET_\\w+)" style="background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 10px;border-radius:4px;font-size:12px;font-family:monospace">
-      </div>
-      <div style="display:grid;grid-template-columns:2fr 1fr;gap:8px;margin-bottom:8px">
-        <input id="dlp-new-desc" placeholder="Description" style="background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 10px;border-radius:4px;font-size:12px">
-        <input id="dlp-new-context" placeholder="Context words (comma-sep, optional)" style="background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 10px;border-radius:4px;font-size:12px">
-      </div>
-      <div style="display:flex;gap:8px">
-        <button id="dlp-save-btn" style="padding:4px 16px;font-size:12px;cursor:pointer;color:#fff;background:#238636;border:1px solid #2ea043;border-radius:6px">Save</button>
-        <button id="dlp-cancel-btn" style="padding:4px 12px;font-size:12px;cursor:pointer;color:#7d8590;background:none;border:1px solid #30363d;border-radius:6px">Cancel</button>
-        <span id="dlp-form-error" style="color:#f85149;font-size:12px;align-self:center"></span>
-      </div>
-    </div>
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-      <select id="dlp-cat-filter" style="background:#161b22;border:1px solid #30363d;color:#e1e4e8;padding:4px 8px;border-radius:4px;font-size:12px">
-        <option value="">All categories</option>
-      </select>
-      <span id="dlp-pat-count" style="font-size:11px;color:#7d8590"></span>
-    </div>
-    <table><thead><tr><th style="width:60px">Enabled</th><th>Name</th><th>Category</th><th>Regex</th><th>Description</th><th style="width:60px">Actions</th></tr></thead><tbody id="dlp-patterns"></tbody></table>
-    <p class="empty" id="no-patterns">No patterns configured.</p>
-  </div>
-
-  <!-- Sync Log (collapsible) -->
-  <div class="section">
-    <div style="cursor:pointer;display:flex;align-items:center;gap:6px;user-select:none" id="sig-log-toggle">
-      <span id="sig-log-arrow" style="font-size:10px;color:#7d8590;transition:transform 0.2s">\u25b6</span>
-      <h2 style="margin:0;font-size:14px">Sync Log</h2>
-      <span id="sig-log-count" style="font-size:11px;color:#7d8590"></span>
-    </div>
-    <div id="sig-log-body" style="display:none;margin-top:8px;max-height:300px;overflow-y:auto">
-      <div id="sig-log-entries" style="font-family:monospace;font-size:11px;line-height:1.7;color:#8b949e"></div>
-      <p class="empty" id="sig-log-empty">No sync log entries.</p>
-    </div>
-  </div>
-
-  </div><!-- /dlp-sub-signatures -->
-
-  <!-- SUB: Findings -->
-  <div class="sub-content active" id="dlp-sub-findings">
-  <div class="section">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <h2>DLP Findings</h2>
-      <div class="filter-bar" style="margin:0">
-        <select id="findings-action-filter" style="background:#161b22;border:1px solid #30363d;color:#e1e4e8;padding:4px 8px;border-radius:4px;font-size:12px">
-          <option value="">All actions</option>
-          <option value="block">Block</option>
-          <option value="redact">Redact</option>
-          <option value="warn">Warn</option>
-        </select>
-        <select id="findings-dir-filter" style="background:#161b22;border:1px solid #30363d;color:#e1e4e8;padding:4px 8px;border-radius:4px;font-size:12px">
-          <option value="">All directions</option>
-          <option value="request">Request</option>
-          <option value="response">Response</option>
-        </select>
-      </div>
-    </div>
-    <table><thead><tr><th>Time</th><th>Dir</th><th>Request</th><th>Pattern</th><th>Category</th><th>Action</th><th>Matches</th><th>Original Snippet</th><th>Redacted Snippet</th></tr></thead><tbody id="findings-list"></tbody></table>
+  <div class="section-body">
+    <table><thead><tr><th>Time</th><th>Dir</th><th>Req</th><th>Pattern</th><th>Cat</th><th>Action</th><th>#</th><th>Original</th><th>Redacted</th></tr></thead><tbody id="findings-list"></tbody></table>
     <p class="empty" id="no-findings">No DLP findings yet.</p>
   </div>
-  </div><!-- /dlp-sub-findings -->
+</div>
+</div>`;
 
-  <!-- SUB: Test -->
-  <div class="sub-content" id="dlp-sub-test">
-  <div class="section">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <h2>DLP Scanner Test</h2>
-      <div style="display:flex;gap:8px;align-items:center">
-        <select id="scan-action" class="config-select">
-          <option value="block">Block</option>
-          <option value="redact">Redact</option>
-          <option value="warn">Warn</option>
-        </select>
-        <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:#7d8590;cursor:pointer"><input type="checkbox" id="scan-trace"> Trace</label>
-        <button id="scan-btn" style="padding:6px 20px;font-size:13px;cursor:pointer;color:#fff;background:#238636;border:1px solid #2ea043;border-radius:6px;font-weight:500">Scan</button>
-      </div>
-    </div>
-    <div style="margin-bottom:12px">
-      <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">
-        <span style="font-size:11px;color:#7d8590;align-self:center;margin-right:4px">Presets:</span>
-        <button class="scan-preset" data-preset="clean" style="padding:2px 10px;font-size:11px;cursor:pointer;color:#7d8590;background:#161b22;border:1px solid #30363d;border-radius:10px">Clean</button>
-        <button class="scan-preset" data-preset="aws" style="padding:2px 10px;font-size:11px;cursor:pointer;color:#f85149;background:#161b22;border:1px solid #30363d;border-radius:10px">AWS Key</button>
-        <button class="scan-preset" data-preset="github" style="padding:2px 10px;font-size:11px;cursor:pointer;color:#f85149;background:#161b22;border:1px solid #30363d;border-radius:10px">GitHub Token</button>
-        <button class="scan-preset" data-preset="openai" style="padding:2px 10px;font-size:11px;cursor:pointer;color:#f85149;background:#161b22;border:1px solid #30363d;border-radius:10px">OpenAI Key</button>
-        <button class="scan-preset" data-preset="pem" style="padding:2px 10px;font-size:11px;cursor:pointer;color:#f85149;background:#161b22;border:1px solid #30363d;border-radius:10px">Private Key</button>
-        <button class="scan-preset" data-preset="password" style="padding:2px 10px;font-size:11px;cursor:pointer;color:#f85149;background:#161b22;border:1px solid #30363d;border-radius:10px">Password</button>
-        <button class="scan-preset" data-preset="cc" style="padding:2px 10px;font-size:11px;cursor:pointer;color:#d29922;background:#161b22;border:1px solid #30363d;border-radius:10px">Credit Card</button>
-        <button class="scan-preset" data-preset="ssn" style="padding:2px 10px;font-size:11px;cursor:pointer;color:#d29922;background:#161b22;border:1px solid #30363d;border-radius:10px">SSN</button>
-        <button class="scan-preset" data-preset="email" style="padding:2px 10px;font-size:11px;cursor:pointer;color:#58a6ff;background:#161b22;border:1px solid #30363d;border-radius:10px">Email</button>
-        <button class="scan-preset" data-preset="multi" style="padding:2px 10px;font-size:11px;cursor:pointer;color:#f0a0f0;background:#161b22;border:1px solid #30363d;border-radius:10px">Multi</button>
-        <button class="scan-preset" data-preset="json-secret" style="padding:2px 10px;font-size:11px;cursor:pointer;color:#f0a0f0;background:#161b22;border:1px solid #30363d;border-radius:10px">JSON Secret</button>
-        <button class="scan-preset" data-preset="llm-body" style="padding:2px 10px;font-size:11px;cursor:pointer;color:#b388ff;background:#161b22;border:1px solid #30363d;border-radius:10px">LLM Request</button>
-      </div>
-      <textarea id="scan-input" rows="8" placeholder="Paste or type text to scan for sensitive data..." style="width:100%;background:#0f1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:12px;font-family:'SF Mono',Monaco,monospace;font-size:12px;resize:vertical;line-height:1.6"></textarea>
-    </div>
+// ── PAGE: GUARD ───────────────────────────────────────────────────
+const PAGE_GUARD = `
+<div class="page" id="page-guard">
+<div id="gd-alert-banner" style="display:none;background:#1a0000;border:1px solid var(--red);padding:8px 12px;margin-bottom:8px">
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <div><span style="color:var(--red);font-weight:700;font-size:12px" id="gd-alert-title"></span><span style="color:var(--bright);font-size:11px;margin-left:8px" id="gd-alert-msg"></span></div>
+    <button id="gd-ack-btn" class="cfg-btn danger">ACK</button>
   </div>
-
-  <div id="scan-result" style="display:none">
-    <div class="grid" id="scan-result-cards" style="margin-bottom:16px"></div>
-
-    <div class="section" id="scan-findings-section" style="display:none">
-      <h2>Findings</h2>
-      <table>
-        <thead><tr><th>Pattern</th><th>Category</th><th>Matches</th><th>Matched Values</th></tr></thead>
-        <tbody id="scan-findings-body"></tbody>
-      </table>
-    </div>
-
-    <div id="scan-diff-section" style="display:none">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
-        <div class="card">
-          <div class="label">Original</div>
-          <pre id="scan-original" style="white-space:pre-wrap;word-break:break-all;font-family:'SF Mono',Monaco,monospace;font-size:11px;line-height:1.6;color:#e1e4e8;max-height:400px;overflow:auto;margin-top:8px"></pre>
-        </div>
-        <div class="card">
-          <div class="label">Redacted</div>
-          <pre id="scan-redacted" style="white-space:pre-wrap;word-break:break-all;font-family:'SF Mono',Monaco,monospace;font-size:11px;line-height:1.6;color:#e1e4e8;max-height:400px;overflow:auto;margin-top:8px"></pre>
-        </div>
-      </div>
-    </div>
-
-    <div id="scan-trace-section" style="display:none">
-      <div class="section">
-        <h2>Trace Log</h2>
-        <div id="scan-trace-log" style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:12px;font-family:'SF Mono',Monaco,monospace;font-size:11px;line-height:1.7;max-height:500px;overflow:auto;white-space:pre-wrap;word-break:break-all"></div>
-      </div>
-    </div>
-  </div>
-  </div><!-- /dlp-sub-test -->
-
-</div><!-- /tab-dlp -->
-
-<!-- OPTIMIZER TAB -->
-<div class="tab-content" id="tab-optimizer">
-  <div class="grid" id="optimizer-cards"></div>
+  <div id="gd-alert-list" style="margin-top:6px;font-size:11px;color:var(--dim);max-height:100px;overflow:auto"></div>
+</div>
+<div class="gauges" id="gd-gauges"></div>
+<div class="panes">
   <div class="section">
-    <h2>Recent Optimizer Events</h2>
-    <table><thead><tr><th>Time</th><th>Type</th><th>Original</th><th>Trimmed</th><th>Chars Saved</th><th>Tokens Saved</th></tr></thead><tbody id="optimizer-recent"></tbody></table>
-    <p class="empty" id="no-optimizer">No optimizer events yet.</p>
+    <div class="section-head"><span class="section-title">Events</span></div>
+    <div class="section-body" id="gd-events"><div class="empty">No events</div></div>
+  </div>
+  <div class="section">
+    <div class="section-head"><span class="section-title">Rules (top)</span></div>
+    <div class="section-body" id="gd-rules"><div class="empty">No rules</div></div>
   </div>
 </div>
+</div>`;
 
-<!-- AUDIT TAB -->
-<div class="tab-content" id="tab-audit">
+// ── PAGE: LOG ─────────────────────────────────────────────────────
+const PAGE_LOG = `
+<div class="page" id="page-log">
+<div class="section" id="log-sessions-section">
+  <div class="section-head">
+    <span class="section-title">Sessions</span>
+    <div style="display:flex;gap:6px;align-items:center">
+      <input id="log-session-search" type="text" class="filter-input" placeholder="Search session or request ID...">
+      <button id="log-search-btn" class="cfg-btn secondary">Search</button>
+      <button id="log-search-clear" class="cfg-btn secondary" style="display:none">Clear</button>
+    </div>
+  </div>
+  <div class="section-body">
+    <table><thead><tr><th>Time</th><th>Session</th><th>Project</th><th>Models</th><th>Reqs</th><th></th></tr></thead><tbody id="log-sessions"></tbody></table>
+    <p class="empty" id="log-no-sessions">No audit entries. Enable audit logging in Settings.</p>
+  </div>
+</div>
+<div id="log-timeline" style="display:none">
   <div class="section">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <h2 style="margin:0">Sessions</h2>
-      <div style="display:flex;gap:8px;align-items:center">
-        <input id="audit-session-filter" type="text" placeholder="Search by Session ID or Request ID..." style="padding:4px 10px;font-size:12px;background:#0d1117;color:#e1e4e8;border:1px solid #30363d;border-radius:6px;width:320px;font-family:monospace">
-        <button id="audit-session-filter-btn" style="padding:4px 12px;font-size:12px;cursor:pointer;color:#58a6ff;background:none;border:1px solid #30363d;border-radius:6px">Search</button>
-        <button id="audit-session-filter-clear" style="padding:4px 12px;font-size:12px;cursor:pointer;color:#7d8590;background:none;border:1px solid #30363d;border-radius:6px;display:none">Clear</button>
-      </div>
+    <div class="section-head">
+      <span class="section-title">Timeline <span id="log-timeline-label" style="font-weight:400;color:var(--dim);text-transform:none;letter-spacing:0"></span></span>
+      <button id="log-back-sessions" class="cfg-btn secondary">Back</button>
     </div>
-    <table><thead><tr><th>Time</th><th>Session</th><th>Project</th><th>Models</th><th>Requests</th><th></th></tr></thead><tbody id="audit-sessions"></tbody></table>
-    <p class="empty" id="no-audit">No audit entries. Enable audit logging in Settings to start capturing request/response content.</p>
+    <div class="section-body" id="log-timeline-content"></div>
   </div>
-  <div id="audit-timeline" style="display:none">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <h2 style="margin:0">Session Timeline <span id="audit-session-label" class="mono" style="font-size:12px;color:#7d8590"></span></h2>
-      <button id="audit-back" style="padding:4px 12px;font-size:12px;cursor:pointer;color:#58a6ff;background:none;border:1px solid #30363d;border-radius:6px">Back to sessions</button>
-    </div>
-    <div id="audit-timeline-content"></div>
-  </div>
-  <div id="audit-detail" style="display:none">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <h2 style="margin:0">Request Detail</h2>
+</div>
+<div id="log-detail" style="display:none">
+  <div class="section">
+    <div class="section-head">
+      <span class="section-title">Request Detail</span>
       <div style="display:flex;gap:6px">
-        <button id="audit-back-timeline" style="padding:4px 12px;font-size:12px;cursor:pointer;color:#58a6ff;background:none;border:1px solid #30363d;border-radius:6px">Back to timeline</button>
-        <button class="audit-view-tab active" data-view="parsed" style="padding:4px 12px;font-size:12px;cursor:pointer;color:#58a6ff;background:none;border:1px solid #30363d;border-radius:6px">Parsed</button>
-        <button class="audit-view-tab" data-view="raw" style="padding:4px 12px;font-size:12px;cursor:pointer;color:#7d8590;background:none;border:1px solid #30363d;border-radius:6px">Raw</button>
+        <button id="log-back-timeline" class="cfg-btn secondary">Back</button>
+        <button class="log-view-tab cfg-btn primary" data-view="parsed">Parsed</button>
+        <button class="log-view-tab cfg-btn secondary" data-view="raw">Raw</button>
       </div>
     </div>
-    <div id="audit-parsed">
-      <div class="grid" id="audit-meta-cards" style="margin-bottom:12px"></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div class="card"><div class="label">Messages (Input)</div><div id="audit-messages" style="max-height:500px;overflow:auto;font-size:12px"></div></div>
-        <div class="card"><div class="label">Response Content</div><div id="audit-output" style="max-height:500px;overflow:auto;font-size:12px"></div></div>
+    <div class="section-body" style="padding:12px">
+      <div id="log-parsed">
+        <div id="log-detail-meta" class="gauges" style="margin-bottom:12px"></div>
+        <div id="log-detail-tg" style="display:none;margin-bottom:12px"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div><div style="font-size:10px;color:var(--cyan);font-weight:700;margin-bottom:4px">REQUEST</div><div id="log-detail-messages" style="max-height:500px;overflow:auto"></div></div>
+          <div><div style="font-size:10px;color:var(--green);font-weight:700;margin-bottom:4px">RESPONSE</div><div id="log-detail-output" style="max-height:500px;overflow:auto"></div></div>
+        </div>
       </div>
-    </div>
-    <div id="audit-raw" style="display:none">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div class="card"><div class="label">Request</div><pre class="snippet" id="audit-req" style="max-height:500px;overflow:auto"></pre></div>
-        <div class="card"><div class="label">Response</div><pre class="snippet" id="audit-res" style="max-height:500px;overflow:auto"></pre></div>
+      <div id="log-raw" style="display:none">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div><div style="font-size:10px;color:var(--cyan);font-weight:700;margin-bottom:4px">REQUEST</div><pre class="snippet" id="log-raw-req" style="max-height:500px;overflow:auto"></pre></div>
+          <div><div style="font-size:10px;color:var(--green);font-weight:700;margin-bottom:4px">RESPONSE</div><pre class="snippet" id="log-raw-res" style="max-height:500px;overflow:auto"></pre></div>
+        </div>
       </div>
     </div>
   </div>
 </div>
-
-<!-- TOOL GUARD TAB -->
-<div class="tab-content" id="tab-toolguard">
-  <div id="tg-alert-banner" style="display:none;background:#3d1a1a;border:1px solid #f85149;border-radius:8px;padding:12px 16px;margin-bottom:16px;display:none">
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <div><span style="color:#f85149;font-weight:600;font-size:14px" id="tg-alert-title"></span><span style="color:#e1e4e8;font-size:12px;margin-left:8px" id="tg-alert-msg"></span></div>
-      <button id="tg-ack-btn" style="padding:4px 12px;font-size:11px;cursor:pointer;color:#f85149;background:none;border:1px solid #f85149;border-radius:6px">Acknowledge</button>
-    </div>
-    <div id="tg-alert-list" style="margin-top:8px;font-size:11px;color:#7d8590;max-height:120px;overflow:auto"></div>
-  </div>
-  <div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;padding:12px 16px;background:#161b22;border:1px solid #30363d;border-radius:8px">
-    <div style="font-size:13px;color:#e1e4e8;font-weight:500">Action Mode</div>
-    <select id="tg-action-select" class="config-select">
-      <option value="audit">Audit (log only)</option>
-      <option value="block">Block (prevent dangerous calls)</option>
-    </select>
-    <div style="font-size:13px;color:#e1e4e8;font-weight:500;margin-left:16px">Block Min Severity</div>
-    <select id="tg-block-severity" class="config-select">
-      <option value="critical">Critical</option>
-      <option value="high">High</option>
-      <option value="medium">Medium</option>
-      <option value="low">Low</option>
-    </select>
-    <div style="font-size:13px;color:#e1e4e8;font-weight:500;margin-left:16px">Alert Min Severity</div>
-    <select id="tg-alert-severity" class="config-select">
-      <option value="critical">Critical</option>
-      <option value="high">High</option>
-      <option value="medium">Medium</option>
-      <option value="low">Low</option>
-    </select>
-    <div style="font-size:13px;color:#e1e4e8;font-weight:500;margin-left:16px">Record All</div>
-    <label class="switch" style="transform:scale(0.8)"><input type="checkbox" id="tg-record-all"><span class="slider"></span></label>
-    <span id="tg-cfg-status" style="margin-left:8px;font-size:12px;color:#3fb950;display:none">Saved!</span>
-  </div>
-  <div class="grid" id="tg-cards"></div>
-
-  <div class="sub-tabs" id="tg-sub-tabs">
-    <button class="sub-tab active" data-tg-sub="calls">Calls</button>
-    <button class="sub-tab" data-tg-sub="rules">Rules</button>
-  </div>
-
-  <!-- SUB: Calls -->
-  <div class="sub-content active" id="tg-sub-calls">
-    <div class="section">
-      <h2>Recent Tool Calls</h2>
-      <table><thead><tr><th>Time</th><th>Session</th><th>Tool Name</th><th>Action</th><th>Severity</th><th>Category</th><th>Input</th></tr></thead><tbody id="tg-table"></tbody></table>
-      <p class="empty" id="no-tg">No tool calls recorded yet.</p>
-    </div>
-    <div id="tg-detail" style="display:none">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <h2 style="margin:0">Tool Call Detail</h2>
-        <button id="tg-back" style="padding:4px 12px;font-size:12px;cursor:pointer;color:#58a6ff;background:none;border:1px solid #30363d;border-radius:6px">Back</button>
-      </div>
-      <div id="tg-detail-content" class="card" style="font-size:12px"></div>
-    </div>
-  </div>
-
-  <!-- SUB: Rules -->
-  <div class="sub-content" id="tg-sub-rules">
-    <div class="section">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-        <h2 style="margin:0">Detection Rules</h2>
-        <button id="tg-add-rule-btn" style="padding:6px 16px;font-size:12px;cursor:pointer;color:#fff;background:#238636;border:1px solid #2ea043;border-radius:6px">+ Add Rule</button>
-      </div>
-      <div id="tg-rule-form" style="display:none;background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px;margin-bottom:16px">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-          <div><label style="font-size:11px;color:#7d8590">Name *</label><input id="tgr-name" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px"></div>
-          <div><label style="font-size:11px;color:#7d8590">Category</label><input id="tgr-category" value="custom" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px"></div>
-        </div>
-        <div style="margin-bottom:8px"><label style="font-size:11px;color:#7d8590">Description</label><input id="tgr-description" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px"></div>
-        <div style="display:grid;grid-template-columns:3fr 1fr;gap:8px;margin-bottom:8px">
-          <div><label style="font-size:11px;color:#7d8590">Input Pattern (regex) *</label><input id="tgr-input-pattern" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px;font-family:monospace"></div>
-          <div><label style="font-size:11px;color:#7d8590">Flags</label><input id="tgr-input-flags" value="i" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px;font-family:monospace"></div>
-        </div>
-        <div style="display:grid;grid-template-columns:3fr 1fr 1fr;gap:8px;margin-bottom:12px">
-          <div><label style="font-size:11px;color:#7d8590">Tool Name Pattern (optional regex)</label><input id="tgr-tool-pattern" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px;font-family:monospace"></div>
-          <div><label style="font-size:11px;color:#7d8590">Tool Flags</label><input id="tgr-tool-flags" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px;font-family:monospace"></div>
-          <div><label style="font-size:11px;color:#7d8590">Severity</label><select id="tgr-severity" class="config-select" style="width:100%"><option value="critical">Critical</option><option value="high">High</option><option value="medium" selected>Medium</option><option value="low">Low</option></select></div>
-        </div>
-        <div style="display:flex;gap:8px">
-          <button id="tgr-save" style="padding:6px 16px;font-size:12px;cursor:pointer;color:#fff;background:#238636;border:1px solid #2ea043;border-radius:6px">Save</button>
-          <button id="tgr-cancel" style="padding:6px 16px;font-size:12px;cursor:pointer;color:#7d8590;background:none;border:1px solid #30363d;border-radius:6px">Cancel</button>
-          <span id="tgr-error" style="color:#f85149;font-size:12px;display:none;align-self:center"></span>
-        </div>
-      </div>
-      <table><thead><tr><th style="width:40px">On</th><th>Name</th><th>Severity</th><th>Category</th><th>Input Pattern</th><th>Type</th><th style="width:60px"></th></tr></thead><tbody id="tg-rules-table"></tbody></table>
-      <p class="empty" id="no-tg-rules" style="display:none">No rules found.</p>
-    </div>
+<!-- Optimizer (collapsible) -->
+<div class="section" style="margin-top:8px">
+  <div class="section-head setting-toggle" id="opt-toggle"><span class="section-title"><span class="sect-arrow">&#9656;</span> OPTIMIZER</span></div>
+  <div class="section-body" id="opt-body" style="display:none;padding:12px">
+    <div class="gauges" id="opt-gauges" style="margin-bottom:12px"></div>
+    <table><thead><tr><th>Time</th><th>Type</th><th>Original</th><th>Trimmed</th><th>Chars</th><th>Tokens</th></tr></thead><tbody id="opt-recent"></tbody></table>
+    <p class="empty" id="opt-no-events">No optimizer events yet.</p>
   </div>
 </div>
+</div>`;
 
-<!-- SETTINGS TAB -->
-<div class="tab-content" id="tab-settings">
-  <div class="section">
-    <h2>Plugin Controls</h2>
-    <div id="plugin-toggles"></div>
-  </div>
-  <div class="section" id="pro-section" style="display:none">
-    <h2>Pro Features</h2>
-    <div id="pro-features">
-      <div class="toggle-row pro-feature-row" data-pro-feature="ai-injection">
-        <div>
-          <div class="toggle-label">&#128274; AI Injection Detection</div>
-          <div class="toggle-desc">Multi-layer AI-driven prompt injection detection with semantic analysis and adversarial testing</div>
-        </div>
-        <span class="tag" style="background:#21262d;color:#484f58;font-size:11px">PRO</span>
-      </div>
-      <div class="toggle-row pro-feature-row" data-pro-feature="budget">
-        <div>
-          <div class="toggle-label">&#128274; Budget Control</div>
-          <div class="toggle-desc">Per-session/user/project usage and cost budget controls with automatic blocking when limits are exceeded</div>
-        </div>
-        <span class="tag" style="background:#21262d;color:#484f58;font-size:11px">PRO</span>
-      </div>
-      <div class="toggle-row pro-feature-row" data-pro-feature="ratelimit">
-        <div>
-          <div class="toggle-label">&#128274; Rate Limiting</div>
-          <div class="toggle-desc">Configurable request rate limiting by API key, session, or global scope with sliding window support</div>
-        </div>
-        <span class="tag" style="background:#21262d;color:#484f58;font-size:11px">PRO</span>
-      </div>
-    </div>
-    <div id="pro-detail" style="display:none;margin-top:12px">
-      <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:24px;text-align:center">
-        <div id="pro-detail-title" style="color:#e1e4e8;font-size:15px;font-weight:600;margin-bottom:8px"></div>
-        <div id="pro-detail-desc" style="color:#7d8590;font-size:13px;line-height:1.6;max-width:480px;margin:0 auto 16px"></div>
-        <div id="pro-detail-unlocked" style="display:none;color:#3fb950;font-size:13px">Feature enabled. Configuration coming soon.</div>
-        <div id="pro-detail-locked">
-          <a class="btn-upgrade" href="https://bastion.dev/pro" target="_blank">Upgrade to Pro &#8594;</a>
-          <div class="pro-license-input" id="pro-detail-license">
-            <input type="text" placeholder="Enter license key" id="pro-license-key">
-            <button onclick="activateLicense('pro-license-key')">Activate</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="section">
-    <h2>Data Retention</h2>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
-      <div class="toggle-row" style="flex-direction:column;align-items:flex-start;gap:4px">
-        <div class="toggle-label" style="font-size:12px">Requests (hours)</div>
-        <input type="number" id="ret-requests" min="1" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px">
-      </div>
-      <div class="toggle-row" style="flex-direction:column;align-items:flex-start;gap:4px">
-        <div class="toggle-label" style="font-size:12px">DLP Events (hours)</div>
-        <input type="number" id="ret-dlp" min="1" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px">
-      </div>
-      <div class="toggle-row" style="flex-direction:column;align-items:flex-start;gap:4px">
-        <div class="toggle-label" style="font-size:12px">Tool Calls (hours)</div>
-        <input type="number" id="ret-tools" min="1" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px">
-      </div>
-      <div class="toggle-row" style="flex-direction:column;align-items:flex-start;gap:4px">
-        <div class="toggle-label" style="font-size:12px">Optimizer Events (hours)</div>
-        <input type="number" id="ret-optimizer" min="1" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px">
-      </div>
-      <div class="toggle-row" style="flex-direction:column;align-items:flex-start;gap:4px">
-        <div class="toggle-label" style="font-size:12px">Sessions (hours)</div>
-        <input type="number" id="ret-sessions" min="1" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px">
-      </div>
-      <div class="toggle-row" style="flex-direction:column;align-items:flex-start;gap:4px">
-        <div class="toggle-label" style="font-size:12px">Audit Log (hours)</div>
-        <input type="number" id="ret-audit" min="1" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px">
-      </div>
-      <div class="toggle-row" style="flex-direction:column;align-items:flex-start;gap:4px">
-        <div class="toggle-label" style="font-size:12px">Plugin Events (hours)</div>
-        <input type="number" id="ret-plugin-events" min="1" style="width:100%;background:#0f1117;border:1px solid #30363d;color:#e1e4e8;padding:6px 8px;border-radius:4px;font-size:12px">
-      </div>
-    </div>
-    <button id="ret-save-btn" style="padding:6px 20px;font-size:13px;cursor:pointer;color:#fff;background:#238636;border:1px solid #2ea043;border-radius:6px;font-weight:500">Save Retention Settings</button>
-    <span id="ret-status" style="margin-left:8px;font-size:12px;color:#3fb950;display:none">Saved!</span>
-  </div>
-  <div class="section">
-    <h2>Security Pipeline</h2>
-    <div style="display:flex;gap:12px;align-items:center;padding:12px 16px;background:#161b22;border:1px solid #30363d;border-radius:8px">
-      <div style="font-size:13px;color:#e1e4e8;font-weight:500">Fail Mode</div>
-      <select id="fail-mode-select" class="config-select">
-        <option value="open">Open (skip failed plugins)</option>
-        <option value="closed">Closed (reject on plugin failure)</option>
-      </select>
-      <span id="fail-mode-status" style="margin-left:8px;font-size:12px;color:#3fb950;display:none">Saved!</span>
-    </div>
-  </div>
-</div>
+// ── PAGE: SETTINGS ────────────────────────────────────────────────
+const PAGE_SETTINGS = `
+<div class="page" id="page-settings">
 
-<p class="footer">Bastion <span id="ver">v0.1.0</span> &mdash; <span id="uptime"></span> uptime &mdash; <span id="mem"></span> MB memory</p>
+<!-- 1. Plugins -->
+<div class="section"><div class="section-head setting-toggle" data-target="set-plugins"><span class="section-title"><span class="sect-arrow">&#9662;</span> PLUGINS</span></div>
+<div class="section-body" id="set-plugins" style="padding:12px"><div id="plugin-toggles"></div></div></div>
 
-<script>
-let _authToken=localStorage.getItem('bastion_token')||'';
+<!-- 2. Pro Features (dev-only) -->
+<div class="section" id="sec-pro" style="display:none"><div class="section-head setting-toggle" data-target="set-pro"><span class="section-title"><span class="sect-arrow">&#9656;</span> PRO FEATURES</span></div>
+<div class="section-body" id="set-pro" style="display:none;padding:12px">
+  <div id="pro-features">
+    <div class="toggle-row pro-feature-row" data-pro-feature="ai-injection"><div><div class="toggle-label">AI Injection Detection</div><div class="toggle-desc">Multi-layer AI-driven prompt injection detection</div></div><span class="row-tag" style="background:#1a1a1a;color:var(--dim)">PRO</span></div>
+    <div class="toggle-row pro-feature-row" data-pro-feature="budget"><div><div class="toggle-label">Budget Control</div><div class="toggle-desc">Per-session/user/project usage and cost budgets</div></div><span class="row-tag" style="background:#1a1a1a;color:var(--dim)">PRO</span></div>
+    <div class="toggle-row pro-feature-row" data-pro-feature="ratelimit"><div><div class="toggle-label">Rate Limiting</div><div class="toggle-desc">Configurable rate limiting by API key, session, or global</div></div><span class="row-tag" style="background:#1a1a1a;color:var(--dim)">PRO</span></div>
+  </div>
+  <div id="pro-detail" style="display:none;margin-top:12px;padding:16px;background:var(--bg);border:1px solid var(--border);text-align:center">
+    <div id="pro-detail-title" style="color:var(--bright);font-size:13px;font-weight:700;margin-bottom:6px"></div>
+    <div id="pro-detail-desc" style="color:var(--dim);font-size:12px;max-width:480px;margin:0 auto 12px"></div>
+    <div id="pro-detail-unlocked" style="display:none;color:var(--green);font-size:12px">Feature enabled.</div>
+    <div id="pro-detail-locked">
+      <a style="display:inline-block;padding:6px 20px;background:#0a3d0a;color:var(--green);border:1px solid var(--green);font-size:12px;text-decoration:none;font-family:inherit" href="https://bastion.dev/pro" target="_blank">Upgrade to Pro</a>
+      <div class="pro-license-input" id="pro-detail-license" style="display:none;margin-top:12px">
+        <input type="text" class="cfg-input" style="width:240px;display:inline-block" placeholder="License key" id="pro-license-key">
+        <button class="cfg-btn primary" onclick="activateLicense('pro-license-key')">Activate</button>
+      </div>
+    </div>
+  </div>
+</div></div>
+
+<!-- 3. DLP Configuration -->
+<div class="section"><div class="section-head setting-toggle" data-target="set-dlp-config"><span class="section-title"><span class="sect-arrow">&#9656;</span> DLP CONFIGURATION</span></div>
+<div class="section-body" id="set-dlp-config" style="display:none;padding:12px">
+  <div style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:8px">
+    <span id="dlp-dirty" style="display:none;color:var(--yellow);font-size:11px">&#9679; Unsaved</span>
+    <button id="dlp-revert-btn" class="cfg-btn secondary" style="display:none">Revert</button>
+    <button id="dlp-apply-btn" class="cfg-btn primary" style="display:none">Apply</button>
+  </div>
+  <div class="toggle-row"><div><div class="toggle-label">DLP Engine</div><div class="toggle-desc">Enable or disable DLP scanning</div></div><label class="switch"><input type="checkbox" id="dlp-cfg-enabled"><span class="slider"></span></label></div>
+  <div class="toggle-row"><div><div class="toggle-label">Action Mode</div><div class="toggle-desc">What to do when sensitive data is detected</div></div><select class="cfg-select" id="dlp-cfg-action"><option value="pass">Pass</option><option value="warn">Warn</option><option value="redact">Redact</option><option value="block">Block</option></select></div>
+  <div class="toggle-row"><div><div class="toggle-label">AI Validation <span id="dlp-ai-status" style="font-size:10px;margin-left:4px"></span></div><div class="toggle-desc">Use LLM to verify DLP matches</div></div><label class="switch"><input type="checkbox" id="dlp-cfg-ai"><span class="slider"></span></label></div>
+  <div style="margin-top:8px;padding:10px 12px;background:var(--bg);border:1px solid var(--border)">
+    <div class="toggle-label" style="margin-bottom:8px">Semantic Detection (Layer 3)</div>
+    <div style="margin-bottom:8px"><div style="font-size:10px;color:var(--dim);margin-bottom:4px">Built-in Sensitive Patterns <span style="color:var(--muted)">(read-only)</span></div><div id="dlp-builtin-sensitive" style="display:flex;flex-wrap:wrap;gap:4px"></div></div>
+    <div style="margin-bottom:8px"><div style="font-size:10px;color:var(--dim);margin-bottom:4px">Extra Sensitive Patterns</div><textarea id="dlp-cfg-sensitive" class="cfg-textarea" rows="2" placeholder="regex, one per line"></textarea></div>
+    <div style="margin-bottom:8px"><div style="font-size:10px;color:var(--dim);margin-bottom:4px">Built-in Non-sensitive Names <span style="color:var(--muted)">(read-only)</span></div><div id="dlp-builtin-nonsensitive" style="display:flex;flex-wrap:wrap;gap:4px"></div></div>
+    <div><div style="font-size:10px;color:var(--dim);margin-bottom:4px">Extra Non-sensitive Names</div><textarea id="dlp-cfg-nonsensitive" class="cfg-textarea" rows="2" placeholder="one per line"></textarea></div>
+  </div>
+  <div style="margin-top:8px">
+    <div class="section-head setting-toggle" id="dlp-history-toggle" style="background:var(--bg)"><span class="section-title"><span class="sect-arrow">&#9656;</span> Change History <span id="dlp-history-count" style="font-size:10px;color:var(--muted)"></span></span></div>
+    <div id="dlp-history-list" style="display:none"><table><thead><tr><th>Time</th><th>Action</th><th>AI</th><th>Sensitive</th><th>Non-sensitive</th><th></th></tr></thead><tbody id="dlp-history-body"></tbody></table><p class="empty" id="no-history">No changes.</p></div>
+  </div>
+</div></div>
+
+<!-- 4. DLP Patterns -->
+<div class="section"><div class="section-head setting-toggle" data-target="set-dlp-patterns"><span class="section-title"><span class="sect-arrow">&#9656;</span> DLP PATTERNS</span></div>
+<div class="section-body" id="set-dlp-patterns" style="display:none;padding:12px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <div style="display:flex;gap:8px;align-items:center">
+      <select id="dlp-cat-filter" class="cfg-select"><option value="">All categories</option></select>
+      <span id="dlp-pat-count" style="font-size:10px;color:var(--dim)"></span>
+    </div>
+    <button id="dlp-add-btn" class="cfg-btn" style="color:var(--green);border:1px solid var(--green)">+ Add</button>
+  </div>
+  <div id="dlp-add-form" style="display:none;margin-bottom:12px;padding:12px;background:var(--bg);border:1px solid var(--border)">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
+      <input id="dlp-new-name" class="cfg-input" placeholder="Name">
+      <input id="dlp-new-regex" class="cfg-input" placeholder="Regex">
+    </div>
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:6px;margin-bottom:6px">
+      <input id="dlp-new-desc" class="cfg-input" placeholder="Description">
+      <input id="dlp-new-context" class="cfg-input" placeholder="Context words (csv)">
+    </div>
+    <div style="display:flex;gap:6px;align-items:center"><button id="dlp-save-btn" class="cfg-btn primary">Save</button><button id="dlp-cancel-btn" class="cfg-btn secondary">Cancel</button><span id="dlp-form-error" style="color:var(--red);font-size:11px"></span></div>
+  </div>
+  <table><thead><tr><th style="width:50px">On</th><th>Name</th><th>Category</th><th>Regex</th><th>Description</th><th style="width:50px"></th></tr></thead><tbody id="dlp-patterns"></tbody></table>
+  <p class="empty" id="no-patterns">No patterns.</p>
+</div></div>
+
+<!-- 5. DLP Signatures -->
+<div class="section"><div class="section-head setting-toggle" data-target="set-dlp-sig"><span class="section-title"><span class="sect-arrow">&#9656;</span> DLP SIGNATURES</span></div>
+<div class="section-body" id="set-dlp-sig" style="display:none;padding:12px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <div style="display:flex;align-items:center;gap:8px"><span id="sig-badge" style="display:none;font-size:10px;padding:1px 6px;background:var(--border);color:var(--dim)"></span><span id="sig-update" style="display:none;font-size:10px;padding:1px 6px;background:#1a1a00;color:var(--yellow);cursor:pointer"></span></div>
+    <div style="display:flex;gap:6px;align-items:center">
+      <span style="font-size:11px;color:var(--dim)">Auto-sync</span>
+      <label class="switch"><input type="checkbox" id="sig-auto-sync"><span class="slider"></span></label>
+      <button id="sig-check-btn" class="cfg-btn secondary">Check</button>
+      <button id="sig-sync-btn" class="cfg-btn" style="color:var(--cyan);border:1px solid #003344">Sync Now</button>
+    </div>
+  </div>
+  <div id="sig-status" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px">
+    <div style="padding:8px 12px;background:var(--bg);border:1px solid var(--border)"><div style="font-size:10px;color:var(--dim);margin-bottom:2px">Version</div><div id="sig-ver" style="font-size:14px;font-weight:700;color:var(--bright)">-</div></div>
+    <div style="padding:8px 12px;background:var(--bg);border:1px solid var(--border)"><div style="font-size:10px;color:var(--dim);margin-bottom:2px">Patterns</div><div id="sig-count" style="font-size:14px;font-weight:700;color:var(--bright)">-</div></div>
+    <div style="padding:8px 12px;background:var(--bg);border:1px solid var(--border)"><div style="font-size:10px;color:var(--dim);margin-bottom:2px">Branch</div><div id="sig-branch" style="font-size:14px;font-weight:700;color:var(--bright)">-</div></div>
+    <div style="padding:8px 12px;background:var(--bg);border:1px solid var(--border)"><div style="font-size:10px;color:var(--dim);margin-bottom:2px">Last Synced</div><div id="sig-synced" style="font-size:12px;font-weight:500;color:var(--bright)">-</div></div>
+  </div>
+  <div id="sig-not-synced" style="display:none;padding:10px;text-align:center;color:var(--dim);font-size:11px;background:var(--bg);border:1px solid var(--border)">Not synced yet. Click Sync Now.</div>
+  <div style="margin-top:8px">
+    <div style="cursor:pointer;display:flex;align-items:center;gap:4px" id="sig-log-toggle"><span id="sig-log-arrow" class="sect-arrow">&#9656;</span><span style="font-size:10px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:1px">Sync Log</span><span id="sig-log-count" style="font-size:10px;color:var(--dim)"></span></div>
+    <div id="sig-log-body" style="display:none;margin-top:6px;max-height:200px;overflow-y:auto"><div id="sig-log-entries" style="font-size:10px;line-height:1.7;color:var(--dim)"></div><p class="empty" id="sig-log-empty">No sync log.</p></div>
+  </div>
+</div></div>
+
+<!-- 6. Tool Guard Configuration -->
+<div class="section"><div class="section-head setting-toggle" data-target="set-tg-config"><span class="section-title"><span class="sect-arrow">&#9656;</span> TOOL GUARD CONFIGURATION</span></div>
+<div class="section-body" id="set-tg-config" style="display:none;padding:12px">
+  <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+    <div style="display:flex;align-items:center;gap:6px"><span style="font-size:11px;color:var(--dim)">Action</span><select id="tg-action-select" class="cfg-select"><option value="audit">Audit</option><option value="block">Block</option></select></div>
+    <div style="display:flex;align-items:center;gap:6px"><span style="font-size:11px;color:var(--dim)">Block Min</span><select id="tg-block-severity" class="cfg-select"><option value="critical">Critical</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></div>
+    <div style="display:flex;align-items:center;gap:6px"><span style="font-size:11px;color:var(--dim)">Alert Min</span><select id="tg-alert-severity" class="cfg-select"><option value="critical">Critical</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></div>
+    <div style="display:flex;align-items:center;gap:6px"><span style="font-size:11px;color:var(--dim)">Record All</span><label class="switch"><input type="checkbox" id="tg-record-all"><span class="slider"></span></label></div>
+    <span id="tg-cfg-status" style="font-size:11px;color:var(--green);display:none">Saved!</span>
+  </div>
+</div></div>
+
+<!-- 7. Tool Guard Rules -->
+<div class="section"><div class="section-head setting-toggle" data-target="set-tg-rules"><span class="section-title"><span class="sect-arrow">&#9656;</span> TOOL GUARD RULES</span></div>
+<div class="section-body" id="set-tg-rules" style="display:none;padding:12px">
+  <div style="display:flex;justify-content:flex-end;margin-bottom:8px"><button id="tg-add-rule-btn" class="cfg-btn primary">+ Add Rule</button></div>
+  <div id="tg-rule-form" style="display:none;background:var(--bg);border:1px solid var(--border);padding:12px;margin-bottom:12px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
+      <div><label style="font-size:10px;color:var(--dim)">Name *</label><input id="tgr-name" class="cfg-input"></div>
+      <div><label style="font-size:10px;color:var(--dim)">Category</label><input id="tgr-category" class="cfg-input" value="custom"></div>
+    </div>
+    <div style="margin-bottom:6px"><label style="font-size:10px;color:var(--dim)">Description</label><input id="tgr-description" class="cfg-input"></div>
+    <div style="display:grid;grid-template-columns:3fr 1fr;gap:6px;margin-bottom:6px">
+      <div><label style="font-size:10px;color:var(--dim)">Input Pattern *</label><input id="tgr-input-pattern" class="cfg-input"></div>
+      <div><label style="font-size:10px;color:var(--dim)">Flags</label><input id="tgr-input-flags" class="cfg-input" value="i"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:3fr 1fr 1fr;gap:6px;margin-bottom:8px">
+      <div><label style="font-size:10px;color:var(--dim)">Tool Pattern</label><input id="tgr-tool-pattern" class="cfg-input"></div>
+      <div><label style="font-size:10px;color:var(--dim)">Tool Flags</label><input id="tgr-tool-flags" class="cfg-input"></div>
+      <div><label style="font-size:10px;color:var(--dim)">Severity</label><select id="tgr-severity" class="cfg-select" style="width:100%"><option value="critical">Critical</option><option value="high">High</option><option value="medium" selected>Medium</option><option value="low">Low</option></select></div>
+    </div>
+    <div style="display:flex;gap:6px;align-items:center"><button id="tgr-save" class="cfg-btn primary">Save</button><button id="tgr-cancel" class="cfg-btn secondary">Cancel</button><span id="tgr-error" style="color:var(--red);font-size:11px;display:none"></span></div>
+  </div>
+  <table><thead><tr><th style="width:40px">On</th><th>Name</th><th>Severity</th><th>Category</th><th>Pattern</th><th>Type</th><th style="width:50px"></th></tr></thead><tbody id="tg-rules-table"></tbody></table>
+  <p class="empty" id="no-tg-rules" style="display:none">No rules.</p>
+</div></div>
+
+<!-- 8. Data Retention -->
+<div class="section"><div class="section-head setting-toggle" data-target="set-retention"><span class="section-title"><span class="sect-arrow">&#9656;</span> DATA RETENTION</span></div>
+<div class="section-body" id="set-retention" style="display:none;padding:12px">
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px">
+    <div class="toggle-row" style="flex-direction:column;align-items:flex-start;gap:4px;padding:8px"><div class="toggle-label" style="font-size:11px">Requests (h)</div><input type="number" id="ret-requests" min="1" class="cfg-input"></div>
+    <div class="toggle-row" style="flex-direction:column;align-items:flex-start;gap:4px;padding:8px"><div class="toggle-label" style="font-size:11px">DLP Events (h)</div><input type="number" id="ret-dlp" min="1" class="cfg-input"></div>
+    <div class="toggle-row" style="flex-direction:column;align-items:flex-start;gap:4px;padding:8px"><div class="toggle-label" style="font-size:11px">Tool Calls (h)</div><input type="number" id="ret-tools" min="1" class="cfg-input"></div>
+    <div class="toggle-row" style="flex-direction:column;align-items:flex-start;gap:4px;padding:8px"><div class="toggle-label" style="font-size:11px">Optimizer (h)</div><input type="number" id="ret-optimizer" min="1" class="cfg-input"></div>
+    <div class="toggle-row" style="flex-direction:column;align-items:flex-start;gap:4px;padding:8px"><div class="toggle-label" style="font-size:11px">Sessions (h)</div><input type="number" id="ret-sessions" min="1" class="cfg-input"></div>
+    <div class="toggle-row" style="flex-direction:column;align-items:flex-start;gap:4px;padding:8px"><div class="toggle-label" style="font-size:11px">Audit Log (h)</div><input type="number" id="ret-audit" min="1" class="cfg-input"></div>
+    <div class="toggle-row" style="flex-direction:column;align-items:flex-start;gap:4px;padding:8px"><div class="toggle-label" style="font-size:11px">Plugin Events (h)</div><input type="number" id="ret-plugin-events" min="1" class="cfg-input"></div>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center"><button id="ret-save-btn" class="cfg-btn primary">Save</button><span id="ret-status" style="font-size:11px;color:var(--green);display:none">Saved!</span></div>
+</div></div>
+
+<!-- 9. Security Pipeline -->
+<div class="section"><div class="section-head setting-toggle" data-target="set-pipeline"><span class="section-title"><span class="sect-arrow">&#9656;</span> SECURITY PIPELINE</span></div>
+<div class="section-body" id="set-pipeline" style="display:none;padding:12px">
+  <div style="display:flex;gap:12px;align-items:center">
+    <span style="font-size:11px;color:var(--dim)">Fail Mode</span>
+    <select id="fail-mode-select" class="cfg-select"><option value="open">Open (skip failed)</option><option value="closed">Closed (reject on failure)</option></select>
+    <span id="fail-mode-status" style="font-size:11px;color:var(--green);display:none">Saved!</span>
+  </div>
+</div></div>
+
+<!-- 10. Debug Scanner -->
+<div class="section"><div class="section-head setting-toggle" data-target="set-debug"><span class="section-title"><span class="sect-arrow">&#9656;</span> DEBUG SCANNER</span></div>
+<div class="section-body" id="set-debug" style="display:none;padding:12px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <div style="display:flex;gap:4px;flex-wrap:wrap">
+      <span style="font-size:10px;color:var(--dim);align-self:center;margin-right:4px">Presets:</span>
+      <button class="scan-preset cfg-btn secondary" data-preset="clean">Clean</button>
+      <button class="scan-preset cfg-btn secondary" style="color:var(--red)" data-preset="aws">AWS</button>
+      <button class="scan-preset cfg-btn secondary" style="color:var(--red)" data-preset="github">GitHub</button>
+      <button class="scan-preset cfg-btn secondary" style="color:var(--red)" data-preset="openai">OpenAI</button>
+      <button class="scan-preset cfg-btn secondary" style="color:var(--red)" data-preset="pem">PEM</button>
+      <button class="scan-preset cfg-btn secondary" style="color:var(--red)" data-preset="password">Pass</button>
+      <button class="scan-preset cfg-btn secondary" style="color:var(--yellow)" data-preset="cc">CC</button>
+      <button class="scan-preset cfg-btn secondary" style="color:var(--yellow)" data-preset="ssn">SSN</button>
+      <button class="scan-preset cfg-btn secondary" style="color:var(--cyan)" data-preset="email">Email</button>
+      <button class="scan-preset cfg-btn secondary" style="color:var(--purple)" data-preset="multi">Multi</button>
+      <button class="scan-preset cfg-btn secondary" style="color:var(--purple)" data-preset="json-secret">JSON</button>
+      <button class="scan-preset cfg-btn secondary" style="color:var(--purple)" data-preset="llm-body">LLM</button>
+    </div>
+    <div style="display:flex;gap:6px;align-items:center">
+      <select id="scan-action" class="cfg-select"><option value="block">Block</option><option value="redact">Redact</option><option value="warn">Warn</option></select>
+      <label style="display:flex;align-items:center;gap:3px;font-size:10px;color:var(--dim);cursor:pointer"><input type="checkbox" id="scan-trace"> Trace</label>
+      <button id="scan-btn" class="cfg-btn primary">Scan</button>
+    </div>
+  </div>
+  <textarea id="scan-input" class="cfg-textarea" rows="6" placeholder="Paste or type text to scan..."></textarea>
+  <div id="scan-result" style="display:none;margin-top:12px">
+    <div class="gauges" id="scan-result-cards" style="margin-bottom:12px"></div>
+    <div class="section" id="scan-findings-section" style="display:none"><div class="section-head"><span class="section-title">Findings</span></div><div class="section-body"><table><thead><tr><th>Pattern</th><th>Category</th><th>Matches</th><th>Values</th></tr></thead><tbody id="scan-findings-body"></tbody></table></div></div>
+    <div id="scan-diff-section" style="display:none;margin-top:8px"><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div style="padding:10px 12px;background:var(--panel);border:1px solid var(--border)"><div style="font-size:10px;color:var(--dim);margin-bottom:4px">ORIGINAL</div><pre id="scan-original" style="white-space:pre-wrap;word-break:break-all;font-size:11px;color:var(--bright);max-height:300px;overflow:auto"></pre></div>
+      <div style="padding:10px 12px;background:var(--panel);border:1px solid var(--border)"><div style="font-size:10px;color:var(--dim);margin-bottom:4px">REDACTED</div><pre id="scan-redacted" style="white-space:pre-wrap;word-break:break-all;font-size:11px;color:var(--bright);max-height:300px;overflow:auto"></pre></div>
+    </div></div>
+    <div id="scan-trace-section" style="display:none;margin-top:8px"><div style="font-size:10px;color:var(--dim);margin-bottom:4px">TRACE LOG</div><div id="scan-trace-log" style="background:var(--bg);border:1px solid var(--border);padding:10px;font-size:10px;line-height:1.7;max-height:400px;overflow:auto;white-space:pre-wrap;word-break:break-all"></div></div>
+  </div>
+</div></div>
+
+</div>`;
+
+// ── FOOTER ────────────────────────────────────────────────────────
+const FOOTER = `<div class="footer">BASTION AI GATEWAY &mdash; local-first security proxy</div>`;
+
+// ── SCRIPT (placeholder - assembled below) ────────────────────────
+const SCRIPT = `<script>
+// ══ 1. UTILITIES ══════════════════════════════════════════════════
+var _authToken=localStorage.getItem('bastion_token')||'';
 function apiFetch(url,opts){
   opts=opts||{};
   if(_authToken){opts.headers=Object.assign(opts.headers||{},{'Authorization':'Bearer '+_authToken});}
   return fetch(url,opts);
 }
-let activeTab='overview';
-let _lastJson={}; // keyed by element ID — skip DOM rebuild if data unchanged
-function skipIfSame(id,json){const s=JSON.stringify(json);if(_lastJson[id]===s)return true;_lastJson[id]=s;return false}
-function fmt(n){return n.toLocaleString()}
+var _lastJson={};
+function skipIfSame(id,json){var s=JSON.stringify(json);if(_lastJson[id]===s)return true;_lastJson[id]=s;return false}
+function fmt(n){return n==null?'0':n.toLocaleString()}
 function cost(n){return n<0.01?'$'+n.toFixed(6):'$'+n.toFixed(4)}
 function bytes(n){if(n<1024)return n+'B';if(n<1048576)return(n/1024).toFixed(1)+'KB';return(n/1048576).toFixed(1)+'MB'}
 function ago(ts){
-  const d=new Date(/[Z+]/.test(ts)?ts:ts+'Z'),now=new Date(),s=Math.floor((now-d)/1000);
+  var d=new Date(/[Z+]/.test(ts)?ts:ts+'Z'),now=new Date(),s=Math.floor((now-d)/1000);
   if(isNaN(s)||s<0)return '?';
   if(s<60)return s+'s ago';if(s<3600)return Math.floor(s/60)+'m ago';
   if(s<86400)return Math.floor(s/3600)+'h ago';return Math.floor(s/86400)+'d ago';
 }
-function uptime(s){
+function uptimeFmt(s){
   if(s<60)return Math.round(s)+'s';if(s<3600)return Math.round(s/60)+'m';
   return Math.round(s/3600)+'h '+Math.round((s%3600)/60)+'m';
 }
-function providerTag(p){return '<span class="tag '+p+'">'+p+'</span>'}
-function actionTag(a){return '<span class="tag '+(a==='block'?'blocked':a==='warn'?'warn':'redact')+'">'+a+'</span>'}
-function card(label,value,cls){return '<div class="card"><div class="label">'+label+'</div><div class="value'+(cls?' '+cls:'')+'">'+value+'</div></div>'}
-function esc(s){if(!s)return'';const d=document.createElement('div');d.textContent=s;return d.innerHTML}
+function esc(s){if(!s)return'';var d=document.createElement('div');d.textContent=String(s);return d.innerHTML}
+function tryPrettyJson(s){try{return JSON.stringify(JSON.parse(s),null,2)}catch(e){return s||''}}
 
-// Time range
-let timeRange='24h';
+var timeRange='24h';
 function hoursForRange(r){return r==='24h'?24:r==='7d'?168:r==='30d'?720:0}
+function sinceParam(){var h=hoursForRange(timeRange);return h?'hours='+h:'';}
 document.getElementById('time-range').addEventListener('change',function(){
-  timeRange=this.value;_lastJson={};refreshActiveTab();
+  timeRange=this.value;_lastJson={};refreshActivePage();
 });
-function sinceParam(){const h=hoursForRange(timeRange);return h?'hours='+h:'';}
 
-// Pro license — hidden unless server started with --dev
-let _devMode=false;
-let _proLicense={pro:false};
-var _proFeatures={
-  'ai-injection':{title:'AI Injection Detection',desc:'Multi-layer AI-driven prompt injection detection with L5a semantic analysis and L5b adversarial testing. Protect your LLM applications from sophisticated injection attacks.'},
-  'budget':{title:'Budget Control',desc:'Per-session, per-user, and per-project usage and cost budget controls with automatic blocking when limits are exceeded. Keep your AI spending under control.'},
-  'ratelimit':{title:'Rate Limiting',desc:'Configurable request rate limiting by API key, session, or global scope with sliding window support. Prevent abuse and ensure fair usage across your applications.'}
-};
-async function fetchDevMode(){
-  try{
-    const r=await apiFetch('/api/dev');
-    const d=await r.json();
-    _devMode=!!d.dev;
-  }catch(e){_devMode=false;}
+// ══ 2. TAB MANAGEMENT ═════════════════════════════════════════════
+var activePage='overview';
+function showPage(name){
+  document.querySelectorAll('.page').forEach(function(p){p.classList.remove('active')});
+  document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active')});
+  var pageEl=document.getElementById('page-'+name);
+  if(pageEl)pageEl.classList.add('active');
+  var tabs=document.querySelectorAll('.tab');
+  tabs.forEach(function(t){if(t.dataset.page===name)t.classList.add('active')});
+  activePage=name;
+  refreshActivePage();
 }
-async function fetchLicense(){
-  try{
-    const r=await apiFetch('/api/license');
-    _proLicense=await r.json();
-  }catch(e){_proLicense={pro:false};}
-  var sec=document.getElementById('pro-section');
-  if(sec)sec.style.display=(_proLicense.pro||_devMode)?'':'none';
-  updateProFeatures();
+function refreshActivePage(){
+  if(activePage==='overview')refreshOverview();
+  else if(activePage==='dlp')refreshDlp();
+  else if(activePage==='guard')refreshGuard();
+  else if(activePage==='log')refreshLog();
+  else if(activePage==='settings')refreshSettings();
 }
-function updateProFeatures(){
-  document.querySelectorAll('.pro-feature-row').forEach(function(row){
-    if(_proLicense.pro){
-      row.classList.add('unlocked');
-      var label=row.querySelector('.toggle-label');
-      if(label)label.textContent=label.textContent.replace(/\u{1F512}\s?/u,'');
-      var badge=row.querySelector('.tag');
-      if(badge){badge.style.background='#0d2818';badge.style.color='#3fb950';badge.textContent='ACTIVE';}
+document.querySelectorAll('.tab').forEach(function(t){
+  t.addEventListener('click',function(){showPage(t.dataset.page)});
+});
+document.addEventListener('keydown',function(e){
+  if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.tagName==='SELECT')return;
+  if(e.key==='1')showPage('overview');
+  else if(e.key==='2')showPage('dlp');
+  else if(e.key==='3')showPage('guard');
+  else if(e.key==='4')showPage('log');
+  else if(e.key==='5')showPage('settings');
+});
+
+// ══ 3. RENDER HELPERS ═════════════════════════════════════════════
+function gauge(label,value,sub,cls,barPct,barColor){
+  return '<div class="gauge"><div class="gauge-label">'+esc(label)+'</div>'+
+    '<div class="gauge-value'+(cls?' '+cls:'')+'">'+value+'</div>'+
+    (sub?'<div class="gauge-sub">'+sub+'</div>':'')+
+    (barPct!=null?'<div class="gauge-bar"><div class="gauge-bar-fill" style="width:'+Math.min(100,Math.max(0,barPct))+'%;background:'+(barColor||'#555')+'"></div></div>':'')+
+    '</div>';
+}
+function provTag(p){
+  var colors={anthropic:'#aa66ff',openai:'#00ff88',gemini:'#ffcc00',telegram:'#00ccff',slack:'#ffcc00'};
+  return '<span style="color:'+(colors[p]||'#888')+'">'+esc(p)+'</span>';
+}
+function dlpActionTag(a){
+  if(a==='block')return '<span class="row-tag block">BLOCK</span>';
+  if(a==='redact')return '<span class="row-tag redact">REDACT</span>';
+  if(a==='warn')return '<span class="row-tag warn">WARN</span>';
+  if(a==='pass')return '<span class="row-tag audit">PASS</span>';
+  return '<span class="row-tag">'+esc(a||'-')+'</span>';
+}
+function severityTag(s){
+  if(!s)return '<span class="row-tag" style="background:#1a1a1a;color:#444">none</span>';
+  var colors={critical:'background:#330000;color:#ff4444',high:'background:#1a1a00;color:#ffcc00',medium:'background:#1a1a00;color:#888',low:'background:#001a1a;color:#00ccff',info:'background:#0a1a0a;color:#00ff88'};
+  return '<span class="row-tag" style="'+(colors[s]||'')+'">'+esc(s)+'</span>';
+}
+function actionTag(a){
+  if(!a||a==='pass')return '<span class="row-tag audit">pass</span>';
+  if(a==='block')return '<span class="row-tag block">block</span>';
+  if(a==='flag')return '<span class="row-tag warn">flag</span>';
+  return '<span class="row-tag">'+esc(a)+'</span>';
+}
+
+// ══ 4. PAGE: OVERVIEW ═════════════════════════════════════════════
+async function refreshOverview(){
+  try{
+    var sp=sinceParam();
+    var qp=sp?'?'+sp:'';
+    var [statsR,alertsR,dlpRecentR]=await Promise.all([
+      apiFetch('/api/stats'+qp),
+      apiFetch('/api/tool-guard/alerts'),
+      apiFetch('/api/dlp/recent?limit=5'+(sp?'&'+sp:''))
+    ]);
+    var statsData=await statsR.json();
+    var alertsData=await alertsR.json();
+    var dlpRecent=await dlpRecentR.json();
+    var s=statsData.stats;
+    var dlp=statsData.dlp||{};
+    var ba=dlp.by_action||{};
+
+    // Gauges
+    if(!skipIfSame('ov-gauges',{s:s,dlp:dlp})){
+      var dlpTotal=dlp.total_events||0;
+      var latAvg=s.avg_latency_ms||0;
+      document.getElementById('ov-gauges').innerHTML=
+        gauge('Requests',fmt(s.total_requests),'','')+
+        gauge('Cost',cost(s.total_cost_usd),'','green')+
+        gauge('Tokens',fmt(s.total_input_tokens+s.total_output_tokens),fmt(s.total_input_tokens)+' in / '+fmt(s.total_output_tokens)+' out','')+
+        gauge('DLP Hits',fmt(dlpTotal),(ba.redact||0)+' redact, '+(ba.block||0)+' block',dlpTotal>0?'red':'')+
+        gauge('Avg Latency',Math.round(latAvg)+'ms','','cyan');
     }
-  });
-}
-function showProDetail(feature){
-  var info=_proFeatures[feature];
-  if(!info)return;
-  document.getElementById('pro-detail-title').textContent=info.title;
-  document.getElementById('pro-detail-desc').textContent=info.desc;
-  var detail=document.getElementById('pro-detail');
-  detail.style.display='block';
-  if(_proLicense.pro){
-    document.getElementById('pro-detail-unlocked').style.display='block';
-    document.getElementById('pro-detail-locked').style.display='none';
-  }else{
-    document.getElementById('pro-detail-unlocked').style.display='none';
-    document.getElementById('pro-detail-locked').style.display='block';
-    document.getElementById('pro-detail-license').style.display=(_devMode||_proLicense.installed)?'block':'none';
-  }
-}
-async function activateLicense(inputId){
-  var key=document.getElementById(inputId).value.trim();
-  if(!key)return;
-  if(_devMode){
-    try{
-      var r=await apiFetch('/api/dev/activate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({token:key})});
-      var d=await r.json();
-      if(d.ok){await fetchLicense();return;}
-      alert(d.error||'Invalid token');
-    }catch(e){alert('Activation failed');}
-  }else{
-    alert('License activation requires the Bastion Pro plugin. Visit https://bastion.dev/pro for details.');
-  }
-}
-document.querySelectorAll('.pro-feature-row').forEach(function(row){
-  row.addEventListener('click',function(){showProDetail(row.dataset.proFeature);});
-});
 
-// Tab switching
-document.querySelectorAll('.tab').forEach(t=>{
-  t.addEventListener('click',()=>{
-    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(x=>x.classList.remove('active'));
-    t.classList.add('active');
-    activeTab=t.dataset.tab;
-    document.getElementById('tab-'+activeTab).classList.add('active');
-    refreshActiveTab();
-  });
-});
-async function refreshActiveTab(){
-  if(activeTab==='overview')await refresh();
-  else if(activeTab==='dlp')await refreshDlp();
-  else if(activeTab==='optimizer')await refreshOptimizer();
-  else if(activeTab==='audit')await refreshAudit();
-  else if(activeTab==='toolguard')await refreshToolGuard();
-  else if(activeTab==='settings')await refreshSettings();
-}
-
-// DLP sub-tab switching
-document.querySelectorAll('#dlp-sub-tabs .sub-tab').forEach(t=>{
-  t.addEventListener('click',()=>{
-    document.querySelectorAll('#dlp-sub-tabs .sub-tab').forEach(x=>x.classList.remove('active'));
-    document.querySelectorAll('#tab-dlp .sub-content').forEach(x=>x.classList.remove('active'));
-    t.classList.add('active');
-    document.getElementById('dlp-sub-'+t.dataset.dlpSub).classList.add('active');
-    if(t.dataset.dlpSub==='findings')refreshFindings();
-    if(t.dataset.dlpSub==='signatures'){refreshSignature(true);refreshPatterns();}
-  });
-});
-
-// Session filter
-let sessions=[];
-async function loadSessions(){
-  try{
-    const r=await apiFetch('/api/sessions');
-    sessions=await r.json();
-    const sel=document.getElementById('session-filter');
-    const cur=sel.value;
-    const opts=['<option value="">All sessions</option>'];
-    sessions.forEach(s=>{
-      const name=s.label||s.session_id.slice(0,8)+'...';
-      const label=name+' ('+s.request_count+' reqs, '+cost(s.total_cost_usd)+')';
-      opts.push('<option value="'+s.session_id+'">'+esc(label)+'</option>');
+    // Alerts pane (combine DLP + Guard)
+    var combined=[];
+    (dlpRecent||[]).forEach(function(d){
+      combined.push({type:'dlp',time:d.created_at,text:'<b>'+esc(d.pattern_name)+'</b> \\u2192 '+esc(d.action),tag:'dlp'});
     });
-    sel.innerHTML=opts.join('');
-    sel.value=cur;
-  }catch(e){}
-}
-document.getElementById('session-filter').addEventListener('change',()=>refresh());
-
-// Overview
-async function refresh(){
-  try{
-    const sid=document.getElementById('session-filter').value;
-    const parts=[];
-    if(sid)parts.push('session_id='+encodeURIComponent(sid));
-    const h=hoursForRange(timeRange);
-    if(h)parts.push('hours='+h);
-    const params=parts.length?'?'+parts.join('&'):'';
-    const r=await apiFetch('/api/stats'+params);
-    const d=await r.json();
-    const s=d.stats;
-
-    if(!skipIfSame('cards',s)){
-      document.getElementById('cards').innerHTML=
-        card('Requests',fmt(s.total_requests))+
-        card('Total Cost',cost(s.total_cost_usd),'cost')+
-        card('Input Tokens',fmt(s.total_input_tokens))+
-        card('Output Tokens',fmt(s.total_output_tokens))+
-        card('Cache Hits',fmt(s.cache_hits))+
-        card('Avg Latency',Math.round(s.avg_latency_ms)+'ms');
-
-      const providers=Object.entries(s.by_provider||{});
-      const maxReq=Math.max(...providers.map(([,v])=>v.requests),1);
-      if(providers.length){
-        document.getElementById('by-provider-section').style.display='';
-        document.getElementById('by-provider').innerHTML=providers.map(([k,v])=>
-          '<tr><td>'+providerTag(k)+'</td><td>'+fmt(v.requests)+'</td><td class="mono">'+cost(v.cost_usd)+'</td>'+
-          '<td style="width:30%"><div class="bar-container"><div class="bar blue" style="width:'+Math.round(v.requests/maxReq*100)+'%"></div></div></td></tr>'
-        ).join('');
-      }
-
-      const models=Object.entries(s.by_model||{});
-      if(models.length){
-        document.getElementById('by-model-section').style.display='';
-        document.getElementById('by-model').innerHTML=models.map(([k,v])=>
-          '<tr><td class="mono">'+k+'</td><td>'+fmt(v.requests)+'</td><td class="mono">'+cost(v.cost_usd)+'</td></tr>'
-        ).join('');
-      }
+    (alertsData.alerts||[]).filter(function(a){return !a.acknowledged}).slice(0,5).forEach(function(a){
+      combined.push({type:'guard',time:a.timestamp,text:'<b>'+esc(a.toolName)+'</b> \\u2192 '+esc(a.ruleName),tag:'guard'});
+    });
+    combined.sort(function(a,b){return new Date(b.time)-new Date(a.time)});
+    var alertCount=(alertsData.unacknowledged||0)+(dlpRecent||[]).length;
+    document.getElementById('ov-alert-count').textContent=alertCount||'';
+    if(!skipIfSame('ov-alerts',combined)){
+      document.getElementById('ov-alerts').innerHTML=combined.length?combined.slice(0,8).map(function(c){
+        return '<div class="row"><span class="row-icon" style="color:#ff4444">!</span>'+
+          '<span class="row-tag '+c.tag+'">'+c.type.toUpperCase()+'</span>'+
+          '<span class="row-text">'+c.text+'</span>'+
+          '<span class="row-time">'+ago(c.time)+'</span></div>';
+      }).join(''):'<div class="empty">No alerts</div>';
     }
 
-    const recent=d.recent||[];
-    document.getElementById('no-requests').style.display=recent.length?'none':'';
-    if(!skipIfSame('recent',recent)){
-      document.getElementById('recent').innerHTML=recent.map(r=>{
-        let flags='';
-        if(r.cached)flags+='<span class="tag cached">cached</span> ';
-        if(r.dlp_action&&r.dlp_action!=='pass')flags+=actionTag(r.dlp_action)+' ';
-        if(r.session_id){
-          const sInfo=sessions.find(s=>s.session_id===r.session_id);
-          const sLabel=sInfo?.label||r.session_id.slice(0,6);
-          flags+='<span class="tag" style="background:#1a2a3d;color:#58a6ff" title="'+esc(r.session_id)+'">'+esc(sLabel)+'</span> ';
-        }
-        return '<tr><td>'+ago(r.created_at)+'</td><td>'+providerTag(r.provider)+'</td>'+
-          '<td class="mono">'+r.model+'</td><td>'+(r.status_code||'-')+'</td>'+
-          '<td class="mono">'+fmt(r.input_tokens)+' / '+fmt(r.output_tokens)+'</td>'+
-          '<td class="mono">'+cost(r.cost_usd)+'</td><td>'+r.latency_ms+'ms</td><td>'+flags+'</td></tr>';
+    // Traffic pane
+    var providers=Object.entries(s.by_provider||{});
+    var models=Object.entries(s.by_model||{});
+    if(!skipIfSame('ov-traffic',{providers:providers,models:models})){
+      var maxProv=Math.max.apply(null,providers.map(function(p){return p[1].requests}).concat([1]));
+      var maxModel=Math.max.apply(null,models.map(function(m){return m[1].requests}).concat([1]));
+      var provColors={anthropic:'purple',openai:'green',gemini:'yellow',telegram:'cyan',slack:'yellow'};
+      var tHtml=providers.map(function(p){
+        var pct=Math.round(p[1].requests/maxProv*100);
+        var clr=provColors[p[0]]||'green';
+        return '<div class="prov-row"><span class="prov-name">'+esc(p[0])+'</span><div class="prov-bar"><div class="prov-bar-fill '+clr+'" style="width:'+pct+'%"></div></div><span class="prov-pct">'+fmt(p[1].requests)+'</span></div>';
+      }).join('');
+      if(models.length>0){
+        tHtml+='<div style="height:4px"></div>';
+        tHtml+=models.map(function(m){
+          var pct=Math.round(m[1].requests/maxModel*100);
+          return '<div class="prov-row"><span class="prov-name" style="color:#555">'+esc(m[0].length>12?m[0].slice(0,12)+'..':m[0])+'</span><div class="prov-bar"><div class="prov-bar-fill purple" style="width:'+pct+'%"></div></div><span class="prov-pct">'+fmt(m[1].requests)+'</span></div>';
+        }).join('');
+      }
+      document.getElementById('ov-traffic').innerHTML=tHtml||'<div class="empty">No traffic</div>';
+    }
+
+    // Request log
+    var recent=statsData.recent||[];
+    document.getElementById('ov-no-requests').style.display=recent.length?'none':'';
+    if(!skipIfSame('ov-recent',recent)){
+      document.getElementById('ov-recent').innerHTML=recent.map(function(r){
+        var flags='';
+        if(r.cached)flags+='<span class="row-tag audit">CACHED</span> ';
+        if(r.dlp_action&&r.dlp_action!=='pass')flags+=dlpActionTag(r.dlp_action)+' ';
+        var stCls=r.status_code>=400?'s403':'s200';
+        return '<tr><td>'+ago(r.created_at)+'</td><td>'+provTag(r.provider)+'</td>'+
+          '<td class="mono">'+esc(r.model)+'</td><td class="'+stCls+'">'+(r.status_code||'-')+'</td>'+
+          '<td class="mono">'+fmt(r.input_tokens)+'/'+fmt(r.output_tokens)+'</td>'+
+          '<td class="cost-c">'+cost(r.cost_usd)+'</td><td>'+r.latency_ms+'ms</td><td>'+flags+'</td></tr>';
       }).join('');
     }
 
-    if(d.version)document.getElementById('ver').textContent='v'+d.version;
-    document.getElementById('uptime').textContent=uptime(d.uptime);
-    document.getElementById('mem').textContent=Math.round(d.memory/1024/1024);
-  }catch(e){}
+    // Header status
+    if(statsData.version)document.getElementById('hdr-ver').textContent='v'+statsData.version;
+    document.getElementById('hdr-uptime').textContent=uptimeFmt(statsData.uptime||0);
+  }catch(e){console.error('Overview refresh error',e)}
 }
 
-// ── DLP Config: local state management ──
-let dlpServerState=null; // {config, enabled} from server
-let dlpBuiltinsLoaded=false;
-
-function readDlpForm(){
-  return {
-    enabled:document.getElementById('dlp-cfg-enabled').checked,
-    action:document.getElementById('dlp-cfg-action').value,
-    aiEnabled:document.getElementById('dlp-cfg-ai').checked,
-    sensitive:document.getElementById('dlp-cfg-sensitive').value,
-    nonsensitive:document.getElementById('dlp-cfg-nonsensitive').value,
-  };
-}
-function dlpFormSnapshot(){return JSON.stringify(readDlpForm())}
-let dlpCleanSnapshot='';
-
-function updateDirtyUI(){
-  const dirty=dlpCleanSnapshot!==dlpFormSnapshot();
-  document.getElementById('dlp-dirty').style.display=dirty?'':'none';
-  document.getElementById('dlp-apply-btn').style.display=dirty?'':'none';
-  document.getElementById('dlp-revert-btn').style.display=dirty?'':'none';
-}
-
-function populateDlpForm(config,enabled){
-  document.getElementById('dlp-cfg-enabled').checked=!!enabled;
-  document.getElementById('dlp-cfg-action').value=config.action||'warn';
-  const aiVal=config.aiValidation||{};
-  document.getElementById('dlp-cfg-ai').checked=!!aiVal.enabled;
-  const aiSt=document.getElementById('dlp-ai-status');
-  if(!aiVal.apiKey){
-    aiSt.innerHTML='<span style="color:#d29922">No API key</span>';
-    document.getElementById('dlp-cfg-ai').disabled=true;
-  }else{
-    aiSt.innerHTML=aiVal.enabled?'<span style="color:#3fb950">Active</span>':'<span style="color:#7d8590">Off</span>';
-    document.getElementById('dlp-cfg-ai').disabled=false;
-  }
-  const sem=config.semantics||{};
-  document.getElementById('dlp-cfg-sensitive').value=(sem.sensitivePatterns||[]).join('\\n');
-  document.getElementById('dlp-cfg-nonsensitive').value=(sem.nonSensitiveNames||[]).join('\\n');
-  dlpCleanSnapshot=dlpFormSnapshot();
-  updateDirtyUI();
-}
-
-async function loadDlpConfig(){
-  const r=await apiFetch('/api/config');
-  const data=await r.json();
-  const config=data.config?.plugins?.dlp||{};
-  const enabled=data.pluginStatus?.['dlp-scanner']!==false;
-  dlpServerState={config,enabled};
-  populateDlpForm(config,enabled);
-  // Load builtins once
-  if(!dlpBuiltinsLoaded){
-    try{
-      const bRes=await apiFetch('/api/dlp/semantics/builtins');
-      const b=await bRes.json();
-      document.getElementById('dlp-builtin-sensitive').innerHTML=
-        b.sensitivePatterns.map(p=>'<code style="background:#21262d;padding:2px 6px;border-radius:4px;font-size:11px;color:#7d8590">'+esc(p)+'</code>').join('');
-      document.getElementById('dlp-builtin-nonsensitive').innerHTML=
-        b.nonSensitiveNames.map(n=>'<code style="background:#21262d;padding:2px 6px;border-radius:4px;font-size:11px;color:#7d8590">'+esc(n)+'</code>').join('');
-      dlpBuiltinsLoaded=true;
-    }catch(e){}
-  }
-}
-
-// Apply button
-document.getElementById('dlp-apply-btn').addEventListener('click',async()=>{
-  const f=readDlpForm();
-  const payload={
-    enabled:f.enabled,
-    action:f.action,
-    aiValidation:{enabled:f.aiEnabled},
-    semantics:{
-      sensitivePatterns:f.sensitive.split('\\n').map(s=>s.trim()).filter(Boolean),
-      nonSensitiveNames:f.nonsensitive.split('\\n').map(s=>s.trim()).filter(Boolean),
-    }
-  };
-  await apiFetch('/api/dlp/config/apply',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
-  await loadDlpConfig();
-  loadDlpHistory();
-});
-
-// Revert button
-document.getElementById('dlp-revert-btn').addEventListener('click',()=>{
-  if(dlpServerState) populateDlpForm(dlpServerState.config,dlpServerState.enabled);
-});
-
-// Dirty detection on form changes
-['dlp-cfg-enabled','dlp-cfg-action','dlp-cfg-ai'].forEach(id=>{
-  document.getElementById(id).addEventListener('change',updateDirtyUI);
-});
-['dlp-cfg-sensitive','dlp-cfg-nonsensitive'].forEach(id=>{
-  document.getElementById(id).addEventListener('input',updateDirtyUI);
-});
-
-// History toggle
-document.getElementById('dlp-history-toggle').addEventListener('click',()=>{
-  const list=document.getElementById('dlp-history-list');
-  list.style.display=list.style.display==='none'?'':'none';
-  if(list.style.display!=='none') loadDlpHistory();
-});
-
-async function loadDlpHistory(){
-  try{
-    const r=await apiFetch('/api/dlp/config/history');
-    const entries=await r.json();
-    document.getElementById('dlp-history-count').textContent='('+entries.length+')';
-    document.getElementById('no-history').style.display=entries.length?'none':'';
-    document.getElementById('dlp-history-body').innerHTML=entries.map(e=>{
-      let c={};try{c=JSON.parse(e.config_json)}catch(x){}
-      const sem=c.semantics||{};
-      const sp=(sem.sensitivePatterns||[]).length;
-      const ns=(sem.nonSensitiveNames||[]).length;
-      return '<tr><td>'+ago(e.created_at)+'</td>'+
-        '<td>'+esc(c.action||'-')+'</td>'+
-        '<td>'+(c.aiValidation?.enabled?'On':'Off')+'</td>'+
-        '<td>'+sp+'</td><td>'+ns+'</td>'+
-        '<td><button class="dlp-restore-btn" data-hid="'+e.id+'" style="padding:2px 8px;font-size:11px;cursor:pointer;color:#58a6ff;background:none;border:1px solid #30363d;border-radius:4px">Restore</button></td></tr>';
-    }).join('');
-  }catch(e){}
-}
-// Event delegation for DLP history restore (set up once)
-document.getElementById('dlp-history-body').addEventListener('click',async function(e){
-  const btn=e.target.closest('.dlp-restore-btn');
-  if(!btn)return;
-  if(!confirm('Restore this configuration?'))return;
-  await apiFetch('/api/dlp/config/restore/'+btn.dataset.hid,{method:'POST'});
-  await loadDlpConfig();
-  loadDlpHistory();
-});
-
-// DLP tab — config + patterns only
+// ══ 5. PAGE: DLP ══════════════════════════════════════════════════
+var findingsAll=[];
 async function refreshDlp(){
   try{
-    const statsR=await apiFetch('/api/stats');
-    const stats=(await statsR.json()).dlp;
-    if(!skipIfSame('dlp-cards',stats)){
-      const ba=stats.by_action||{};
-      document.getElementById('dlp-cards').innerHTML=
-        card('Total Scans',fmt(stats.total_events))+
-        card('Blocked',fmt(ba.block||0),'warn')+
-        card('Redacted',fmt(ba.redact||0),'blue')+
-        card('Warned',fmt(ba.warn||0));
-    }
-    await loadDlpConfig();
-    await refreshFindings();
-  }catch(e){}
-}
+    var sp=sinceParam();
+    var [statsR,recentR]=await Promise.all([
+      apiFetch('/api/stats'+(sp?'?'+sp:'')),
+      apiFetch('/api/dlp/recent?limit=200'+(sp?'&'+sp:''))
+    ]);
+    var statsData=await statsR.json();
+    var dlp=statsData.dlp||{};
+    var ba=dlp.by_action||{};
+    var newFindings=await recentR.json();
 
-// Findings tab
-let findingsAll=[];
-async function refreshFindings(){
-  try{
-    const sp=sinceParam();
-    const dlpUrl='/api/dlp/recent?limit=200'+(sp?'&'+sp:'');
-    const recentR=await apiFetch(dlpUrl);
-    const newFindings=await recentR.json();
+    if(!skipIfSame('dlp-gauges',dlp)){
+      document.getElementById('dlp-gauges').innerHTML=
+        gauge('Findings',fmt(dlp.total_events),'','red')+
+        gauge('Redacted',fmt(ba.redact||0),'','yellow')+
+        gauge('Blocked',fmt(ba.block||0),'','red')+
+        gauge('Warned',fmt(ba.warn||0),'','')+
+        gauge('Scans',fmt(dlp.total_events),'','');
+    }
+
     if(!skipIfSame('findings-list',newFindings)){
       findingsAll=newFindings;
       renderFindings();
     }
-  }catch(e){}
+  }catch(e){console.error('DLP refresh error',e)}
 }
 
 function renderFindings(){
-  const af=document.getElementById('findings-action-filter').value;
-  const df=document.getElementById('findings-dir-filter').value;
-  let list=findingsAll;
-  if(af) list=list.filter(e=>e.action===af);
-  if(df) list=list.filter(e=>(e.direction||'request')===df);
+  var af=document.getElementById('findings-action-filter').value;
+  var df=document.getElementById('findings-dir-filter').value;
+  var list=findingsAll;
+  if(af)list=list.filter(function(e){return e.action===af});
+  if(df)list=list.filter(function(e){return(e.direction||'request')===df});
   document.getElementById('no-findings').style.display=list.length?'none':'';
-  document.getElementById('findings-list').innerHTML=list.map(e=>{
-    const dir=e.direction||'request';
-    const dirTag=dir==='response'?'<span class="tag warn">resp</span>':'<span class="tag" style="background:#1a2a3d;color:#58a6ff">req</span>';
-    const rid=e.request_id||'';
-    const modelTag=e.model?'<span class="mono" style="font-size:10px;color:#7d8590">'+esc(e.model)+'</span>':'';
-    const reqCell='<span class="findings-expand-audit" data-rid="'+esc(rid)+'" style="cursor:pointer;color:#58a6ff;font-size:11px" title="Click to expand audit log">&#9654; '+esc(rid.slice(0,8))+'...</span>'+(modelTag?' '+modelTag:'');
+  document.getElementById('findings-list').innerHTML=list.map(function(e){
+    var dir=e.direction||'request';
+    var dirTag=dir==='response'?'<span class="row-tag warn">res</span>':'<span class="row-tag guard">req</span>';
+    var rid=e.request_id||'';
+    var reqCell='<span class="findings-expand" data-rid="'+esc(rid)+'" style="cursor:pointer;color:#00ccff;font-size:10px">'+esc(rid.slice(0,8))+'...</span>';
     return '<tr><td>'+ago(e.created_at)+'</td><td>'+dirTag+'</td><td>'+reqCell+'</td><td class="mono">'+esc(e.pattern_name)+'</td><td>'+esc(e.pattern_category)+'</td>'+
-      '<td>'+actionTag(e.action)+'</td><td>'+e.match_count+'</td>'+
+      '<td>'+dlpActionTag(e.action)+'</td><td>'+e.match_count+'</td>'+
       '<td><div class="snippet">'+esc(e.original_snippet||'-')+'</div></td>'+
       '<td><div class="snippet">'+esc(e.redacted_snippet||'-')+'</div></td></tr>';
   }).join('');
 }
-// Event delegation for findings expand (set up once)
+document.getElementById('findings-action-filter').addEventListener('change',renderFindings);
+document.getElementById('findings-dir-filter').addEventListener('change',renderFindings);
+
+// Findings expand — inline audit
 document.getElementById('findings-list').addEventListener('click',async function(e){
-  const el=e.target.closest('.findings-expand-audit');
+  var el=e.target.closest('.findings-expand');
   if(!el)return;
-  const rid=el.dataset.rid;
-  if(!rid)return;
-  const parentRow=el.closest('tr');
-  const existing=parentRow.nextElementSibling;
-  if(existing&&existing.classList.contains('findings-audit-row')){
-    existing.remove();
-    el.innerHTML='&#9654; '+esc(rid.slice(0,8))+'...';
-    return;
-  }
-  document.querySelectorAll('.findings-audit-row').forEach(r=>{
-    const prev=r.previousElementSibling;
-    if(prev){const s=prev.querySelector('.findings-expand-audit');if(s)s.innerHTML='&#9654; '+esc(s.dataset.rid.slice(0,8))+'...';}
-    r.remove();
-  });
-  el.innerHTML='&#9660; '+esc(rid.slice(0,8))+'...';
-  const detailRow=document.createElement('tr');
+  var rid=el.dataset.rid;if(!rid)return;
+  var parentRow=el.closest('tr');
+  var existing=parentRow.nextElementSibling;
+  if(existing&&existing.classList.contains('findings-audit-row')){existing.remove();return;}
+  document.querySelectorAll('.findings-audit-row').forEach(function(r){r.remove()});
+  var detailRow=document.createElement('tr');
   detailRow.className='findings-audit-row';
-  const td=document.createElement('td');
-  td.colSpan=9;
-  td.style.cssText='padding:0;border:none';
-  td.innerHTML='<div style="margin:4px 12px 12px;padding:12px;background:#0d1117;border:1px solid #30363d;border-radius:6px"><span style="color:#7d8590">Loading audit log...</span></div>';
-  detailRow.appendChild(td);
-  parentRow.after(detailRow);
+  var td=document.createElement('td');td.colSpan=9;td.style.cssText='padding:0;border:none';
+  td.innerHTML='<div style="margin:4px 12px 12px;padding:12px;background:#0c0c0c;border:1px solid #1a1a1a"><span style="color:#555">Loading...</span></div>';
+  detailRow.appendChild(td);parentRow.after(detailRow);
   try{
-    const r=await apiFetch('/api/audit/'+rid+'?dlp=true');
-    const data=await r.json();
+    var r=await apiFetch('/api/audit/'+rid+'?dlp=true');
+    var data=await r.json();
     td.innerHTML=renderInlineAudit(data,rid);
-  }catch(ex){
-    td.innerHTML='<div style="margin:4px 12px 12px;padding:12px;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#f85149">Failed to load audit log</div>';
-  }
+  }catch(ex){td.innerHTML='<div style="margin:4px 12px;padding:12px;background:#0c0c0c;border:1px solid #1a1a1a;color:#ff4444">Failed to load</div>'}
 });
 
-// Escape text with DLP match highlighting
+// ══ 6. PAGE: GUARD ════════════════════════════════════════════════
+async function refreshGuard(){
+  try{
+    var sp=sinceParam();
+    var [statsR,recentR,rulesR,alertsR]=await Promise.all([
+      apiFetch('/api/tool-guard/stats'),
+      apiFetch('/api/tool-guard/recent?limit=50'+(sp?'&'+sp:'')),
+      apiFetch('/api/tool-guard/rules'),
+      apiFetch('/api/tool-guard/alerts')
+    ]);
+    var stats=await statsR.json();
+    var recent=await recentR.json();
+    var rules=await rulesR.json();
+    var alertsData=await alertsR.json();
+
+    // Alert banner
+    var unack=alertsData.unacknowledged||0;
+    var banner=document.getElementById('gd-alert-banner');
+    if(unack>0){
+      banner.style.display='block';
+      document.getElementById('gd-alert-title').textContent=unack+' unacknowledged alert'+(unack>1?'s':'');
+      var recentAlerts=alertsData.alerts.filter(function(a){return !a.acknowledged}).slice(0,5);
+      document.getElementById('gd-alert-msg').textContent=recentAlerts.length>0?recentAlerts[0].toolName+': '+recentAlerts[0].ruleName:'';
+      document.getElementById('gd-alert-list').innerHTML=recentAlerts.map(function(a){
+        return '<div>'+severityTag(a.severity)+' <strong style="color:#ccc">'+esc(a.toolName)+'</strong> \\u2014 '+esc(a.ruleName)+' <span style="color:#444">'+ago(a.timestamp)+'</span></div>';
+      }).join('');
+    }else{banner.style.display='none'}
+
+    // Gauges
+    var bySev=stats.bySeverity||{};
+    if(!skipIfSame('gd-gauges',stats)){
+      document.getElementById('gd-gauges').innerHTML=
+        gauge('Blocked',fmt(stats.flagged),'','red')+
+        gauge('Total',fmt(stats.total),'','yellow')+
+        gauge('Rules',fmt(rules.length),'','')+
+        gauge('Critical',fmt(bySev.critical||0),'','red')+
+        gauge('High',fmt(bySev.high||0),'','yellow');
+    }
+
+    // Events pane
+    if(!skipIfSame('gd-events',recent)){
+      document.getElementById('gd-events').innerHTML=recent.length?recent.slice(0,15).map(function(e){
+        var icon=e.action==='block'?'<span style="color:#ff4444">\\u2715</span>':'<span style="color:#00ccff">\\u25CB</span>';
+        var tag=e.action==='block'?'block':'audit';
+        return '<div class="row" data-rid="'+esc(e.request_id)+'">'+
+          '<span class="row-icon">'+icon+'</span>'+
+          '<span class="row-tag '+tag+'">'+esc(e.action||'audit').toUpperCase()+'</span>'+
+          '<span class="row-text"><b>'+esc(e.tool_name)+'</b> <span style="color:#444">\\u2014 '+esc(e.rule_name||'')+(e.severity?' ('+e.severity+')':'')+'</span></span>'+
+          '<span class="row-time">'+ago(e.created_at)+'</span></div>';
+      }).join(''):'<div class="empty">No events</div>';
+    }
+
+    // Rules summary pane
+    if(!skipIfSame('gd-rules',rules)){
+      var topRules=rules.slice(0,15);
+      document.getElementById('gd-rules').innerHTML=topRules.length?topRules.map(function(r){
+        var sevColor=r.severity==='critical'?'#ff4444':r.severity==='high'?'#ffcc00':'#555';
+        return '<div class="row"><span class="row-icon" style="color:'+sevColor+'">\\u25CF</span>'+
+          '<span class="row-text"><b>'+esc(r.name)+'</b> <span style="color:#444">\\u2014 '+esc(r.description||r.category||'')+'</span></span>'+
+          '<span class="row-tag '+(r.enabled?'audit':'')+'">'+((r.enabled?'ON':'OFF'))+'</span></div>';
+      }).join(''):'<div class="empty">No rules</div>';
+    }
+  }catch(e){console.error('Guard refresh error',e)}
+}
+document.getElementById('gd-ack-btn').addEventListener('click',async function(){
+  await apiFetch('/api/tool-guard/alerts/ack',{method:'POST'});
+  refreshGuard();pollAlerts();
+});
+// Click guard event → go to Log detail
+document.getElementById('gd-events').addEventListener('click',function(e){
+  var row=e.target.closest('.row[data-rid]');
+  if(!row)return;
+  showPage('log');
+  setTimeout(function(){loadSingleAudit(row.dataset.rid)},100);
+});
+
+// ══ 7. PAGE: LOG ══════════════════════════════════════════════════
+var logCurrentSession=null;
+
+async function refreshLog(){
+  // Only refresh session list if we are viewing sessions
+  if(document.getElementById('log-detail').style.display!=='none')return;
+  if(document.getElementById('log-timeline').style.display!=='none')return;
+  try{
+    var sp=sinceParam();
+    var r=await apiFetch('/api/audit/sessions'+(sp?'?'+sp:''));
+    var sessions=await r.json();
+    document.getElementById('log-no-sessions').style.display=sessions.length?'none':'';
+    if(!skipIfSame('log-sessions',sessions)){
+      document.getElementById('log-sessions').innerHTML=sessions.map(function(s){
+        var models=(s.models||'').split(',').map(function(m){return '<span class="row-tag guard">'+esc(m.trim())+'</span>'}).join(' ');
+        var sourceTag=s.source==='wrap'?' <span class="row-tag audit" style="font-size:9px">wrap</span>':'';
+        var sessionId='<span class="mono" style="color:#555">'+esc(s.session_id.slice(0,8))+'</span>'+sourceTag;
+        var projectLabel=s.label?'<span style="color:#e0e0e0" title="'+esc(s.project_path||'')+'">'+esc(s.label)+'</span>':'<span style="color:#444">-</span>';
+        return '<tr style="cursor:pointer" data-sid="'+esc(s.session_id)+'"><td>'+ago(s.last_at)+'</td><td>'+sessionId+'</td><td>'+projectLabel+'</td><td>'+models+'</td><td>'+s.request_count+'</td><td style="color:#00ccff">View</td></tr>';
+      }).join('');
+    }
+  }catch(e){console.error('Log refresh error',e)}
+}
+
+// Session list click
+document.getElementById('log-sessions').addEventListener('click',function(e){
+  var row=e.target.closest('tr[data-sid]');
+  if(row){loadSessionTimeline(row.dataset.sid);return;}
+});
+
+// Search
+function applyLogSearch(){
+  var q=document.getElementById('log-session-search').value.trim().toLowerCase();
+  var clearBtn=document.getElementById('log-search-clear');
+  if(!q){
+    document.querySelectorAll('#log-sessions tr').forEach(function(r){r.style.display=''});
+    clearBtn.style.display='none';return;
+  }
+  clearBtn.style.display='';
+  if(q.length>=32){loadSingleAudit(q).catch(function(){filterLogRows(q)});return;}
+  filterLogRows(q);
+}
+function filterLogRows(q){
+  document.querySelectorAll('#log-sessions tr').forEach(function(r){
+    var sid=r.dataset.sid||'';
+    r.style.display=sid.toLowerCase().includes(q)?'':'none';
+  });
+}
+document.getElementById('log-search-btn').addEventListener('click',applyLogSearch);
+document.getElementById('log-session-search').addEventListener('keydown',function(e){if(e.key==='Enter')applyLogSearch()});
+document.getElementById('log-search-clear').addEventListener('click',function(){
+  document.getElementById('log-session-search').value='';applyLogSearch();
+});
+
+async function loadSessionTimeline(sessionId){
+  logCurrentSession=sessionId;
+  try{
+    var r=await apiFetch('/api/audit/session/'+sessionId);
+    var data=await r.json();
+    var timeline=data.timeline||data;
+    var sessionMeta=data.session||null;
+    document.getElementById('log-sessions-section').style.display='none';
+    document.getElementById('log-timeline').style.display='block';
+    document.getElementById('log-detail').style.display='none';
+    var labelEl=document.getElementById('log-timeline-label');
+    var projName=sessionMeta?sessionMeta.label:'';
+    var shortId=sessionId.slice(0,8);
+    labelEl.innerHTML=projName?esc(projName)+' ('+esc(shortId)+') \\u2014 '+timeline.length+' reqs':esc(shortId)+'... \\u2014 '+timeline.length+' reqs';
+
+    var html='';
+    timeline.forEach(function(entry,i){
+      var m=entry.meta;var p=entry.parsed;
+      var model=p.request.model||p.response.model||m.model||'?';
+      var stopReason=p.response.stopReason||'';
+      var stopTag=stopReason==='end_turn'?'<span class="row-tag audit">end_turn</span>':
+        stopReason==='tool_use'?'<span class="row-tag warn">tool_use</span>':
+        stopReason?'<span class="row-tag">'+esc(stopReason)+'</span>':'';
+      var usage=p.response.usage||{};
+      var tokens=(usage.input_tokens||0)+(usage.output_tokens||0);
+      var dlpTag=m.dlp_hit?'<span class="row-tag dlp">DLP</span>':'';
+      var tgTag=m.tool_guard_hit?'<span class="row-tag guard">TG</span>':'';
+
+      var userSummary='';
+      var msgs=p.request.messages||[];
+      var lastUser=msgs.filter(function(x){return x.role==='user'}).pop();
+      if(lastUser){
+        (lastUser.content||[]).some(function(c){
+          if(c.type==='text'&&c.text){userSummary=esc(c.text.slice(0,100));return true}
+          if(c.type==='tool_result'){userSummary='<span style="color:#00ccff">[tool_result]</span> '+esc((c.text||'').slice(0,80));return true}
+          return false;
+        });
+      }
+      var responseSummary='';
+      (p.response.content||[]).forEach(function(c){
+        if(c.type==='text'&&c.text)responseSummary+=esc(c.text.slice(0,120));
+        if(c.type==='tool_use')responseSummary+='<span style="color:#ffcc00">[tool: '+esc(c.toolName||'?')+']</span> ';
+      });
+
+      html+='<div class="section timeline-card" data-rid="'+esc(m.request_id)+'">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 12px">'+
+          '<div style="display:flex;gap:6px;align-items:center">'+
+            '<span style="color:#444;font-size:10px;font-weight:700">#'+(i+1)+'</span>'+
+            '<span class="mono" style="color:#555">'+esc(model)+'</span>'+
+            stopTag+dlpTag+tgTag+
+            (tokens?'<span style="font-size:10px;color:#555">'+fmt(tokens)+' tok</span>':'')+
+          '</div>'+
+          '<span style="font-size:10px;color:#444">'+ago(m.created_at)+(m.latency_ms?' \\u00B7 '+m.latency_ms+'ms':'')+'</span>'+
+        '</div>'+
+        (userSummary?'<div style="padding:0 12px 2px;font-size:11px;color:#00ccff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+userSummary+'</div>':'')+
+        (responseSummary?'<div style="padding:0 12px 6px;font-size:11px;color:#666;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+responseSummary+'</div>':'')+
+      '</div>';
+    });
+    document.getElementById('log-timeline-content').innerHTML=html;
+  }catch(e){console.error('Timeline load error',e)}
+}
+document.getElementById('log-timeline-content').addEventListener('click',function(e){
+  var card=e.target.closest('.timeline-card[data-rid]');
+  if(card)loadSingleAudit(card.dataset.rid);
+});
+
+// Back buttons
+document.getElementById('log-back-sessions').addEventListener('click',function(){
+  logCurrentSession=null;
+  document.getElementById('log-timeline').style.display='none';
+  document.getElementById('log-detail').style.display='none';
+  document.getElementById('log-sessions-section').style.display='';
+});
+document.getElementById('log-back-timeline').addEventListener('click',function(){
+  document.getElementById('log-detail').style.display='none';
+  if(logCurrentSession){document.getElementById('log-timeline').style.display='block'}
+  else{document.getElementById('log-sessions-section').style.display=''}
+});
+
+// View toggle (parsed/raw)
+document.querySelectorAll('.log-view-tab').forEach(function(t){
+  t.addEventListener('click',function(){
+    document.querySelectorAll('.log-view-tab').forEach(function(x){x.className='log-view-tab cfg-btn secondary'});
+    t.className='log-view-tab cfg-btn primary';
+    document.getElementById('log-parsed').style.display=t.dataset.view==='parsed'?'':'none';
+    document.getElementById('log-raw').style.display=t.dataset.view==='raw'?'':'none';
+  });
+});
+
+// ── Audit detail rendering ────────────────────────────────────────
 function escHL(text,highlights){
   if(!highlights||!highlights.length)return esc(text);
-  let result=text;
-  const sorted=[...new Set(highlights)].sort((a,b)=>b.length-a.length);
-  const phs=[];
-  sorted.forEach((m,i)=>{
-    const tag='\\x00HL'+i+'\\x00';
+  var result=text;
+  var sorted=Array.from(new Set(highlights)).sort(function(a,b){return b.length-a.length});
+  var phs=[];
+  sorted.forEach(function(m,i){
+    var tag='\\x00HL'+i+'\\x00';
     result=result.split(m).join(tag);
-    phs.push({tag,m,i});
+    phs.push({tag:tag,m:m,i:i});
   });
   result=esc(result);
-  phs.forEach(({tag,m})=>{
-    result=result.split(esc(tag)).join('<span style="background:#5c2020;color:#ff6b6b;border-radius:2px;padding:1px 3px;font-weight:600">'+esc(m)+'</span>');
+  phs.forEach(function(p){
+    result=result.split(esc(p.tag)).join('<span style="background:#5c2020;color:#ff6b6b;padding:1px 3px;font-weight:600">'+esc(p.m)+'</span>');
   });
   return result;
+}
+
+function renderBlock(b){
+  if(b.type==='text')return '<div class="msg-text">'+esc(b.text||'')+'</div>';
+  if(b.type==='image')return '<div class="msg-text" style="color:#555">[image]</div>';
+  if(b.type==='tool_use'){
+    return '<div style="margin:4px 0;padding:6px 8px;background:#1a1a0a;border:1px solid #333300;font-size:10px">'+
+      '<div style="color:#ffcc00;font-size:9px;font-weight:700;margin-bottom:2px">TOOL_USE: '+esc(b.toolName||'?')+'</div>'+
+      '<pre style="color:#e0e0e0;white-space:pre-wrap;word-break:break-word;margin:0;font-family:inherit">'+esc(b.toolInput||'')+'</pre></div>';
+  }
+  if(b.type==='tool_result'){
+    var errSt=b.isError?' color:#ff4444;':'';
+    return '<div style="margin:4px 0;padding:6px 8px;background:#0a1a1a;border:1px solid #003333;font-size:10px">'+
+      '<div style="color:#00ccff;font-size:9px;font-weight:700;margin-bottom:2px">TOOL_RESULT'+(b.isError?' (error)':'')+'</div>'+
+      '<pre style="white-space:pre-wrap;word-break:break-word;margin:0;font-family:inherit;'+errSt+'">'+esc(b.text||'')+'</pre></div>';
+  }
+  return '<div class="msg-text" style="color:#555">'+esc(b.text||JSON.stringify(b))+'</div>';
 }
 
 function renderBlockHL(b,hl){
   if(b.type==='text')return '<div class="msg-text">'+escHL(b.text||'',hl)+'</div>';
-  if(b.type==='image')return '<div class="msg-text" style="color:#7d8590">[image]</div>';
+  if(b.type==='image')return '<div class="msg-text" style="color:#555">[image]</div>';
   if(b.type==='tool_use'){
-    return '<div style="margin:4px 0;padding:6px 8px;background:#2a2a1a;border:1px solid #4d4d26;border-radius:6px;font-size:11px">'+
-      '<div style="color:#ffd43b;font-size:10px;font-weight:600;margin-bottom:3px">TOOL_USE: '+esc(b.toolName||'?')+'</div>'+
-      '<pre style="color:#e1e4e8;white-space:pre-wrap;word-break:break-word;margin:0;font-family:inherit">'+escHL(b.toolInput||'',hl)+'</pre></div>';
+    return '<div style="margin:4px 0;padding:6px 8px;background:#1a1a0a;border:1px solid #333300;font-size:10px">'+
+      '<div style="color:#ffcc00;font-size:9px;font-weight:700;margin-bottom:2px">TOOL_USE: '+esc(b.toolName||'?')+'</div>'+
+      '<pre style="color:#e0e0e0;white-space:pre-wrap;word-break:break-word;margin:0;font-family:inherit">'+escHL(b.toolInput||'',hl)+'</pre></div>';
   }
   if(b.type==='tool_result'){
-    const errStyle=b.isError?' color:#f85149;':'';
-    return '<div style="margin:4px 0;padding:6px 8px;background:#1a2a2a;border:1px solid #264d4d;border-radius:6px;font-size:11px">'+
-      '<div style="color:#58a6ff;font-size:10px;font-weight:600;margin-bottom:3px">TOOL_RESULT'+(b.isError?' (error)':'')+'</div>'+
-      '<pre style="white-space:pre-wrap;word-break:break-word;margin:0;font-family:inherit;'+errStyle+'">'+escHL(b.text||'',hl)+'</pre></div>';
+    var errSt=b.isError?' color:#ff4444;':'';
+    return '<div style="margin:4px 0;padding:6px 8px;background:#0a1a1a;border:1px solid #003333;font-size:10px">'+
+      '<div style="color:#00ccff;font-size:9px;font-weight:700;margin-bottom:2px">TOOL_RESULT'+(b.isError?' (error)':'')+'</div>'+
+      '<pre style="white-space:pre-wrap;word-break:break-word;margin:0;font-family:inherit;'+errSt+'">'+escHL(b.text||'',hl)+'</pre></div>';
   }
-  return '<div class="msg-text" style="color:#7d8590">'+escHL(b.text||JSON.stringify(b),hl)+'</div>';
+  return '<div class="msg-text" style="color:#555">'+escHL(b.text||JSON.stringify(b),hl)+'</div>';
 }
 
 function renderInlineAudit(data,rid){
-  const hl=data.dlpHighlights||[];
-  const wrap=(inner)=>'<div style="margin:4px 12px 12px;padding:12px;background:#0d1117;border:1px solid #30363d;border-radius:6px;font-size:12px">'+inner+'</div>';
+  var hl=data.dlpHighlights||[];
+  var wrap=function(inner){return '<div style="margin:4px 12px 12px;padding:12px;background:#0c0c0c;border:1px solid #1a1a1a;font-size:11px">'+inner+'</div>'};
   if(data.summaryOnly){
-    const m=data.meta||{};
-    const dlpTag=m.dlp_hit?'<span class="tag dlp">DLP</span> ':'';
-    const tgTag=m.tool_guard_hit?'<span class="tag tg">TG</span> ':'';
-    return wrap(
-      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">'+
-      (m.model?card('Model',esc(m.model)):'')+
-      card('Req Size',bytes(m.request_length||0))+
-      card('Res Size',bytes(m.response_length||0))+
-      (m.latency_ms?card('Latency',m.latency_ms+'ms'):'')+
-      (m.status_code?card('Status',String(m.status_code)):'')+
-      '</div>'+
-      dlpTag+tgTag+'<div style="color:#d29922;margin-bottom:6px;font-size:11px">Raw data not available (storage disabled). Summary only:</div>'+
-      '<div class="msg-bubble system" style="white-space:pre-wrap;font-size:11px">'+esc(data.summary||'No summary')+'</div>'
-    );
+    var m=data.meta||{};
+    return wrap('<div style="color:#ffcc00;margin-bottom:6px">Summary only (raw data not stored)</div><div class="msg-bubble system">'+esc(data.summary||'No summary')+'</div>');
   }
-  const req=data.request||{};
-  const res=data.response||{};
-
-  // Highlight badge
-  const hlBadge=hl.length?'<div style="margin-bottom:8px;padding:4px 8px;background:#3d1f1f;border:1px solid #5c2020;border-radius:4px;font-size:11px;color:#ff6b6b">'+
-    '<span style="font-weight:600">DLP Matches ('+hl.length+'):</span> '+hl.map(m=>'<code style="background:#5c2020;padding:1px 4px;border-radius:2px;font-size:10px">'+esc(m.length>40?m.slice(0,37)+'...':m)+'</code>').join(' ')+'</div>':'';
-
-  // Meta cards
-  const model=req.model||res.model;
-  const usage=res.usage||{};
-  let metaHtml='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">';
-  if(model)metaHtml+=card('Model',esc(model));
-  if(usage.input_tokens)metaHtml+=card('In',fmt(usage.input_tokens),'blue');
-  if(usage.output_tokens)metaHtml+=card('Out',fmt(usage.output_tokens),'blue');
-  if(res.stopReason)metaHtml+=card('Stop',esc(res.stopReason));
-  metaHtml+='</div>';
-
-  // Request messages
-  let reqHtml='<div style="margin-bottom:8px"><div style="color:#58a6ff;font-weight:600;font-size:11px;margin-bottom:4px">REQUEST</div>';
-  if(req.system){
-    reqHtml+='<div class="msg-bubble system" style="font-size:11px"><div class="msg-role">system</div><div class="msg-text" style="max-height:150px;overflow-y:auto">'+escHL(req.system,hl)+'</div></div>';
-  }
-  if(req.tools&&req.tools.length>0){
-    reqHtml+='<div style="margin:4px 0;padding:4px 8px;background:#1c2128;border:1px solid #30363d;border-radius:4px;font-size:10px">'+
-      '<span style="color:#7d8590;font-weight:600">TOOLS ('+req.tools.length+'):</span> <span class="mono" style="color:#b388ff">'+req.tools.map(n=>esc(n)).join(', ')+'</span></div>';
-  }
+  var req=data.request||{};var res=data.response||{};
+  var hlBadge=hl.length?'<div style="margin-bottom:8px;padding:4px 8px;background:#1a0000;border:1px solid #330000;font-size:10px;color:#ff6b6b"><span style="font-weight:700">DLP Matches ('+hl.length+'):</span> '+hl.map(function(m){return '<code style="background:#330000;padding:1px 4px;font-size:9px">'+esc(m.length>40?m.slice(0,37)+'...':m)+'</code>'}).join(' ')+'</div>':'';
+  var reqHtml='<div style="color:#00ccff;font-weight:700;font-size:10px;margin-bottom:4px">REQUEST</div>';
+  if(req.system)reqHtml+='<div class="msg-bubble system"><div class="msg-role">system</div><div class="msg-text" style="max-height:150px;overflow-y:auto">'+escHL(req.system,hl)+'</div></div>';
   if(req.messages&&req.messages.length>0){
-    reqHtml+=req.messages.map(m=>{
-      const role=m.role||'unknown';
-      const cls=role==='user'?'user':role==='assistant'?'assistant':'system';
-      const blocks=(m.content||[]).map(b=>renderBlockHL(b,hl)).join('');
-      return '<div class="msg-bubble '+cls+'" style="font-size:11px"><div class="msg-role">'+esc(role)+'</div><div style="max-height:200px;overflow-y:auto">'+blocks+'</div></div>';
+    reqHtml+=req.messages.map(function(m){
+      var role=m.role||'unknown';var cls=role==='user'?'user':role==='assistant'?'assistant':'system';
+      var blocks=(m.content||[]).map(function(b){return renderBlockHL(b,hl)}).join('');
+      return '<div class="msg-bubble '+cls+'"><div class="msg-role">'+esc(role)+'</div><div style="max-height:200px;overflow-y:auto">'+blocks+'</div></div>';
     }).join('');
   }
-  reqHtml+='</div>';
-
-  // Response content
-  let resHtml='<div><div style="color:#3fb950;font-weight:600;font-size:11px;margin-bottom:4px">RESPONSE</div>';
+  var resHtml='<div style="color:#00ff88;font-weight:700;font-size:10px;margin-bottom:4px">RESPONSE</div>';
   if(res.content&&res.content.length>0){
-    resHtml+=res.content.map(b=>{
-      if(b.type==='text')return '<div class="msg-bubble assistant" style="font-size:11px"><div class="msg-role">assistant</div><div class="msg-text" style="max-height:200px;overflow-y:auto">'+escHL(b.text||'',hl)+'</div></div>';
-      if(b.type==='tool_use')return '<div class="msg-bubble system" style="font-size:11px"><div class="msg-role">tool_use: '+esc(b.toolName||'')+'</div><div class="msg-text" style="max-height:150px;overflow-y:auto">'+escHL(b.toolInput||'',hl)+'</div></div>';
-      return renderBlockHL(b,hl);
-    }).join('');
-  }else{
-    resHtml+='<div style="color:#484f58;font-size:11px">No response content</div>';
-  }
-  resHtml+='</div>';
-
-  // Raw JSON toggle (also highlighted)
-  const rawId='inline-raw-'+rid.replace(/[^a-zA-Z0-9]/g,'');
-  let rawHtml='<div style="margin-top:8px;border-top:1px solid #21262d;padding-top:8px">'+
-    '<span class="inline-raw-toggle" data-target="'+rawId+'" style="cursor:pointer;color:#7d8590;font-size:11px;user-select:none">&#9654; Raw JSON</span>'+
-    '<div id="'+rawId+'" style="display:none;margin-top:6px">'+
-    '<div style="color:#7d8590;font-size:10px;margin-bottom:2px">Request:</div>'+
-    '<pre style="background:#161b22;border:1px solid #21262d;border-radius:4px;padding:8px;font-size:10px;color:#e1e4e8;max-height:200px;overflow:auto;white-space:pre-wrap;word-break:break-word">'+escHL(tryPrettyJson(data.raw?.request||''),hl)+'</pre>'+
-    '<div style="color:#7d8590;font-size:10px;margin:6px 0 2px">Response:</div>'+
-    '<pre style="background:#161b22;border:1px solid #21262d;border-radius:4px;padding:8px;font-size:10px;color:#e1e4e8;max-height:200px;overflow:auto;white-space:pre-wrap;word-break:break-word">'+escHL(tryPrettyJson(data.raw?.response||''),hl)+'</pre>'+
-    '</div></div>';
-
-  setTimeout(()=>{
-    document.querySelectorAll('.inline-raw-toggle').forEach(t=>{
-      t.onclick=()=>{
-        const el=document.getElementById(t.dataset.target);
-        if(!el)return;
-        const show=el.style.display==='none';
-        el.style.display=show?'':'none';
-        t.innerHTML=(show?'&#9660;':'&#9654;')+' Raw JSON';
-      };
-    });
-  },0);
-
-  return wrap(hlBadge+metaHtml+reqHtml+resHtml+rawHtml);
+    resHtml+=res.content.map(function(b){return renderBlockHL(b,hl)}).join('');
+  }else{resHtml+='<div style="color:#444">No response content</div>'}
+  return wrap(hlBadge+'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+    '<div>'+reqHtml+'</div><div>'+resHtml+'</div></div>');
 }
-document.getElementById('findings-action-filter').addEventListener('change',renderFindings);
-document.getElementById('findings-dir-filter').addEventListener('change',renderFindings);
-
-// ── DLP Test tab ──
-const SCAN_PRESETS={
-  clean:'What is the capital of France? Please explain in detail.',
-  aws:'Deploy using AWS credentials:\\nAWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE\\nAWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
-  github:'Clone the repo with: git clone https://github.com/user/repo\\nUse token: ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijk',
-  openai:'Set OPENAI_API_KEY=sk-proj-abc123def456ghi789jkl012mno345pqr678stu901vwx234',
-  pem:'Server private key:\\n-----BEGIN RSA PRIVATE KEY-----\\nMIIEpAIBAAKCAQEA0Z3VS5JJcds3xfn/ygWyF8PbnGy0AHB7MhgHcTz6sE2I2yPB\\naFDrBz9vFqU4yVkzSzl9JYpP0kLgHrFhLXQ2RD3G7X1SE6tU0ZMaXR9T5eJA\\n-----END RSA PRIVATE KEY-----',
-  password:'Database config:\\nDB_HOST=prod-db.internal\\nDB_USER=admin\\nDB_PASSWORD=xK9mP2vL5nR8qW4jB7fT3aZ6',
-  cc:'Customer payment info:\\nName: John Doe\\nCard: 4111111111111111\\nExp: 12/25\\nSSN: 219-09-9999',
-  ssn:'Employee record: Name=Alice Smith, SSN: 219-09-9999, DOB: 1990-01-15',
-  email:'Please contact the user at their email address john.doe@company.com or call their phone number (555) 123-4567',
-  multi:'Config dump:\\nAKIAIOSFODNN7EXAMPLE\\nghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijk\\nsk-proj-abc123def456ghi789jkl012mno345pqr678stu901vwx234\\npassword=SuperSecret123xK9m',
-  'json-secret':JSON.stringify({model:'claude-haiku-4.5-20241022',config:{database_password:'xK9mP2vL5nR8qW4jB7fT3aZ6yU0cD1eH',api_secret:'aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2uV3'}},null,2),
-  'llm-body':JSON.stringify({model:'claude-haiku-4.5-20241022',max_tokens:1024,messages:[{role:'system',content:'You are a helpful assistant.'},{role:'user',content:'My server credentials are:\\nHost: 192.168.1.100\\nAPI Key: AKIAIOSFODNN7EXAMPLE\\nPassword: xK9mP2vL5nR8qW4jB7fT3aZ6\\nPlease help me configure the deployment.'}]},null,2),
-};
-
-document.querySelectorAll('.scan-preset').forEach(btn=>{
-  btn.addEventListener('click',()=>{
-    const p=btn.dataset.preset;
-    if(SCAN_PRESETS[p]!==undefined) document.getElementById('scan-input').value=SCAN_PRESETS[p];
-    document.getElementById('scan-result').style.display='none';
-  });
-});
-
-function highlightMatches(text,matches){
-  if(!matches||!matches.length)return esc(text);
-  let result=text;
-  const sorted=[...new Set(matches)].sort((a,b)=>b.length-a.length);
-  const placeholder=[];
-  sorted.forEach((m,i)=>{
-    const tag='\\x00MARK'+i+'\\x00';
-    result=result.split(m).join(tag);
-    placeholder.push({tag,m,i});
-  });
-  result=esc(result);
-  placeholder.forEach(({tag,m,i})=>{
-    result=result.split(esc(tag)).join('<span style="background:#5c2020;color:#ff6b6b;border-radius:2px;padding:0 2px">'+esc(m)+'</span>');
-  });
-  return result;
-}
-
-function highlightRedacted(text){
-  if(!text)return'';
-  return esc(text).replace(/\\[([A-Z_-]+_REDACTED)\\]/g,'<span style="background:#1a3d1a;color:#3fb950;border-radius:2px;padding:0 2px">[$1]</span>');
-}
-
-const TRACE_LAYER_COLORS={'-1':'#7d8590','0':'#58a6ff','1':'#d29922','2':'#b388ff','3':'#3fb950'};
-const TRACE_LAYER_NAMES={'-1':'INIT','0':'STRUCT','1':'ENTROPY','2':'REGEX','3':'SEMANTIC'};
-function renderTrace(trace){
-  if(!trace||!trace.entries)return'';
-  return trace.entries.map(e=>{
-    const color=TRACE_LAYER_COLORS[e.layer]||'#7d8590';
-    const label=TRACE_LAYER_NAMES[e.layer]||e.layerName;
-    const dur=e.durationMs!==undefined?' <span style="color:#484f58">('+e.durationMs.toFixed(2)+'ms)</span>':'';
-    const icon=e.step==='finding'||e.step==='summary'||e.step==='done'?'<span style="color:#3fb950">&#9679;</span> ':
-      e.step.includes('skip')||e.step==='not-sensitive'||e.step==='low'||e.step==='dedup'?'<span style="color:#484f58">&#9675;</span> ':
-      e.step==='high'||e.step==='match'||e.step==='context-match'?'<span style="color:#d29922">&#9679;</span> ':'  ';
-    return icon+'<span style="color:'+color+';font-weight:600">['+esc(label)+']</span> <span style="color:#7d8590">'+esc(e.step)+'</span> '+esc(e.detail)+dur;
-  }).join('\\n');
-}
-
-document.getElementById('scan-btn').addEventListener('click',async()=>{
-  const text=document.getElementById('scan-input').value.trim();
-  if(!text)return;
-  const action=document.getElementById('scan-action').value;
-  const enableTrace=document.getElementById('scan-trace').checked;
-  const btn=document.getElementById('scan-btn');
-  btn.textContent='Scanning...';btn.disabled=true;
-  try{
-    const r=await apiFetch('/api/dlp/scan',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text,action,trace:enableTrace})});
-    const data=await r.json();
-    if(data.error){alert(data.error);return;}
-    const resultEl=document.getElementById('scan-result');
-    resultEl.style.display='block';
-    const n=data.findings.length;
-    const allMatches=data.findings.flatMap(f=>f.matches||[]);
-    const actionColor=data.action==='block'?'warn':data.action==='redact'?'blue':data.action==='pass'?'':'blue';
-    const actionLabel=data.action==='pass'?'No findings':'Action: '+data.action;
-    document.getElementById('scan-result-cards').innerHTML=
-      card('Result',actionLabel,actionColor)+
-      card('Findings',n.toString(),n>0?'warn':'')+
-      card('Patterns',n>0?data.findings.map(f=>f.patternName).join(', '):'None','');
-    const findSec=document.getElementById('scan-findings-section');
-    if(n>0){
-      findSec.style.display='';
-      document.getElementById('scan-findings-body').innerHTML=data.findings.map(f=>{
-        const catClass=f.patternCategory==='high-confidence'?'cached':f.patternCategory==='validated'?'blue':f.patternCategory==='context-aware'?'warn':'redact';
-        const matchDisp=(f.matches||[]).map(m=>'<div class="snippet" style="margin-bottom:2px;display:inline-block">'+esc(m.length>60?m.slice(0,60)+'...':m)+'</div>').join(' ');
-        return '<tr><td class="mono" style="font-size:12px;white-space:nowrap">'+esc(f.patternName)+'</td>'+
-          '<td><span class="tag '+catClass+'">'+esc(f.patternCategory)+'</span></td>'+
-          '<td>'+f.matchCount+'</td><td>'+matchDisp+'</td></tr>';
-      }).join('');
-    }else{findSec.style.display='none';}
-    const diffSec=document.getElementById('scan-diff-section');
-    if(n>0){
-      diffSec.style.display='';
-      document.getElementById('scan-original').innerHTML=highlightMatches(text,allMatches);
-      document.getElementById('scan-redacted').innerHTML=data.redactedText?highlightRedacted(data.redactedText):'<span style="color:#7d8590">(action is not redact)</span>';
-    }else{diffSec.style.display='none';}
-    // Trace log
-    const traceSec=document.getElementById('scan-trace-section');
-    if(data.trace&&data.trace.entries&&data.trace.entries.length>0){
-      traceSec.style.display='';
-      document.getElementById('scan-trace-log').innerHTML=renderTrace(data.trace);
-    }else{traceSec.style.display='none';}
-  }catch(e){alert('Scan failed: '+e.message);}
-  finally{btn.textContent='Scan';btn.disabled=false;}
-});
-
-document.getElementById('scan-input').addEventListener('keydown',e=>{
-  if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){e.preventDefault();document.getElementById('scan-btn').click();}
-});
-
-// DLP Patterns management
-let _allPatterns=[];
-async function refreshPatterns(){
-  try{
-    const r=await apiFetch('/api/dlp/patterns');
-    _allPatterns=await r.json();
-    // Populate category filter (preserve selection)
-    const sel=document.getElementById('dlp-cat-filter');
-    const prev=sel.value;
-    const cats=[...new Set(_allPatterns.map(p=>p.category))].sort();
-    sel.innerHTML='<option value="">All categories</option>'+cats.map(c=>'<option value="'+esc(c)+'">'+esc(c)+' ('+_allPatterns.filter(p=>p.category===c).length+')</option>').join('');
-    sel.value=prev;
-    renderPatterns();
-  }catch(e){console.error('Pattern refresh error',e)}
-}
-function renderPatterns(){
-  const catFilter=document.getElementById('dlp-cat-filter').value;
-  const filtered=catFilter?_allPatterns.filter(p=>p.category===catFilter):_allPatterns;
-  document.getElementById('dlp-pat-count').textContent=catFilter?filtered.length+' / '+_allPatterns.length+' patterns':_allPatterns.length+' patterns';
-  document.getElementById('no-patterns').style.display=filtered.length?'none':'';
-  document.getElementById('dlp-patterns').innerHTML=filtered.map(p=>{
-    const catClass=p.category==='high-confidence'?'cached':p.category==='validated'?'blue':p.category==='context-aware'?'warn':p.category==='prompt-injection'?'orange':'redact';
-    const regexDisp=esc(p.regex_source.length>40?p.regex_source.slice(0,40)+'...':p.regex_source);
-    const delBtn=p.is_builtin?'':'<button class="dlp-del-btn" data-id="'+esc(p.id)+'" style="cursor:pointer;color:#f85149;background:none;border:1px solid #3d1a1a;border-radius:4px;padding:2px 8px;font-size:11px">Del</button>';
-    return '<tr><td><label class="switch" style="margin:0"><input type="checkbox" data-pid="'+esc(p.id)+'"'+(p.enabled?' checked':'')+'><span class="slider"></span></label></td>'+
-      '<td class="mono" style="font-size:12px">'+esc(p.name)+'</td>'+
-      '<td><span class="tag '+catClass+'">'+esc(p.category)+'</span></td>'+
-      '<td class="mono" style="font-size:11px" title="'+esc(p.regex_source)+'">'+regexDisp+'</td>'+
-      '<td style="font-size:12px;color:#7d8590">'+esc(p.description||'-')+'</td>'+
-      '<td>'+delBtn+'</td></tr>';
-  }).join('');
-}
-// Event delegation for DLP patterns (set up once)
-document.getElementById('dlp-patterns').addEventListener('change',async function(e){
-  const cb=e.target.closest('input[type=checkbox][data-pid]');
-  if(!cb)return;
-  await apiFetch('/api/dlp/patterns/'+encodeURIComponent(cb.dataset.pid),{
-    method:'PUT',headers:{'content-type':'application/json'},
-    body:JSON.stringify({enabled:cb.checked})
-  });
-});
-document.getElementById('dlp-patterns').addEventListener('click',async function(e){
-  const btn=e.target.closest('.dlp-del-btn');
-  if(!btn)return;
-  if(!confirm('Delete this custom pattern?'))return;
-  await apiFetch('/api/dlp/patterns/'+encodeURIComponent(btn.dataset.id),{method:'DELETE'});
-  refreshPatterns();
-});
-document.getElementById('dlp-cat-filter').addEventListener('change',renderPatterns);
-
-// Signature management
-const sigLog=[];
-function addSigLog(msg,ok){
-  sigLog.unshift({time:new Date().toLocaleTimeString(),msg,ok});
-  if(sigLog.length>50)sigLog.length=50;
-  renderSigLog();
-}
-function renderSigLog(){
-  const el=document.getElementById('sig-log-entries');
-  const empty=document.getElementById('sig-log-empty');
-  if(!sigLog.length){empty.style.display='';el.innerHTML='';document.getElementById('sig-log-count').textContent='';return;}
-  empty.style.display='none';
-  document.getElementById('sig-log-count').textContent='('+sigLog.length+')';
-  el.innerHTML=sigLog.map(e=>{
-    const color=e.ok===false?'#f85149':e.ok===true?'#3fb950':'#7d8590';
-    return '<div style="padding:3px 0;border-bottom:1px solid #21262d"><span style="color:#484f58">'+esc(e.time)+'</span> <span style="color:'+color+'">'+esc(e.msg)+'</span></div>';
-  }).join('');
-}
-document.getElementById('sig-log-toggle').addEventListener('click',()=>{
-  const body=document.getElementById('sig-log-body');
-  const arrow=document.getElementById('sig-log-arrow');
-  if(body.style.display==='none'){body.style.display='';arrow.style.transform='rotate(90deg)';}
-  else{body.style.display='none';arrow.style.transform='';}
-});
-async function refreshSignature(checkRemote){
-  try{
-    const url=checkRemote?'/api/dlp/signature?check=true':'/api/dlp/signature';
-    const r=await apiFetch(url);
-    const s=await r.json();
-    const badge=document.getElementById('sig-badge');
-    const upd=document.getElementById('sig-update');
-    const notSynced=document.getElementById('sig-not-synced');
-    if(s.local){
-      badge.textContent='#'+s.local.version;
-      badge.style.display='';
-      document.getElementById('sig-ver').textContent='#'+s.local.version;
-      document.getElementById('sig-count').textContent=s.local.patternCount;
-      document.getElementById('sig-branch').textContent=s.local.branch;
-      document.getElementById('sig-synced').textContent=new Date(s.local.syncedAt).toLocaleString();
-      document.getElementById('sig-status').style.display='';
-      notSynced.style.display='none';
-    }else{
-      badge.style.display='none';
-      document.getElementById('sig-ver').textContent='-';
-      document.getElementById('sig-count').textContent='-';
-      document.getElementById('sig-branch').textContent='-';
-      document.getElementById('sig-synced').textContent='-';
-      document.getElementById('sig-status').style.display='';
-      notSynced.style.display='';
-    }
-    if(s.updateAvailable&&s.remote){
-      upd.textContent='#'+s.remote.version+' available';
-      upd.title='Click to sync to #'+s.remote.version+' ('+s.remote.patternCount+' patterns)';
-      upd.style.display='';
-      upd.onclick=()=>syncSignature();
-      if(checkRemote)addSigLog('Update available: #'+s.remote.version+' ('+s.remote.patternCount+' patterns)',null);
-    }else{
-      upd.style.display='none';
-      if(checkRemote&&s.local)addSigLog('Already up to date (#'+s.local.version+')',true);
-    }
-    // Auto-sync toggle
-    const cfgR=await apiFetch('/api/config');
-    const cfg=await cfgR.json();
-    const rp=cfg.config?.plugins?.dlp?.remotePatterns||{};
-    document.getElementById('sig-auto-sync').checked=rp.syncOnStart!==false;
-  }catch(e){console.error('Signature refresh error',e)}
-}
-async function syncSignature(){
-  const syncBtn=document.getElementById('sig-sync-btn');
-  const oldText=syncBtn.textContent;
-  syncBtn.textContent='Syncing...';syncBtn.disabled=true;
-  addSigLog('Sync started...',null);
-  try{
-    const r=await apiFetch('/api/dlp/signature/sync',{method:'POST'});
-    const data=await r.json();
-    if(data.ok){
-      addSigLog('Sync complete: '+data.synced+' patterns synced'+(data.signature?' (v#'+data.signature.version+')':''),true);
-      refreshPatterns();
-      refreshSignature(false);
-    }else{
-      addSigLog('Sync failed: '+(data.error||'unknown error'),false);
-    }
-  }catch(e){addSigLog('Sync error: '+e.message,false)}
-  finally{syncBtn.textContent=oldText;syncBtn.disabled=false}
-}
-document.getElementById('sig-sync-btn').addEventListener('click',syncSignature);
-document.getElementById('sig-check-btn').addEventListener('click',()=>{
-  addSigLog('Checking for updates...',null);
-  refreshSignature(true);
-});
-document.getElementById('sig-auto-sync').addEventListener('change',async function(){
-  const enabled=this.checked;
-  try{
-    await apiFetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({plugins:{dlp:{remotePatterns:{syncOnStart:enabled}}}})});
-    addSigLog('Auto-sync '+(enabled?'enabled':'disabled'),true);
-  }catch(e){addSigLog('Failed to update auto-sync: '+e.message,false)}
-});
-
-// Add pattern form
-document.getElementById('dlp-add-btn').addEventListener('click',()=>{
-  document.getElementById('dlp-add-form').style.display='';
-  document.getElementById('dlp-form-error').textContent='';
-});
-document.getElementById('dlp-cancel-btn').addEventListener('click',()=>{
-  document.getElementById('dlp-add-form').style.display='none';
-});
-document.getElementById('dlp-save-btn').addEventListener('click',async()=>{
-  const name=document.getElementById('dlp-new-name').value.trim();
-  const regex=document.getElementById('dlp-new-regex').value.trim();
-  const desc=document.getElementById('dlp-new-desc').value.trim();
-  const ctx=document.getElementById('dlp-new-context').value.trim();
-  const errEl=document.getElementById('dlp-form-error');
-  if(!name||!regex){errEl.textContent='Name and Regex are required';return}
-  try{new RegExp(regex)}catch(e){errEl.textContent='Invalid regex: '+e.message;return}
-  const payload={name,regex_source:regex,description:desc||null,require_context:ctx?JSON.stringify(ctx.split(',').map(s=>s.trim()).filter(Boolean)):null};
-  const r=await apiFetch('/api/dlp/patterns',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
-  const data=await r.json();
-  if(!r.ok){errEl.textContent=data.error||'Failed to save';return}
-  document.getElementById('dlp-add-form').style.display='none';
-  document.getElementById('dlp-new-name').value='';
-  document.getElementById('dlp-new-regex').value='';
-  document.getElementById('dlp-new-desc').value='';
-  document.getElementById('dlp-new-context').value='';
-  refreshPatterns();
-});
-
-// Optimizer tab
-async function refreshOptimizer(){
-  try{
-    const sp=sinceParam();
-    const optUrl='/api/optimizer/recent'+(sp?'?'+sp:'');
-    const [statsR,recentR]=await Promise.all([apiFetch('/api/optimizer/stats'),apiFetch(optUrl)]);
-    const stats=await statsR.json();
-    const recent=await recentR.json();
-
-    const hitRate=stats.total_events>0?(stats.cache_hit_rate*100).toFixed(1)+'%':'0%';
-    document.getElementById('optimizer-cards').innerHTML=
-      card('Total Events',fmt(stats.total_events))+
-      card('Cache Hit Rate',hitRate,'blue')+
-      card('Chars Saved',fmt(stats.total_chars_saved),'cost')+
-      card('Tokens Saved',fmt(stats.total_tokens_saved),'cost');
-
-    document.getElementById('no-optimizer').style.display=recent.length?'none':'';
-    document.getElementById('optimizer-recent').innerHTML=recent.map(e=>
-      '<tr><td>'+ago(e.created_at)+'</td><td>'+(e.cache_hit?'<span class="tag cached">cache hit</span>':'trim')+'</td>'+
-      '<td class="mono">'+fmt(e.original_length)+'</td><td class="mono">'+fmt(e.trimmed_length)+'</td>'+
-      '<td class="mono">'+fmt(e.chars_saved)+'</td><td class="mono">'+fmt(e.tokens_saved_estimate)+'</td></tr>'
-    ).join('');
-  }catch(e){}
-}
-
-// Audit tab — session-grouped view
-let auditCurrentSession=null;
-
-async function refreshAudit(){
-  try{
-    const sp=sinceParam();
-    const r=await apiFetch('/api/audit/sessions'+(sp?'?'+sp:''));
-    const sessions=await r.json();
-    document.getElementById('no-audit').style.display=sessions.length?'none':'';
-    document.getElementById('audit-sessions').innerHTML=sessions.map(s=>{
-      const models=(s.models||'').split(',').map(m=>'<span class="tag" style="background:#1a2a3d;color:#58a6ff">'+esc(m.trim())+'</span>').join(' ');
-      const sourceTag=s.source==='wrap'?' <span class="tag" style="background:#0d2818;color:#3fb950;font-size:10px">wrap</span>':'';
-      const sessionId='<span class="mono" style="font-size:11px;color:#7d8590">'+esc(s.session_id.slice(0,8))+'</span>'+sourceTag;
-      const projectLabel=s.label
-        ?'<span style="color:#f0f3f6;font-weight:500" title="'+esc(s.project_path||'')+'">'+esc(s.label)+'</span>'
-        :'<span style="color:#484f58">-</span>';
-      return '<tr style="cursor:pointer" data-sid="'+esc(s.session_id)+'">'+
-        '<td>'+ago(s.last_at)+'</td>'+
-        '<td>'+sessionId+'</td>'+
-        '<td>'+projectLabel+'</td>'+
-        '<td>'+models+'</td>'+
-        '<td>'+s.request_count+'</td>'+
-        '<td style="color:#58a6ff">View</td></tr>';
-    }).join('');
-    // Also show non-session entries
-    const recentR=await apiFetch('/api/audit/recent?limit=200'+(sp?'&'+sp:''));
-    const recent=await recentR.json();
-    const noSession=recent.filter(e=>!e.session_id).slice(0,20);
-    if(noSession.length>0){
-      document.getElementById('audit-sessions').innerHTML+=
-        '<tr><td colspan="6" style="color:#7d8590;font-size:11px;padding-top:12px">Requests without session:</td></tr>'+
-        noSession.map(e=>{
-          const dlpTag=e.dlp_hit?'<span class="tag dlp">DLP</span> ':'';
-          const tgTag=e.tool_guard_hit?'<span class="tag tg">TG</span> ':'';
-          const summaryText=e.summary?'<div style="font-size:11px;color:#7d8590;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px" title="'+esc(e.summary)+'">'+esc(e.summary.slice(0,80))+'</div>':'';
-          return '<tr style="cursor:pointer" data-rid="'+e.request_id+'"><td>'+ago(e.created_at)+'</td>'+
-          '<td class="mono" style="font-size:11px">'+e.request_id.slice(0,12)+'...</td>'+
-          '<td>'+summaryText+'</td>'+
-          '<td>'+dlpTag+tgTag+(e.model?'<span class="tag" style="background:#1a2a3d;color:#58a6ff">'+esc(e.model)+'</span>':'')+'</td>'+
-          '<td class="mono">'+bytes(e.request_length)+' / '+bytes(e.response_length)+'</td>'+
-          '<td style="color:#58a6ff">View</td></tr>';
-        }).join('');
-    }
-  }catch(e){ console.error('Audit refresh error',e) }
-}
-// Event delegation for audit sessions table (set up once)
-document.getElementById('audit-sessions').addEventListener('click',function(e){
-  const sidRow=e.target.closest('tr[data-sid]');
-  if(sidRow){loadSessionTimeline(sidRow.dataset.sid);return;}
-  const ridRow=e.target.closest('tr[data-rid]');
-  if(ridRow){loadSingleAudit(ridRow.dataset.rid);}
-});
-
-// Session ID filter
-function applyAuditFilter(){
-  const q=document.getElementById('audit-session-filter').value.trim().toLowerCase();
-  const clearBtn=document.getElementById('audit-session-filter-clear');
-  if(!q){
-    const rows=document.querySelectorAll('#audit-sessions tr');
-    rows.forEach(r=>r.style.display='');
-    clearBtn.style.display='none';
-    return;
-  }
-  clearBtn.style.display='';
-  // Try as request ID first: look in non-session rows and attempt direct load
-  const noSessionRows=document.querySelectorAll('#audit-sessions tr[data-rid]');
-  let ridMatch=false;
-  noSessionRows.forEach(r=>{
-    if((r.dataset.rid||'').toLowerCase().includes(q)){ridMatch=true;}
-  });
-  if(ridMatch||q.length>=32){
-    // Looks like a request ID — try to load directly
-    loadSingleAudit(q).catch(()=>{
-      // Not a valid request ID, fall back to session filter
-      filterSessionRows(q);
-    });
-    return;
-  }
-  filterSessionRows(q);
-}
-function filterSessionRows(q){
-  const rows=document.querySelectorAll('#audit-sessions tr');
-  rows.forEach(r=>{
-    const sid=r.dataset.sid||'';
-    const rid=r.dataset.rid||'';
-    if(sid&&sid.toLowerCase().includes(q)){
-      r.style.display='';
-    }else if(rid&&rid.toLowerCase().includes(q)){
-      r.style.display='';
-    }else if(r.dataset.sid!==undefined||r.dataset.rid!==undefined){
-      r.style.display='none';
-    }else{
-      r.style.display='none';
-    }
-  });
-  // If exactly one session matches, jump directly to timeline
-  const visible=Array.from(document.querySelectorAll('#audit-sessions tr[data-sid]')).filter(r=>r.style.display!=='none');
-  if(visible.length===1&&q.length>=8){
-    loadSessionTimeline(visible[0].dataset.sid);
-  }
-}
-document.getElementById('audit-session-filter-btn').addEventListener('click',applyAuditFilter);
-document.getElementById('audit-session-filter').addEventListener('keydown',e=>{if(e.key==='Enter')applyAuditFilter()});
-document.getElementById('audit-session-filter-clear').addEventListener('click',()=>{
-  document.getElementById('audit-session-filter').value='';
-  applyAuditFilter();
-});
-
-async function loadSessionTimeline(sessionId){
-  auditCurrentSession=sessionId;
-  try{
-    const r=await apiFetch('/api/audit/session/'+sessionId);
-    const data=await r.json();
-    const timeline=data.timeline||data;
-    const sessionMeta=data.session||null;
-    document.querySelector('#tab-audit .section').style.display='none';
-    document.getElementById('audit-timeline').style.display='block';
-    document.getElementById('audit-detail').style.display='none';
-    const labelEl=document.getElementById('audit-session-label');
-    const projName=sessionMeta?.label||'';
-    const projPath=sessionMeta?.project_path||'';
-    const shortId=sessionId.slice(0,8);
-    labelEl.innerHTML=projName
-      ?esc(projName)+' <span style="color:#484f58;font-size:11px">'+esc(shortId)+'</span> \u2014 '+timeline.length+' requests'+(projPath?'<br><span style="font-size:11px;color:#484f58">'+esc(projPath)+'</span>':'')
-      :esc(shortId)+'... \u2014 '+timeline.length+' requests';
-
-    let html='';
-    timeline.forEach((entry,i)=>{
-      const m=entry.meta;
-      const p=entry.parsed;
-      const model=p.request.model||p.response.model||m.model||'?';
-      const stopReason=p.response.stopReason||'';
-      const stopTag=stopReason==='end_turn'?'<span class="tag cached">end_turn</span>':
-        stopReason==='tool_use'?'<span class="tag" style="background:#2a2a1a;color:#ffd43b">tool_use</span>':
-        stopReason?'<span class="tag">'+esc(stopReason)+'</span>':'';
-
-      // Summary of response
-      let responseSummary='';
-      for(const c of (p.response.content||[])){
-        if(c.type==='text'&&c.text){
-          responseSummary+=esc(c.text.slice(0,120))+(c.text.length>120?'...':'');
-        }
-        if(c.type==='tool_use'){
-          responseSummary+='<span style="color:#ffd43b">[tool: '+esc(c.toolName||'?')+']</span> ';
-        }
-      }
-
-      // Summary of last user message
-      let userSummary='';
-      const msgs=p.request.messages||[];
-      const lastUser=msgs.filter(x=>x.role==='user').pop();
-      if(lastUser){
-        for(const c of (lastUser.content||[])){
-          if(c.type==='text'&&c.text){userSummary=esc(c.text.slice(0,100))+(c.text.length>100?'...':'');break}
-          if(c.type==='tool_result'){userSummary='<span style="color:#58a6ff">[tool_result]</span> '+esc((c.text||'').slice(0,80));break}
-        }
-      }
-
-      const usage=p.response.usage||{};
-      const tokens=(usage.input_tokens||0)+(usage.output_tokens||0);
-
-      const dlpTag=m.dlp_hit?'<span class="tag dlp">DLP</span>':'';
-      const tgTag=m.tool_guard_hit?'<span class="tag tg">TG</span>':'';
-      html+='<div class="card timeline-card" data-rid="'+esc(m.request_id)+'">'+
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
-          '<div style="display:flex;gap:8px;align-items:center">'+
-            '<span style="color:#484f58;font-size:11px;font-weight:600">#'+(i+1)+'</span>'+
-            '<span class="mono" style="font-size:11px;color:#7d8590">'+esc(model)+'</span>'+
-            stopTag+dlpTag+tgTag+
-            (tokens?'<span style="font-size:11px;color:#7d8590">'+fmt(tokens)+' tok</span>':'')+
-            '<span style="font-size:11px;color:#484f58">'+bytes(m.request_length||0)+' / '+bytes(m.response_length||0)+'</span>'+
-          '</div>'+
-          '<span style="font-size:11px;color:#484f58">'+ago(m.created_at)+(m.latency_ms?' · '+m.latency_ms+'ms':'')+'</span>'+
-        '</div>'+
-        (userSummary?'<div style="font-size:12px;color:#58a6ff;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">User: '+userSummary+'</div>':'')+
-        (responseSummary?'<div style="font-size:12px;color:#8b949e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Response: '+responseSummary+'</div>':'')+
-      '</div>';
-    });
-
-    document.getElementById('audit-timeline-content').innerHTML=html;
-  }catch(e){ console.error('Session load error',e) }
-}
-// Event delegation for timeline cards (set up once)
-document.getElementById('audit-timeline-content').addEventListener('click',function(e){
-  const card=e.target.closest('.card[data-rid]');
-  if(card)loadSingleAudit(card.dataset.rid);
-});
 
 async function loadSingleAudit(requestId){
-  const r=await apiFetch('/api/audit/'+requestId+'?dlp=true&tg=true');
-  const data=await r.json();
-  if(data.error){throw new Error(data.error);}
   try{
-    document.querySelector('#tab-audit .section').style.display='none';
-    document.getElementById('audit-timeline').style.display=auditCurrentSession?'none':'none';
-    document.getElementById('audit-detail').style.display='block';
+    var r=await apiFetch('/api/audit/'+requestId+'?dlp=true&tg=true');
+    var data=await r.json();
+    if(data.error)throw new Error(data.error);
+    document.getElementById('log-sessions-section').style.display='none';
+    document.getElementById('log-timeline').style.display=logCurrentSession?'none':'none';
+    document.getElementById('log-detail').style.display='block';
 
-    // Handle summary-only mode (rawData off)
     if(data.summaryOnly){
-      const rawTab=document.querySelector('.audit-view-tab[data-view="raw"]');
-      rawTab.style.display='none';
-      document.getElementById('audit-raw').style.display='none';
-      document.getElementById('audit-parsed').style.display='';
-      const m=data.meta||{};
-      const dlpTag=m.dlp_hit?'<span class="tag dlp">DLP</span> ':'';
-      const tgTag=m.tool_guard_hit?'<span class="tag tg">TG</span> ':'';
-      document.getElementById('audit-meta-cards').innerHTML=
-        (m.model?card('Model',esc(m.model)):'')+
-        card('Request Size',bytes(m.request_length||0))+
-        card('Response Size',bytes(m.response_length||0))+
-        (m.latency_ms?card('Latency',m.latency_ms+'ms'):'')+
-        (m.status_code?card('Status',String(m.status_code)):'');
-      document.getElementById('audit-messages').innerHTML=
-        '<div class="empty" style="text-align:left">'+dlpTag+tgTag+
-        '<div style="margin-bottom:8px;color:#d29922">Raw data not available (storage disabled). Summary only:</div>'+
-        '<div class="msg-bubble system" style="white-space:pre-wrap">'+esc(data.summary||'No summary')+'</div></div>';
-      document.getElementById('audit-output').innerHTML='<div class="empty">Raw data not stored</div>';
+      var rawTab=document.querySelector('.log-view-tab[data-view="raw"]');rawTab.style.display='none';
+      document.getElementById('log-raw').style.display='none';
+      document.getElementById('log-parsed').style.display='';
+      var m=data.meta||{};
+      document.getElementById('log-detail-meta').innerHTML=
+        (m.model?gauge('Model',esc(m.model),'',''):'')+
+        gauge('Req',bytes(m.request_length||0),'','')+
+        gauge('Res',bytes(m.response_length||0),'','')+
+        (m.latency_ms?gauge('Lat',m.latency_ms+'ms','',''):'');
+      document.getElementById('log-detail-tg').style.display='none';
+      document.getElementById('log-detail-messages').innerHTML='<div style="color:#ffcc00;margin-bottom:6px">Summary only</div><div class="msg-bubble system">'+esc(data.summary||'No summary')+'</div>';
+      document.getElementById('log-detail-output').innerHTML='<div class="empty">Raw data not stored</div>';
       return;
     }
 
-    // Normal mode — show raw tab
-    const rawTab=document.querySelector('.audit-view-tab[data-view="raw"]');
-    rawTab.style.display='';
-    // Raw view
-    document.getElementById('audit-req').textContent=tryPrettyJson(data.raw.request);
-    document.getElementById('audit-res').textContent=tryPrettyJson(data.raw.response);
-    // Parsed view
+    var rawTab=document.querySelector('.log-view-tab[data-view="raw"]');rawTab.style.display='';
+    document.getElementById('log-raw-req').textContent=tryPrettyJson(data.raw.request);
+    document.getElementById('log-raw-res').textContent=tryPrettyJson(data.raw.response);
     renderParsedAudit(data);
-  }catch(e){ console.error('Audit load error',e) }
-}
-
-// Back buttons
-document.getElementById('audit-back').addEventListener('click',()=>{
-  auditCurrentSession=null;
-  document.getElementById('audit-timeline').style.display='none';
-  document.getElementById('audit-detail').style.display='none';
-  document.querySelector('#tab-audit .section').style.display='';
-});
-document.getElementById('audit-back-timeline').addEventListener('click',()=>{
-  document.getElementById('audit-detail').style.display='none';
-  if(auditCurrentSession){
-    document.getElementById('audit-timeline').style.display='block';
-  }else{
-    document.querySelector('#tab-audit .section').style.display='';
-  }
-});
-
-// Audit parsed/raw tab toggle
-document.querySelectorAll('.audit-view-tab').forEach(t=>{
-  t.addEventListener('click',()=>{
-    document.querySelectorAll('.audit-view-tab').forEach(x=>{x.style.color='#7d8590'});
-    t.style.color='#58a6ff';
-    document.getElementById('audit-parsed').style.display=t.dataset.view==='parsed'?'':'none';
-    document.getElementById('audit-raw').style.display=t.dataset.view==='raw'?'':'none';
-  });
-});
-
-function tryPrettyJson(s){
-  try{return JSON.stringify(JSON.parse(s),null,2)}catch(e){return s}
-}
-
-// Render a single content block (pre-parsed by backend)
-function renderBlock(b){
-  if(b.type==='text')return '<div class="msg-text">'+esc(b.text||'')+'</div>';
-  if(b.type==='image')return '<div class="msg-text" style="color:#7d8590">[image]</div>';
-  if(b.type==='tool_use'){
-    return '<div style="margin:4px 0;padding:6px 8px;background:#2a2a1a;border:1px solid #4d4d26;border-radius:6px;font-size:11px">'+
-      '<div style="color:#ffd43b;font-size:10px;font-weight:600;margin-bottom:3px">TOOL_USE: '+esc(b.toolName||'?')+'</div>'+
-      '<pre style="color:#e1e4e8;white-space:pre-wrap;word-break:break-word;margin:0;font-family:inherit">'+esc(b.toolInput||'')+'</pre></div>';
-  }
-  if(b.type==='tool_result'){
-    const errStyle=b.isError?' color:#f85149;':'';
-    return '<div style="margin:4px 0;padding:6px 8px;background:#1a2a2a;border:1px solid #264d4d;border-radius:6px;font-size:11px">'+
-      '<div style="color:#58a6ff;font-size:10px;font-weight:600;margin-bottom:3px">TOOL_RESULT'+(b.isError?' (error)':'')+'</div>'+
-      '<pre style="white-space:pre-wrap;word-break:break-word;margin:0;font-family:inherit;'+errStyle+'">'+esc(b.text||'')+'</pre></div>';
-  }
-  return '<div class="msg-text" style="color:#7d8590">'+esc(b.text||JSON.stringify(b))+'</div>';
+  }catch(e){console.error('Audit load error',e)}
 }
 
 function renderParsedAudit(data){
-  const req=data.request;
-  const res=data.response;
+  var req=data.request;var res=data.response;var hl=data.dlpHighlights||[];
+  var metaHtml='';
+  var model=req.model||res.model;
+  if(model)metaHtml+=gauge('Model',esc(model),'','');
+  var usage=res.usage||{};
+  if(usage.input_tokens)metaHtml+=gauge('In',fmt(usage.input_tokens),'','cyan');
+  if(usage.output_tokens)metaHtml+=gauge('Out',fmt(usage.output_tokens),'','cyan');
+  if(res.stopReason)metaHtml+=gauge('Stop',esc(res.stopReason),'','');
+  if(req.stream!==undefined)metaHtml+=gauge('Stream',req.stream?'Yes':'No','','');
+  document.getElementById('log-detail-meta').innerHTML=metaHtml;
 
-  // --- Meta cards ---
-  const cards=[];
-  const model=req.model||res.model;
-  if(model)cards.push(card('Model',esc(model)));
-  if(req.maxTokens)cards.push(card('Max Tokens',fmt(req.maxTokens)));
-  if(req.temperature!=null)cards.push(card('Temperature',String(req.temperature)));
-  cards.push(card('Stream',req.stream?'Yes':'No'));
-
-  const usage=res.usage||{};
-  if(usage.input_tokens)cards.push(card('Input Tokens',fmt(usage.input_tokens),'blue'));
-  if(usage.output_tokens)cards.push(card('Output Tokens',fmt(usage.output_tokens),'blue'));
-  if(usage.cache_creation_input_tokens)cards.push(card('Cache Create',fmt(usage.cache_creation_input_tokens)));
-  if(usage.cache_read_input_tokens)cards.push(card('Cache Read',fmt(usage.cache_read_input_tokens),'cost'));
-  if(res.stopReason)cards.push(card('Stop Reason',esc(res.stopReason)));
-
-  document.getElementById('audit-meta-cards').innerHTML=cards.join('');
-
-  // --- Tool Guard Findings ---
-  const tgFindings=data.toolGuardFindings||[];
+  // Tool Guard findings
+  var tgDiv=document.getElementById('log-detail-tg');
+  var tgFindings=data.toolGuardFindings||[];
   if(tgFindings.length>0){
-    const tgHtml=tgFindings.map(function(f){
-      const icon=f.action==='block'?'\u{1F534}':f.action==='flag'?'\u{1F7E1}':'\u{1F7E2}';
-      return '<div style="margin:4px 0;padding:6px 10px;background:#1c2128;border:1px solid #30363d;border-radius:6px;font-size:12px">'+
-        '<div>'+icon+' <strong style="color:#e1e4e8">'+esc(f.tool_name)+'</strong> '+
-        actionTag(f.action)+' '+severityTag(f.severity)+
-        (f.rule_name?' <span style="color:#8b949e">'+esc(f.rule_name)+'</span>':'')+
-        '</div>'+
-        (f.rule_id?'<div style="color:#484f58;font-size:11px;margin-top:2px">Rule: '+esc(f.rule_id)+'</div>':'')+
-        (f.tool_input?'<div style="color:#7d8590;font-size:11px;margin-top:2px;font-family:monospace;white-space:pre-wrap;word-break:break-word">Matched: '+esc(f.tool_input.length>200?f.tool_input.slice(0,200)+'...':f.tool_input)+'</div>':'')+
-        '</div>';
-    }).join('');
-    document.getElementById('audit-meta-cards').insertAdjacentHTML('afterend',
-      '<div style="margin:12px 0;padding:10px 12px;background:#1a1a2e;border:1px solid #30363d;border-radius:8px">'+
-      '<div style="color:#f0883e;font-weight:600;margin-bottom:6px;font-size:13px">Tool Guard Findings ('+tgFindings.length+')</div>'+
-      tgHtml+'</div>');
+    tgDiv.style.display='';
+    tgDiv.innerHTML='<div style="padding:8px 12px;background:#0a0a1a;border:1px solid #1a1a3a"><div style="color:#ff8844;font-weight:700;margin-bottom:4px;font-size:11px">Tool Guard ('+tgFindings.length+')</div>'+
+      tgFindings.map(function(f){
+        return '<div style="margin:2px 0;font-size:11px">'+actionTag(f.action)+' '+severityTag(f.severity)+' <strong style="color:#e0e0e0">'+esc(f.tool_name)+'</strong>'+(f.rule_name?' <span style="color:#555">'+esc(f.rule_name)+'</span>':'')+'</div>';
+      }).join('')+'</div>';
+  }else{tgDiv.style.display='none'}
+
+  // DLP highlight badge
+  var hlBadge='';
+  if(hl.length>0){
+    hlBadge='<div style="margin-bottom:8px;padding:4px 8px;background:#1a0000;border:1px solid #330000;font-size:10px;color:#ff6b6b"><span style="font-weight:700">DLP Matches ('+hl.length+'):</span> '+hl.map(function(m){return '<code style="background:#330000;padding:1px 4px;font-size:9px">'+esc(m.length>40?m.slice(0,37)+'...':m)+'</code>'}).join(' ')+'</div>';
   }
 
-  // --- Request side ---
-  const msgEl=document.getElementById('audit-messages');
-  let html='';
-
-  if(req.system){
-    html+='<div class="msg-bubble system"><div class="msg-role">system</div><div class="msg-text">'+esc(req.system)+'</div></div>';
-  }
-
+  // Request side
+  var msgEl=document.getElementById('log-detail-messages');
+  var html=hlBadge;
+  if(req.system)html+='<div class="msg-bubble system"><div class="msg-role">system</div><div class="msg-text">'+escHL(req.system,hl)+'</div></div>';
   if(req.tools&&req.tools.length>0){
-    html+='<div style="margin:6px 0;padding:6px 10px;background:#1c2128;border:1px solid #30363d;border-radius:6px;font-size:11px">'+
-      '<span style="color:#7d8590;font-weight:600">TOOLS ('+req.tools.length+'):</span> '+
-      '<span class="mono" style="color:#b388ff">'+req.tools.map(n=>esc(n)).join(', ')+'</span></div>';
+    html+='<div style="margin:4px 0;padding:4px 8px;background:#111;border:1px solid #1a1a1a;font-size:10px"><span style="color:#555;font-weight:700">TOOLS ('+req.tools.length+'):</span> <span style="color:#aa66ff">'+req.tools.map(function(n){return esc(n)}).join(', ')+'</span></div>';
   }
-
   if(req.messages&&req.messages.length>0){
-    html+=req.messages.map(m=>{
-      const role=m.role||'unknown';
-      const cls=role==='user'?'user':role==='assistant'?'assistant':'system';
-      const blocks=(m.content||[]).map(renderBlock).join('');
+    html+=req.messages.map(function(m){
+      var role=m.role||'unknown';var cls=role==='user'?'user':role==='assistant'?'assistant':'system';
+      var blocks=(m.content||[]).map(function(b){return renderBlockHL(b,hl)}).join('');
       return '<div class="msg-bubble '+cls+'"><div class="msg-role">'+esc(role)+'</div>'+blocks+'</div>';
     }).join('');
   }
-
   msgEl.innerHTML=html||'<div class="empty">No request data</div>';
 
-  // --- Response side ---
-  const outEl=document.getElementById('audit-output');
+  // Response side
+  var outEl=document.getElementById('log-detail-output');
   if(res.content&&res.content.length>0){
-    outEl.innerHTML=res.content.map(b=>{
-      if(b.type==='text')return '<div class="msg-bubble assistant"><div class="msg-role">assistant</div><div class="msg-text">'+esc(b.text||'')+'</div></div>';
-      if(b.type==='tool_use')return '<div class="msg-bubble system"><div class="msg-role">tool_use: '+esc(b.toolName||'')+'</div><div class="msg-text">'+esc(b.toolInput||'')+'</div></div>';
-      return renderBlock(b);
+    outEl.innerHTML=res.content.map(function(b){
+      if(b.type==='text')return '<div class="msg-bubble assistant"><div class="msg-role">assistant</div><div class="msg-text">'+escHL(b.text||'',hl)+'</div></div>';
+      if(b.type==='tool_use')return '<div class="msg-bubble system"><div class="msg-role">tool_use: '+esc(b.toolName||'')+'</div><div class="msg-text">'+escHL(b.toolInput||'',hl)+'</div></div>';
+      return renderBlockHL(b,hl);
     }).join('');
-  }else{
-    outEl.innerHTML='<div class="empty">No response content</div>';
-  }
+  }else{outEl.innerHTML='<div class="empty">No response content</div>'}
 }
 
-// Tool Guard — alert polling
-async function pollToolGuardAlerts(){
-  try{
-    const r=await apiFetch('/api/tool-guard/alerts');
-    const data=await r.json();
-    const badge=document.getElementById('tg-badge');
-    const banner=document.getElementById('tg-alert-banner');
-    const unack=data.unacknowledged||0;
-    if(unack>0){
-      badge.textContent=unack>99?'99+':String(unack);
-      badge.style.display='inline';
-      banner.style.display='block';
-      document.getElementById('tg-alert-title').textContent=unack+' unacknowledged alert'+(unack>1?'s':'');
-      const recent=data.alerts.filter(a=>!a.acknowledged).slice(0,5);
-      document.getElementById('tg-alert-msg').textContent=recent.length>0?recent[0].toolName+': '+recent[0].ruleName:'';
-      document.getElementById('tg-alert-list').innerHTML=recent.map(a=>
-        '<div>'+severityTag(a.severity)+' <strong>'+esc(a.toolName)+'</strong> — '+esc(a.ruleName)+' <span style="color:#484f58">'+ago(a.timestamp)+'</span></div>'
-      ).join('');
-    }else{
-      badge.style.display='none';
-      banner.style.display='none';
-    }
-  }catch(e){}
-}
-
-document.getElementById('tg-ack-btn').addEventListener('click',async()=>{
-  await apiFetch('/api/tool-guard/alerts/ack',{method:'POST'});
-  pollToolGuardAlerts();
+// ── Optimizer section ─────────────────────────────────────────────
+document.getElementById('opt-toggle').addEventListener('click',function(){
+  var body=document.getElementById('opt-body');
+  var arrow=this.querySelector('.sect-arrow');
+  if(body.style.display==='none'){body.style.display='';arrow.innerHTML='\\u25BE';refreshOptimizer()}
+  else{body.style.display='none';arrow.innerHTML='\\u25B8'}
 });
-
-// Tool Guard tab
-let _tgRecent=[];
-function severityTag(s){
-  if(!s)return '<span class="tag" style="background:#21262d;color:#484f58">none</span>';
-  const colors={critical:'background:#3d1a1a;color:#f85149',high:'background:#3d2e1a;color:#d29922',medium:'background:#2a2a1a;color:#ffd43b',low:'background:#1a2a3d;color:#58a6ff',info:'background:#1a2d1a;color:#3fb950'};
-  return '<span class="tag" style="'+(colors[s]||'')+'">'+(s||'none')+'</span>';
-}
-
-function actionTag(a){
-  if(!a||a==='pass')return '<span class="tag" style="background:#1a2d1a;color:#3fb950">pass</span>';
-  if(a==='block')return '<span class="tag" style="background:#3d1a1a;color:#f85149">block</span>';
-  if(a==='flag')return '<span class="tag" style="background:#3d2e1a;color:#d29922">flag</span>';
-  return '<span class="tag" style="background:#21262d;color:#484f58">'+esc(a)+'</span>';
-}
-
-async function refreshToolGuard(){
+async function refreshOptimizer(){
   try{
-    const sp=sinceParam();
-    const tgUrl='/api/tool-guard/recent?limit=100'+(sp?'&'+sp:'');
-    const [statsR,recentR,cfgR]=await Promise.all([apiFetch('/api/tool-guard/stats'),apiFetch(tgUrl),apiFetch('/api/config')]);
-    const stats=await statsR.json();
-    const recent=await recentR.json();
-    const cfgData=await cfgR.json();
-    const tgCfg=cfgData.config?.plugins?.toolGuard||{};
-    const tgAction=tgCfg.action||'audit';
-    const modeLabel=tgAction==='block'?'BLOCK':'AUDIT';
-    const modeCls=tgAction==='block'?'warn':'blue';
-
-    // Populate config selects
-    document.getElementById('tg-action-select').value=tgAction;
-    document.getElementById('tg-record-all').checked=tgCfg.recordAll!==false;
-    document.getElementById('tg-block-severity').value=tgCfg.blockMinSeverity||'critical';
-    document.getElementById('tg-alert-severity').value=tgCfg.alertMinSeverity||'high';
-
-    if(!skipIfSame('tg-cards',{stats,tgAction})){
-      document.getElementById('tg-cards').innerHTML=
-        card('Mode',modeLabel,modeCls)+
-        card('Total Tool Calls',fmt(stats.total))+
-        card('Flagged',fmt(stats.flagged),'warn')+
-        card('Critical',(stats.bySeverity?.critical||0).toString(),'warn');
-    }
-
-    document.getElementById('no-tg').style.display=recent.length?'none':'';
-    if(skipIfSame('tg-table',recent))return;
-    _tgRecent=recent;
-    document.getElementById('tg-table').innerHTML=recent.map(e=>{
-      const inputPreview=e.tool_input?(e.tool_input.length>80?esc(e.tool_input.slice(0,80))+'...':esc(e.tool_input)):'';
-      const sid=e.session_id?e.session_id.slice(0,8)+'...':'-';
-      return '<tr style="cursor:pointer" data-tg-idx="'+esc(e.id)+'">'+
-        '<td>'+ago(e.created_at)+'</td>'+
-        '<td class="mono" style="font-size:11px">'+esc(sid)+'</td>'+
-        '<td><strong>'+esc(e.tool_name)+'</strong></td>'+
-        '<td>'+actionTag(e.action)+'</td>'+
-        '<td>'+severityTag(e.severity)+'</td>'+
-        '<td>'+(e.category?'<span style="color:#7d8590">'+esc(e.category)+'</span>':'-')+'</td>'+
-        '<td class="mono" style="font-size:11px;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(e.tool_input||'')+'">'+inputPreview+'</td></tr>';
+    var sp=sinceParam();
+    var [statsR,recentR]=await Promise.all([apiFetch('/api/optimizer/stats'),apiFetch('/api/optimizer/recent'+(sp?'?'+sp:''))]);
+    var stats=await statsR.json();var recent=await recentR.json();
+    var hitRate=stats.total_events>0?(stats.cache_hit_rate*100).toFixed(1)+'%':'0%';
+    document.getElementById('opt-gauges').innerHTML=
+      gauge('Events',fmt(stats.total_events),'','')+
+      gauge('Cache Rate',hitRate,'','cyan')+
+      gauge('Chars Saved',fmt(stats.total_chars_saved),'','green')+
+      gauge('Tokens Saved',fmt(stats.total_tokens_saved),'','green');
+    document.getElementById('opt-no-events').style.display=recent.length?'none':'';
+    document.getElementById('opt-recent').innerHTML=recent.map(function(e){
+      return '<tr><td>'+ago(e.created_at)+'</td><td>'+(e.cache_hit?'<span class="row-tag audit">cache</span>':'trim')+'</td>'+
+        '<td class="mono">'+fmt(e.original_length)+'</td><td class="mono">'+fmt(e.trimmed_length)+'</td>'+
+        '<td class="mono">'+fmt(e.chars_saved)+'</td><td class="mono">'+fmt(e.tokens_saved_estimate)+'</td></tr>';
     }).join('');
-  }catch(e){console.error('Tool Guard refresh error',e)}
+  }catch(e){console.error('Optimizer error',e)}
 }
-// Event delegation for TG table rows (set up once)
-function showTgDetail(entry){
-  document.querySelector('#tg-sub-calls .section').style.display='none';
-  document.getElementById('tg-cards').style.display='none';
-  document.getElementById('tg-detail').style.display='block';
-  let inputFormatted=entry.tool_input||'';
-  try{inputFormatted=JSON.stringify(JSON.parse(inputFormatted),null,2)}catch{}
-  document.getElementById('tg-detail-content').innerHTML=
-    '<div class="audit-kv"><span class="k">Tool</span><span class="v">'+esc(entry.tool_name)+'</span></div>'+
-    '<div class="audit-kv"><span class="k">Provider</span><span class="v">'+esc(entry.provider||'unknown')+'</span></div>'+
-    '<div class="audit-kv"><span class="k">Action</span><span class="v">'+actionTag(entry.action)+'</span></div>'+
-    '<div class="audit-kv"><span class="k">Severity</span><span class="v">'+severityTag(entry.severity)+'</span></div>'+
-    '<div class="audit-kv"><span class="k">Rule</span><span class="v">'+(entry.rule_name?esc(entry.rule_name)+' ('+esc(entry.rule_id)+')':'<span style="color:#484f58">none</span>')+'</span></div>'+
-    '<div class="audit-kv"><span class="k">Category</span><span class="v">'+(entry.category?esc(entry.category):'-')+'</span></div>'+
-    '<div class="audit-kv"><span class="k">Request ID</span><span class="v"><a href="#" class="tg-audit-link" data-rid="'+esc(entry.request_id)+'" style="color:#58a6ff;text-decoration:underline;cursor:pointer">'+esc(entry.request_id)+'</a></span></div>'+
-    '<div class="audit-kv"><span class="k">Session</span><span class="v">'+esc(entry.session_id||'-')+'</span></div>'+
-    '<div class="audit-kv"><span class="k">Time</span><span class="v">'+esc(entry.created_at)+'</span></div>'+
-    '<div style="margin-top:12px"><a href="#" class="tg-audit-link" data-rid="'+esc(entry.request_id)+'" style="display:inline-block;padding:6px 14px;background:#1a3a5c;color:#58a6ff;border:1px solid #264d73;border-radius:6px;text-decoration:none;font-size:12px;font-weight:600;cursor:pointer;margin-bottom:12px">View Audit Log</a></div>'+
-    '<div><div class="label">Input</div><pre class="snippet" style="max-height:400px;overflow:auto">'+esc(inputFormatted)+'</pre></div>';
-}
-document.getElementById('tg-table').addEventListener('click',function(e){
-  const row=e.target.closest('tr[data-tg-idx]');
-  if(!row)return;
-  const entry=_tgRecent.find(r=>r.id===row.dataset.tgIdx);
-  if(entry)showTgDetail(entry);
-});
-// Event delegation for TG audit links (set up once on parent)
-document.getElementById('tg-detail-content').addEventListener('click',function(e){
-  const link=e.target.closest('.tg-audit-link');
-  if(!link)return;
-  e.preventDefault();
-  const rid=link.dataset.rid;
-  if(!rid)return;
-  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
-  document.querySelectorAll('.tab-content').forEach(x=>x.classList.remove('active'));
-  const auditTab=document.querySelector('.tab[data-tab="audit"]');
-  auditTab.classList.add('active');
-  activeTab='audit';
-  document.getElementById('tab-audit').classList.add('active');
-  loadSingleAudit(rid);
-});
 
-document.getElementById('tg-back').addEventListener('click',()=>{
-  document.getElementById('tg-detail').style.display='none';
-  document.querySelector('#tg-sub-calls .section').style.display='';
-  document.getElementById('tg-cards').style.display='';
-});
-
-// Tool Guard sub-tab switching
-document.querySelectorAll('#tg-sub-tabs .sub-tab').forEach(t=>{
-  t.addEventListener('click',()=>{
-    document.querySelectorAll('#tg-sub-tabs .sub-tab').forEach(x=>x.classList.remove('active'));
-    document.querySelectorAll('#tab-toolguard .sub-content').forEach(x=>x.classList.remove('active'));
-    t.classList.add('active');
-    document.getElementById('tg-sub-'+t.dataset.tgSub).classList.add('active');
-    if(t.dataset.tgSub==='rules')refreshToolGuardRules();
+// ══ 8. PAGE: SETTINGS ═════════════════════════════════════════════
+// Collapsible sections
+document.querySelectorAll('.setting-toggle[data-target]').forEach(function(h){
+  h.addEventListener('click',function(){
+    var target=document.getElementById(h.dataset.target);
+    if(!target)return;
+    var isOpen=target.style.display!=='none';
+    target.style.display=isOpen?'none':'';
+    var arrow=h.querySelector('.sect-arrow');
+    if(arrow)arrow.innerHTML=isOpen?'\\u25B8':'\\u25BE';
   });
 });
 
-// Tool Guard Rules management
-async function refreshToolGuardRules(){
-  try{
-    const r=await apiFetch('/api/tool-guard/rules');
-    const rules=await r.json();
-    document.getElementById('no-tg-rules').style.display=rules.length?'none':'';
-    if(skipIfSame('tg-rules-table',rules))return;
-    document.getElementById('tg-rules-table').innerHTML=rules.map(r=>{
-      const patPreview=r.input_pattern?(r.input_pattern.length>60?esc(r.input_pattern.slice(0,60))+'...':esc(r.input_pattern)):'';
-      const typeLabel=r.is_builtin?'<span style="color:#7d8590">built-in</span>':'<span style="color:#58a6ff">custom</span>';
-      return '<tr data-rule-id="'+esc(r.id)+'">'+
-        '<td><label class="switch" style="transform:scale(0.8)"><input type="checkbox" class="tgr-toggle" data-id="'+esc(r.id)+'"'+(r.enabled?' checked':'')+'><span class="slider"></span></label></td>'+
-        '<td><strong>'+esc(r.name)+'</strong>'+(r.description?'<div style="font-size:11px;color:#7d8590">'+esc(r.description)+'</div>':'')+'</td>'+
-        '<td>'+severityTag(r.severity)+'</td>'+
-        '<td><span style="color:#7d8590">'+esc(r.category)+'</span></td>'+
-        '<td class="mono" style="font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(r.input_pattern)+'">'+patPreview+'</td>'+
-        '<td>'+typeLabel+'</td>'+
-        '<td>'+(r.is_builtin?'':'<button class="tgr-del" data-id="'+esc(r.id)+'" style="padding:2px 8px;font-size:11px;cursor:pointer;color:#f85149;background:none;border:1px solid #f85149;border-radius:4px">Del</button>')+'</td></tr>';
-    }).join('');
-  }catch(e){console.error('Tool Guard rules refresh error',e)}
-}
-// Event delegation for TG rules (set up once)
-document.getElementById('tg-rules-table').addEventListener('change',async function(e){
-  const cb=e.target.closest('.tgr-toggle');
-  if(!cb)return;
-  await apiFetch('/api/tool-guard/rules/'+encodeURIComponent(cb.dataset.id),{
-    method:'PUT',headers:{'content-type':'application/json'},
-    body:JSON.stringify({enabled:cb.checked})
-  });
-});
-document.getElementById('tg-rules-table').addEventListener('click',async function(e){
-  const btn=e.target.closest('.tgr-del');
-  if(!btn)return;
-  e.stopPropagation();
-  if(!confirm('Delete this custom rule?'))return;
-  await apiFetch('/api/tool-guard/rules/'+encodeURIComponent(btn.dataset.id),{method:'DELETE'});
-  _lastJson={};refreshToolGuardRules();
-});
+var _devMode=false;var _proLicense={pro:false};
+var _proFeatures={
+  'ai-injection':{title:'AI Injection Detection',desc:'Multi-layer AI-driven prompt injection detection with semantic analysis.'},
+  'budget':{title:'Budget Control',desc:'Per-session/user/project cost budgets with auto-blocking.'},
+  'ratelimit':{title:'Rate Limiting',desc:'Configurable rate limiting by API key, session, or global scope.'}
+};
 
-// Add Rule form
-document.getElementById('tg-add-rule-btn').addEventListener('click',()=>{
-  document.getElementById('tg-rule-form').style.display='block';
-  document.getElementById('tgr-name').value='';
-  document.getElementById('tgr-description').value='';
-  document.getElementById('tgr-input-pattern').value='';
-  document.getElementById('tgr-input-flags').value='i';
-  document.getElementById('tgr-tool-pattern').value='';
-  document.getElementById('tgr-tool-flags').value='';
-  document.getElementById('tgr-severity').value='medium';
-  document.getElementById('tgr-category').value='custom';
-  document.getElementById('tgr-error').style.display='none';
-});
-document.getElementById('tgr-cancel').addEventListener('click',()=>{
-  document.getElementById('tg-rule-form').style.display='none';
-});
-document.getElementById('tgr-save').addEventListener('click',async()=>{
-  const errEl=document.getElementById('tgr-error');
-  const name=document.getElementById('tgr-name').value.trim();
-  const inputPattern=document.getElementById('tgr-input-pattern').value.trim();
-  if(!name||!inputPattern){errEl.textContent='Name and Input Pattern are required';errEl.style.display='inline';return;}
-  try{new RegExp(inputPattern,document.getElementById('tgr-input-flags').value)}catch(e){
-    errEl.textContent='Invalid regex: '+e.message;errEl.style.display='inline';return;
-  }
-  const toolPat=document.getElementById('tgr-tool-pattern').value.trim();
-  if(toolPat){try{new RegExp(toolPat,document.getElementById('tgr-tool-flags').value)}catch(e){
-    errEl.textContent='Invalid tool name regex: '+e.message;errEl.style.display='inline';return;
-  }}
-  const payload={
-    name,
-    description:document.getElementById('tgr-description').value.trim()||null,
-    input_pattern:inputPattern,
-    input_flags:document.getElementById('tgr-input-flags').value||'i',
-    tool_name_pattern:toolPat||null,
-    tool_name_flags:document.getElementById('tgr-tool-flags').value||null,
-    severity:document.getElementById('tgr-severity').value,
-    category:document.getElementById('tgr-category').value||'custom',
-  };
-  const r=await apiFetch('/api/tool-guard/rules',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
-  const res=await r.json();
-  if(res.error){errEl.textContent=res.error;errEl.style.display='inline';return;}
-  document.getElementById('tg-rule-form').style.display='none';
-  _lastJson={};refreshToolGuardRules();
-});
-
-// Tool Guard config change handlers
-['tg-action-select','tg-record-all','tg-block-severity','tg-alert-severity'].forEach(id=>{
-  const el=document.getElementById(id);
-  if(!el){console.error('Tool Guard config element not found:',id);return;}
-  el.addEventListener('change',async()=>{
-    const payload={plugins:{toolGuard:{
-      action:document.getElementById('tg-action-select').value,
-      recordAll:document.getElementById('tg-record-all').checked,
-      blockMinSeverity:document.getElementById('tg-block-severity').value,
-      alertMinSeverity:document.getElementById('tg-alert-severity').value,
-    }}};
-    try{
-      console.log('[Bastion] Saving toolGuard config:',JSON.stringify(payload));
-      const r=await apiFetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
-      if(!r.ok){console.error('[Bastion] Config save failed:',r.status,await r.text());return;}
-      const result=await r.json();
-      console.log('[Bastion] Config saved, effective toolGuard:',JSON.stringify(result.config?.plugins?.toolGuard));
-    }catch(e){console.error('[Bastion] Config save error:',e);return;}
-    const st=document.getElementById('tg-cfg-status');st.style.display='inline';setTimeout(()=>st.style.display='none',2000);
-    _lastJson={};refreshToolGuard();
-  });
-});
-
-// Settings tab
 async function refreshSettings(){
   try{
-    const r=await apiFetch('/api/config');
-    const data=await r.json();
-    const info=data.pluginInfo||[];
-    const builtin=info.filter(p=>p.source==='builtin');
-    const external=info.filter(p=>p.source==='external');
+    var [cfgR,licR,devR]=await Promise.all([apiFetch('/api/config'),apiFetch('/api/license'),apiFetch('/api/dev')]);
+    var cfgData=await cfgR.json();_proLicense=await licR.json();var devData=await devR.json();
+    _devMode=!!devData.dev;
+    document.getElementById('sec-pro').style.display=_devMode?'':'none';
 
-    let html='<div style="font-size:12px;color:#7d8590;margin-bottom:6px;font-weight:500">Built-in</div>';
-    for(const p of builtin){
-      html+='<div class="toggle-row"><div><div class="toggle-label">'+p.name+'</div></div>'+
-        '<label class="switch"><input type="checkbox" data-plugin="'+p.name+'"'+(p.enabled?' checked':'')+'>'+
-        '<span class="slider"></span></label></div>';
-    }
+    // 1. Plugins
+    var info=cfgData.pluginInfo||[];
+    var builtin=info.filter(function(p){return p.source==='builtin'});
+    var external=info.filter(function(p){return p.source==='external'});
+    var pHtml='<div style="font-size:10px;color:#555;margin-bottom:4px;font-weight:700">BUILT-IN</div>';
+    builtin.forEach(function(p){
+      pHtml+='<div class="toggle-row"><div><div class="toggle-label">'+esc(p.name)+'</div></div><label class="switch"><input type="checkbox" data-plugin="'+esc(p.name)+'"'+(p.enabled?' checked':'')+'><span class="slider"></span></label></div>';
+    });
     if(external.length>0){
-      html+='<div style="font-size:12px;color:#7d8590;margin:12px 0 6px;font-weight:500;border-top:1px solid #21262d;padding-top:10px">External</div>';
-      for(const p of external){
-        const meta=[];
-        if(p.version)meta.push('v'+p.version);
-        if(p.packageName)meta.push(p.packageName);
-        const metaStr=meta.length?' <span style="color:#7d8590;font-size:11px">('+meta.join(' &middot; ')+')</span>':'';
-        html+='<div class="toggle-row"><div><div class="toggle-label">'+p.name+metaStr+'</div></div>'+
-          '<label class="switch"><input type="checkbox" data-plugin="'+p.name+'"'+(p.enabled?' checked':'')+'>'+
-          '<span class="slider"></span></label></div>';
-      }
+      pHtml+='<div style="font-size:10px;color:#555;margin:8px 0 4px;font-weight:700;border-top:1px solid #1a1a1a;padding-top:8px">EXTERNAL</div>';
+      external.forEach(function(p){
+        var meta=[];if(p.version)meta.push('v'+p.version);if(p.packageName)meta.push(p.packageName);
+        var ms=meta.length?' <span style="color:#555;font-size:10px">('+meta.join(' ')+')</span>':'';
+        pHtml+='<div class="toggle-row"><div><div class="toggle-label">'+esc(p.name)+ms+'</div></div><label class="switch"><input type="checkbox" data-plugin="'+esc(p.name)+'"'+(p.enabled?' checked':'')+'><span class="slider"></span></label></div>';
+      });
     }
-    document.getElementById('plugin-toggles').innerHTML=html;
-
-    document.querySelectorAll('#plugin-toggles input[type=checkbox]').forEach(cb=>{
-      cb.addEventListener('change',async()=>{
-        const payload={pluginStatus:{}};
-        payload.pluginStatus[cb.dataset.plugin]=cb.checked;
+    document.getElementById('plugin-toggles').innerHTML=pHtml;
+    document.querySelectorAll('#plugin-toggles input[type=checkbox]').forEach(function(cb){
+      cb.addEventListener('change',async function(){
+        var payload={pluginStatus:{}};payload.pluginStatus[cb.dataset.plugin]=cb.checked;
         await apiFetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
       });
     });
 
-    // Fail mode
-    const srv=data.config?.server||{};
-    document.getElementById('fail-mode-select').value=srv.failMode||'open';
+    // 2. Pro Features
+    updateProFeatures();
 
-    // Retention settings
-    const ret=data.config?.retention||{};
+    // 3. DLP Config
+    await loadDlpConfig(cfgData);
+
+    // 6. TG Config
+    var tgCfg=cfgData.config&&cfgData.config.plugins?cfgData.config.plugins.toolGuard||{}:{};
+    document.getElementById('tg-action-select').value=tgCfg.action||'audit';
+    document.getElementById('tg-record-all').checked=tgCfg.recordAll!==false;
+    document.getElementById('tg-block-severity').value=tgCfg.blockMinSeverity||'critical';
+    document.getElementById('tg-alert-severity').value=tgCfg.alertMinSeverity||'high';
+
+    // 7. TG Rules
+    refreshTgRules();
+
+    // 8. Retention
+    var ret=cfgData.config&&cfgData.config.retention?cfgData.config.retention:{};
     document.getElementById('ret-requests').value=ret.requestsHours||720;
     document.getElementById('ret-dlp').value=ret.dlpEventsHours||720;
     document.getElementById('ret-tools').value=ret.toolCallsHours||720;
@@ -2189,71 +1208,417 @@ async function refreshSettings(){
     document.getElementById('ret-sessions').value=ret.sessionsHours||720;
     document.getElementById('ret-audit').value=ret.auditLogHours||24;
     document.getElementById('ret-plugin-events').value=ret.pluginEventsHours||720;
-  }catch(e){}
+
+    // 9. Pipeline
+    var srv=cfgData.config&&cfgData.config.server?cfgData.config.server:{};
+    document.getElementById('fail-mode-select').value=srv.failMode||'open';
+  }catch(e){console.error('Settings refresh error',e)}
 }
 
-document.getElementById('ret-save-btn').addEventListener('click',async()=>{
-  const retention={
-    requestsHours:parseInt(document.getElementById('ret-requests').value)||720,
+// Pro features
+function updateProFeatures(){
+  document.querySelectorAll('.pro-feature-row').forEach(function(row){
+    if(_proLicense.pro){
+      row.classList.add('unlocked');
+      var badge=row.querySelector('.row-tag');
+      if(badge){badge.style.background='#0a1a0a';badge.style.color='#00ff88';badge.textContent='ACTIVE'}
+    }
+  });
+}
+function showProDetail(feature){
+  var info=_proFeatures[feature];if(!info)return;
+  document.getElementById('pro-detail-title').textContent=info.title;
+  document.getElementById('pro-detail-desc').textContent=info.desc;
+  document.getElementById('pro-detail').style.display='block';
+  if(_proLicense.pro){document.getElementById('pro-detail-unlocked').style.display='block';document.getElementById('pro-detail-locked').style.display='none'}
+  else{document.getElementById('pro-detail-unlocked').style.display='none';document.getElementById('pro-detail-locked').style.display='block';
+    document.getElementById('pro-detail-license').style.display=(_devMode||_proLicense.installed)?'block':'none'}
+}
+document.querySelectorAll('.pro-feature-row').forEach(function(row){
+  row.addEventListener('click',function(){showProDetail(row.dataset.proFeature)});
+});
+async function activateLicense(inputId){
+  var key=document.getElementById(inputId).value.trim();if(!key)return;
+  if(_devMode){
+    try{var r=await apiFetch('/api/dev/activate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({token:key})});
+      var d=await r.json();if(d.ok){refreshSettings();return}alert(d.error||'Invalid token');
+    }catch(e){alert('Activation failed')}
+  }else{alert('License activation requires the Bastion Pro plugin.')}
+}
+window.activateLicense=activateLicense;
+
+// DLP Config
+var dlpServerState=null;var dlpBuiltinsLoaded=false;var dlpCleanSnapshot='';
+function readDlpForm(){
+  return{enabled:document.getElementById('dlp-cfg-enabled').checked,action:document.getElementById('dlp-cfg-action').value,
+    aiEnabled:document.getElementById('dlp-cfg-ai').checked,
+    sensitive:document.getElementById('dlp-cfg-sensitive').value,nonsensitive:document.getElementById('dlp-cfg-nonsensitive').value};
+}
+function dlpFormSnapshot(){return JSON.stringify(readDlpForm())}
+function updateDirtyUI(){
+  var dirty=dlpCleanSnapshot!==dlpFormSnapshot();
+  document.getElementById('dlp-dirty').style.display=dirty?'':'none';
+  document.getElementById('dlp-apply-btn').style.display=dirty?'':'none';
+  document.getElementById('dlp-revert-btn').style.display=dirty?'':'none';
+}
+function populateDlpForm(config,enabled){
+  document.getElementById('dlp-cfg-enabled').checked=!!enabled;
+  document.getElementById('dlp-cfg-action').value=config.action||'warn';
+  var aiVal=config.aiValidation||{};
+  document.getElementById('dlp-cfg-ai').checked=!!aiVal.enabled;
+  var aiSt=document.getElementById('dlp-ai-status');
+  if(!aiVal.apiKey){aiSt.innerHTML='<span style="color:#ffcc00">No key</span>';document.getElementById('dlp-cfg-ai').disabled=true}
+  else{aiSt.innerHTML=aiVal.enabled?'<span style="color:#00ff88">Active</span>':'<span style="color:#555">Off</span>';document.getElementById('dlp-cfg-ai').disabled=false}
+  var sem=config.semantics||{};
+  document.getElementById('dlp-cfg-sensitive').value=(sem.sensitivePatterns||[]).join('\\n');
+  document.getElementById('dlp-cfg-nonsensitive').value=(sem.nonSensitiveNames||[]).join('\\n');
+  dlpCleanSnapshot=dlpFormSnapshot();updateDirtyUI();
+}
+async function loadDlpConfig(cfgData){
+  var config=cfgData.config&&cfgData.config.plugins?cfgData.config.plugins.dlp||{}:{};
+  var enabled=cfgData.pluginStatus?cfgData.pluginStatus['dlp-scanner']!==false:true;
+  dlpServerState={config:config,enabled:enabled};
+  populateDlpForm(config,enabled);
+  if(!dlpBuiltinsLoaded){
+    try{var bRes=await apiFetch('/api/dlp/semantics/builtins');var b=await bRes.json();
+      document.getElementById('dlp-builtin-sensitive').innerHTML=b.sensitivePatterns.map(function(p){return '<code style="background:#1a1a1a;padding:2px 4px;font-size:10px;color:#555">'+esc(p)+'</code>'}).join('');
+      document.getElementById('dlp-builtin-nonsensitive').innerHTML=b.nonSensitiveNames.map(function(n){return '<code style="background:#1a1a1a;padding:2px 4px;font-size:10px;color:#555">'+esc(n)+'</code>'}).join('');
+      dlpBuiltinsLoaded=true;
+    }catch(e){}
+  }
+  refreshPatterns();refreshSignature(false);
+}
+document.getElementById('dlp-apply-btn').addEventListener('click',async function(){
+  var f=readDlpForm();
+  var payload={enabled:f.enabled,action:f.action,aiValidation:{enabled:f.aiEnabled},
+    semantics:{sensitivePatterns:f.sensitive.split('\\n').map(function(s){return s.trim()}).filter(Boolean),
+      nonSensitiveNames:f.nonsensitive.split('\\n').map(function(s){return s.trim()}).filter(Boolean)}};
+  await apiFetch('/api/dlp/config/apply',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+  refreshSettings();loadDlpHistory();
+});
+document.getElementById('dlp-revert-btn').addEventListener('click',function(){if(dlpServerState)populateDlpForm(dlpServerState.config,dlpServerState.enabled)});
+['dlp-cfg-enabled','dlp-cfg-action','dlp-cfg-ai'].forEach(function(id){document.getElementById(id).addEventListener('change',updateDirtyUI)});
+['dlp-cfg-sensitive','dlp-cfg-nonsensitive'].forEach(function(id){document.getElementById(id).addEventListener('input',updateDirtyUI)});
+
+// DLP History
+document.getElementById('dlp-history-toggle').addEventListener('click',function(){
+  var list=document.getElementById('dlp-history-list');
+  var arrow=this.querySelector('.sect-arrow');
+  if(list.style.display==='none'){list.style.display='';if(arrow)arrow.innerHTML='\\u25BE';loadDlpHistory()}
+  else{list.style.display='none';if(arrow)arrow.innerHTML='\\u25B8'}
+});
+async function loadDlpHistory(){
+  try{var r=await apiFetch('/api/dlp/config/history');var entries=await r.json();
+    document.getElementById('dlp-history-count').textContent='('+entries.length+')';
+    document.getElementById('no-history').style.display=entries.length?'none':'';
+    document.getElementById('dlp-history-body').innerHTML=entries.map(function(e){
+      var c={};try{c=JSON.parse(e.config_json)}catch(x){}
+      var sem=c.semantics||{};var sp=(sem.sensitivePatterns||[]).length;var ns=(sem.nonSensitiveNames||[]).length;
+      return '<tr><td>'+ago(e.created_at)+'</td><td>'+esc(c.action||'-')+'</td><td>'+(c.aiValidation&&c.aiValidation.enabled?'On':'Off')+'</td><td>'+sp+'</td><td>'+ns+'</td>'+
+        '<td><button class="dlp-restore-btn cfg-btn secondary" data-hid="'+e.id+'">Restore</button></td></tr>';
+    }).join('');
+  }catch(e){}
+}
+document.getElementById('dlp-history-body').addEventListener('click',async function(e){
+  var btn=e.target.closest('.dlp-restore-btn');if(!btn)return;
+  if(!confirm('Restore this configuration?'))return;
+  await apiFetch('/api/dlp/config/restore/'+btn.dataset.hid,{method:'POST'});
+  refreshSettings();loadDlpHistory();
+});
+
+// DLP Patterns
+var _allPatterns=[];
+async function refreshPatterns(){
+  try{var r=await apiFetch('/api/dlp/patterns');_allPatterns=await r.json();
+    var sel=document.getElementById('dlp-cat-filter');var prev=sel.value;
+    var cats=Array.from(new Set(_allPatterns.map(function(p){return p.category}))).sort();
+    sel.innerHTML='<option value="">All categories</option>'+cats.map(function(c){return '<option value="'+esc(c)+'">'+esc(c)+' ('+_allPatterns.filter(function(p){return p.category===c}).length+')</option>'}).join('');
+    sel.value=prev;renderPatterns();
+  }catch(e){console.error('Pattern refresh error',e)}
+}
+function renderPatterns(){
+  var catFilter=document.getElementById('dlp-cat-filter').value;
+  var filtered=catFilter?_allPatterns.filter(function(p){return p.category===catFilter}):_allPatterns;
+  document.getElementById('dlp-pat-count').textContent=catFilter?filtered.length+'/'+_allPatterns.length:_allPatterns.length+' patterns';
+  document.getElementById('no-patterns').style.display=filtered.length?'none':'';
+  document.getElementById('dlp-patterns').innerHTML=filtered.map(function(p){
+    var regexDisp=esc(p.regex_source.length>40?p.regex_source.slice(0,40)+'...':p.regex_source);
+    var delBtn=p.is_builtin?'':'<button class="dlp-del-btn cfg-btn danger" data-id="'+esc(p.id)+'">Del</button>';
+    return '<tr><td><label class="switch" style="margin:0"><input type="checkbox" data-pid="'+esc(p.id)+'"'+(p.enabled?' checked':'')+'><span class="slider"></span></label></td>'+
+      '<td class="mono" style="font-size:11px">'+esc(p.name)+'</td><td>'+esc(p.category)+'</td>'+
+      '<td class="mono" style="font-size:10px" title="'+esc(p.regex_source)+'">'+regexDisp+'</td>'+
+      '<td style="color:#555;font-size:11px">'+esc(p.description||'-')+'</td><td>'+delBtn+'</td></tr>';
+  }).join('');
+}
+document.getElementById('dlp-patterns').addEventListener('change',async function(e){
+  var cb=e.target.closest('input[type=checkbox][data-pid]');if(!cb)return;
+  await apiFetch('/api/dlp/patterns/'+encodeURIComponent(cb.dataset.pid),{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:cb.checked})});
+});
+document.getElementById('dlp-patterns').addEventListener('click',async function(e){
+  var btn=e.target.closest('.dlp-del-btn');if(!btn)return;
+  if(!confirm('Delete this custom pattern?'))return;
+  await apiFetch('/api/dlp/patterns/'+encodeURIComponent(btn.dataset.id),{method:'DELETE'});refreshPatterns();
+});
+document.getElementById('dlp-cat-filter').addEventListener('change',renderPatterns);
+document.getElementById('dlp-add-btn').addEventListener('click',function(){document.getElementById('dlp-add-form').style.display='';document.getElementById('dlp-form-error').textContent=''});
+document.getElementById('dlp-cancel-btn').addEventListener('click',function(){document.getElementById('dlp-add-form').style.display='none'});
+document.getElementById('dlp-save-btn').addEventListener('click',async function(){
+  var name=document.getElementById('dlp-new-name').value.trim();var regex=document.getElementById('dlp-new-regex').value.trim();
+  var desc=document.getElementById('dlp-new-desc').value.trim();var ctx=document.getElementById('dlp-new-context').value.trim();
+  var errEl=document.getElementById('dlp-form-error');
+  if(!name||!regex){errEl.textContent='Name and Regex required';return}
+  try{new RegExp(regex)}catch(e){errEl.textContent='Invalid regex: '+e.message;return}
+  var payload={name:name,regex_source:regex,description:desc||null,require_context:ctx?JSON.stringify(ctx.split(',').map(function(s){return s.trim()}).filter(Boolean)):null};
+  var r=await apiFetch('/api/dlp/patterns',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+  var data=await r.json();if(!r.ok){errEl.textContent=data.error||'Failed';return}
+  document.getElementById('dlp-add-form').style.display='none';
+  ['dlp-new-name','dlp-new-regex','dlp-new-desc','dlp-new-context'].forEach(function(id){document.getElementById(id).value=''});
+  refreshPatterns();
+});
+
+// DLP Signatures
+var sigLog=[];
+function addSigLog(msg,ok){sigLog.unshift({time:new Date().toLocaleTimeString(),msg:msg,ok:ok});if(sigLog.length>50)sigLog.length=50;renderSigLog()}
+function renderSigLog(){
+  var el=document.getElementById('sig-log-entries');var empty=document.getElementById('sig-log-empty');
+  if(!sigLog.length){empty.style.display='';el.innerHTML='';document.getElementById('sig-log-count').textContent='';return}
+  empty.style.display='none';document.getElementById('sig-log-count').textContent='('+sigLog.length+')';
+  el.innerHTML=sigLog.map(function(e){var color=e.ok===false?'#ff4444':e.ok===true?'#00ff88':'#555';
+    return '<div style="padding:2px 0;border-bottom:1px solid #1a1a1a"><span style="color:#444">'+esc(e.time)+'</span> <span style="color:'+color+'">'+esc(e.msg)+'</span></div>';
+  }).join('');
+}
+document.getElementById('sig-log-toggle').addEventListener('click',function(){
+  var body=document.getElementById('sig-log-body');var arrow=document.getElementById('sig-log-arrow');
+  if(body.style.display==='none'){body.style.display='';arrow.style.transform='rotate(90deg)'}
+  else{body.style.display='none';arrow.style.transform=''}
+});
+async function refreshSignature(checkRemote){
+  try{var url=checkRemote?'/api/dlp/signature?check=true':'/api/dlp/signature';
+    var r=await apiFetch(url);var s=await r.json();
+    var badge=document.getElementById('sig-badge');var upd=document.getElementById('sig-update');var notSynced=document.getElementById('sig-not-synced');
+    if(s.local){badge.textContent='#'+s.local.version;badge.style.display='';
+      document.getElementById('sig-ver').textContent='#'+s.local.version;document.getElementById('sig-count').textContent=s.local.patternCount;
+      document.getElementById('sig-branch').textContent=s.local.branch;document.getElementById('sig-synced').textContent=new Date(s.local.syncedAt).toLocaleString();
+      notSynced.style.display='none';
+    }else{badge.style.display='none';['sig-ver','sig-count','sig-branch','sig-synced'].forEach(function(id){document.getElementById(id).textContent='-'});notSynced.style.display=''}
+    if(s.updateAvailable&&s.remote){upd.textContent='#'+s.remote.version+' available';upd.style.display='';upd.onclick=function(){syncSignature()};
+      if(checkRemote)addSigLog('Update available: #'+s.remote.version,null);
+    }else{upd.style.display='none';if(checkRemote&&s.local)addSigLog('Up to date (#'+s.local.version+')',true)}
+    var cfgR=await apiFetch('/api/config');var cfg=await cfgR.json();
+    var rp=cfg.config&&cfg.config.plugins&&cfg.config.plugins.dlp?cfg.config.plugins.dlp.remotePatterns||{}:{};
+    document.getElementById('sig-auto-sync').checked=rp.syncOnStart!==false;
+  }catch(e){console.error('Sig refresh error',e)}
+}
+async function syncSignature(){
+  var btn=document.getElementById('sig-sync-btn');var old=btn.textContent;btn.textContent='Syncing...';btn.disabled=true;
+  addSigLog('Sync started...',null);
+  try{var r=await apiFetch('/api/dlp/signature/sync',{method:'POST'});var data=await r.json();
+    if(data.ok){addSigLog('Synced: '+data.synced+' patterns',true);refreshPatterns();refreshSignature(false)}
+    else{addSigLog('Failed: '+(data.error||'unknown'),false)}
+  }catch(e){addSigLog('Error: '+e.message,false)}
+  finally{btn.textContent=old;btn.disabled=false}
+}
+document.getElementById('sig-sync-btn').addEventListener('click',syncSignature);
+document.getElementById('sig-check-btn').addEventListener('click',function(){addSigLog('Checking...',null);refreshSignature(true)});
+document.getElementById('sig-auto-sync').addEventListener('change',async function(){
+  var enabled=this.checked;
+  try{await apiFetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({plugins:{dlp:{remotePatterns:{syncOnStart:enabled}}}})});
+    addSigLog('Auto-sync '+(enabled?'enabled':'disabled'),true);
+  }catch(e){addSigLog('Failed: '+e.message,false)}
+});
+
+// TG Config change handlers
+['tg-action-select','tg-record-all','tg-block-severity','tg-alert-severity'].forEach(function(id){
+  var el=document.getElementById(id);if(!el)return;
+  el.addEventListener('change',async function(){
+    var payload={plugins:{toolGuard:{action:document.getElementById('tg-action-select').value,
+      recordAll:document.getElementById('tg-record-all').checked,
+      blockMinSeverity:document.getElementById('tg-block-severity').value,
+      alertMinSeverity:document.getElementById('tg-alert-severity').value}}};
+    try{await apiFetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(payload)})}catch(e){return}
+    var st=document.getElementById('tg-cfg-status');st.style.display='inline';setTimeout(function(){st.style.display='none'},2000);
+  });
+});
+
+// TG Rules
+async function refreshTgRules(){
+  try{var r=await apiFetch('/api/tool-guard/rules');var rules=await r.json();
+    document.getElementById('no-tg-rules').style.display=rules.length?'none':'';
+    if(skipIfSame('tg-rules-table',rules))return;
+    document.getElementById('tg-rules-table').innerHTML=rules.map(function(r){
+      var patPreview=r.input_pattern?(r.input_pattern.length>50?esc(r.input_pattern.slice(0,50))+'...':esc(r.input_pattern)):'';
+      var typeLabel=r.is_builtin?'<span style="color:#555">built-in</span>':'<span style="color:#00ccff">custom</span>';
+      return '<tr><td><label class="switch" style="transform:scale(0.8)"><input type="checkbox" class="tgr-toggle" data-id="'+esc(r.id)+'"'+(r.enabled?' checked':'')+'><span class="slider"></span></label></td>'+
+        '<td><strong>'+esc(r.name)+'</strong>'+(r.description?'<div style="font-size:10px;color:#555">'+esc(r.description)+'</div>':'')+'</td>'+
+        '<td>'+severityTag(r.severity)+'</td><td style="color:#555">'+esc(r.category)+'</td>'+
+        '<td class="mono" style="font-size:10px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(r.input_pattern)+'">'+patPreview+'</td>'+
+        '<td>'+typeLabel+'</td><td>'+(r.is_builtin?'':'<button class="tgr-del cfg-btn danger" data-id="'+esc(r.id)+'">Del</button>')+'</td></tr>';
+    }).join('');
+  }catch(e){console.error('TG rules error',e)}
+}
+document.getElementById('tg-rules-table').addEventListener('change',async function(e){
+  var cb=e.target.closest('.tgr-toggle');if(!cb)return;
+  await apiFetch('/api/tool-guard/rules/'+encodeURIComponent(cb.dataset.id),{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:cb.checked})});
+});
+document.getElementById('tg-rules-table').addEventListener('click',async function(e){
+  var btn=e.target.closest('.tgr-del');if(!btn)return;e.stopPropagation();
+  if(!confirm('Delete this custom rule?'))return;
+  await apiFetch('/api/tool-guard/rules/'+encodeURIComponent(btn.dataset.id),{method:'DELETE'});_lastJson={};refreshTgRules();
+});
+document.getElementById('tg-add-rule-btn').addEventListener('click',function(){
+  document.getElementById('tg-rule-form').style.display='block';
+  ['tgr-name','tgr-description','tgr-input-pattern','tgr-tool-pattern','tgr-tool-flags'].forEach(function(id){document.getElementById(id).value=''});
+  document.getElementById('tgr-input-flags').value='i';document.getElementById('tgr-severity').value='medium';document.getElementById('tgr-category').value='custom';
+  document.getElementById('tgr-error').style.display='none';
+});
+document.getElementById('tgr-cancel').addEventListener('click',function(){document.getElementById('tg-rule-form').style.display='none'});
+document.getElementById('tgr-save').addEventListener('click',async function(){
+  var errEl=document.getElementById('tgr-error');var name=document.getElementById('tgr-name').value.trim();
+  var inputPattern=document.getElementById('tgr-input-pattern').value.trim();
+  if(!name||!inputPattern){errEl.textContent='Name and Input Pattern required';errEl.style.display='inline';return}
+  try{new RegExp(inputPattern,document.getElementById('tgr-input-flags').value)}catch(e){errEl.textContent='Invalid regex: '+e.message;errEl.style.display='inline';return}
+  var toolPat=document.getElementById('tgr-tool-pattern').value.trim();
+  if(toolPat){try{new RegExp(toolPat,document.getElementById('tgr-tool-flags').value)}catch(e){errEl.textContent='Invalid tool regex: '+e.message;errEl.style.display='inline';return}}
+  var payload={name:name,description:document.getElementById('tgr-description').value.trim()||null,
+    input_pattern:inputPattern,input_flags:document.getElementById('tgr-input-flags').value||'i',
+    tool_name_pattern:toolPat||null,tool_name_flags:document.getElementById('tgr-tool-flags').value||null,
+    severity:document.getElementById('tgr-severity').value,category:document.getElementById('tgr-category').value||'custom'};
+  var r=await apiFetch('/api/tool-guard/rules',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+  var res=await r.json();if(res.error){errEl.textContent=res.error;errEl.style.display='inline';return}
+  document.getElementById('tg-rule-form').style.display='none';_lastJson={};refreshTgRules();
+});
+
+// Retention save
+document.getElementById('ret-save-btn').addEventListener('click',async function(){
+  var retention={requestsHours:parseInt(document.getElementById('ret-requests').value)||720,
     dlpEventsHours:parseInt(document.getElementById('ret-dlp').value)||720,
     toolCallsHours:parseInt(document.getElementById('ret-tools').value)||720,
     optimizerEventsHours:parseInt(document.getElementById('ret-optimizer').value)||720,
     sessionsHours:parseInt(document.getElementById('ret-sessions').value)||720,
     auditLogHours:parseInt(document.getElementById('ret-audit').value)||24,
-    pluginEventsHours:parseInt(document.getElementById('ret-plugin-events').value)||720,
-  };
-  await apiFetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({retention})});
-  const st=document.getElementById('ret-status');st.style.display='inline';setTimeout(()=>st.style.display='none',2000);
+    pluginEventsHours:parseInt(document.getElementById('ret-plugin-events').value)||720};
+  await apiFetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({retention:retention})});
+  var st=document.getElementById('ret-status');st.style.display='inline';setTimeout(function(){st.style.display='none'},2000);
 });
 
-document.getElementById('fail-mode-select').addEventListener('change',async()=>{
-  const val=document.getElementById('fail-mode-select').value;
+// Pipeline fail mode
+document.getElementById('fail-mode-select').addEventListener('change',async function(){
+  var val=document.getElementById('fail-mode-select').value;
   await apiFetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({server:{failMode:val}})});
-  const st=document.getElementById('fail-mode-status');st.style.display='inline';setTimeout(()=>st.style.display='none',2000);
+  var st=document.getElementById('fail-mode-status');st.style.display='inline';setTimeout(function(){st.style.display='none'},2000);
 });
+
+// Debug Scanner
+var SCAN_PRESETS={
+  clean:'What is the capital of France?',
+  aws:'AWS credentials:\\nAWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE\\nAWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
+  github:'Use token: ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijk',
+  openai:'Set OPENAI_API_KEY=sk-proj-abc123def456ghi789jkl012mno345pqr678stu901vwx234',
+  pem:'-----BEGIN RSA PRIVATE KEY-----\\nMIIEpAIBAAKCAQEA0Z3VS5JJcds3xfn/ygWyF8PbnGy0AHB7MhgHcTz6sE2I2yPB\\naFDrBz9vFqU4yVkzSzl9JYpP0kLgHrFhLXQ2RD3G7X1SE6tU0ZMaXR9T5eJA\\n-----END RSA PRIVATE KEY-----',
+  password:'DB_PASSWORD=xK9mP2vL5nR8qW4jB7fT3aZ6',
+  cc:'Card: 4111111111111111\\nSSN: 219-09-9999',
+  ssn:'SSN: 219-09-9999, DOB: 1990-01-15',
+  email:'Contact john.doe@company.com',
+  multi:'AKIAIOSFODNN7EXAMPLE\\nghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijk\\npassword=SuperSecret123',
+  'json-secret':JSON.stringify({database_password:'xK9mP2vL5nR8qW4jB7fT3aZ6'},null,2),
+  'llm-body':JSON.stringify({model:'claude-haiku-4.5',messages:[{role:'user',content:'API Key: AKIAIOSFODNN7EXAMPLE'}]},null,2)
+};
+document.querySelectorAll('.scan-preset').forEach(function(btn){
+  btn.addEventListener('click',function(){var p=btn.dataset.preset;if(SCAN_PRESETS[p]!==undefined)document.getElementById('scan-input').value=SCAN_PRESETS[p];document.getElementById('scan-result').style.display='none'});
+});
+
+function highlightMatches(text,matches){
+  if(!matches||!matches.length)return esc(text);
+  var result=text;var sorted=Array.from(new Set(matches)).sort(function(a,b){return b.length-a.length});var phs=[];
+  sorted.forEach(function(m,i){var tag='\\x00M'+i+'\\x00';result=result.split(m).join(tag);phs.push({tag:tag,m:m})});
+  result=esc(result);phs.forEach(function(p){result=result.split(esc(p.tag)).join('<span style="background:#5c2020;color:#ff6b6b;padding:0 2px">'+esc(p.m)+'</span>')});
+  return result;
+}
+function highlightRedacted(text){if(!text)return'';return esc(text).replace(/\\[([A-Z_-]+_REDACTED)\\]/g,'<span style="background:#0a1a0a;color:#00ff88;padding:0 2px">[$1]</span>')}
+
+var TRACE_COLORS={'-1':'#555','0':'#00ccff','1':'#ffcc00','2':'#aa66ff','3':'#00ff88'};
+var TRACE_NAMES={'-1':'INIT','0':'STRUCT','1':'ENTROPY','2':'REGEX','3':'SEMANTIC'};
+function renderTrace(trace){
+  if(!trace||!trace.entries)return'';
+  return trace.entries.map(function(e){
+    var color=TRACE_COLORS[e.layer]||'#555';var label=TRACE_NAMES[e.layer]||e.layerName;
+    var dur=e.durationMs!==undefined?' <span style="color:#444">('+e.durationMs.toFixed(2)+'ms)</span>':'';
+    return '<span style="color:'+color+';font-weight:700">['+esc(label)+']</span> <span style="color:#555">'+esc(e.step)+'</span> '+esc(e.detail)+dur;
+  }).join('\\n');
+}
+
+document.getElementById('scan-btn').addEventListener('click',async function(){
+  var text=document.getElementById('scan-input').value.trim();if(!text)return;
+  var action=document.getElementById('scan-action').value;var enableTrace=document.getElementById('scan-trace').checked;
+  var btn=document.getElementById('scan-btn');btn.textContent='...';btn.disabled=true;
+  try{var r=await apiFetch('/api/dlp/scan',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:text,action:action,trace:enableTrace})});
+    var data=await r.json();if(data.error){alert(data.error);return}
+    document.getElementById('scan-result').style.display='block';
+    var n=data.findings.length;var allMatches=data.findings.flatMap(function(f){return f.matches||[]});
+    document.getElementById('scan-result-cards').innerHTML=
+      gauge('Result',data.action==='pass'?'Clean':data.action,'',(data.action==='pass'?'green':'red'))+
+      gauge('Findings',String(n),'',n>0?'red':'')+
+      gauge('Patterns',n>0?data.findings.map(function(f){return f.patternName}).join(', '):'None','','');
+    if(n>0){document.getElementById('scan-findings-section').style.display='';
+      document.getElementById('scan-findings-body').innerHTML=data.findings.map(function(f){
+        var matchDisp=(f.matches||[]).map(function(m){return '<div class="snippet" style="display:inline-block;margin:1px">'+esc(m.length>60?m.slice(0,60)+'...':m)+'</div>'}).join(' ');
+        return '<tr><td class="mono">'+esc(f.patternName)+'</td><td>'+esc(f.patternCategory)+'</td><td>'+f.matchCount+'</td><td>'+matchDisp+'</td></tr>';
+      }).join('');
+    }else{document.getElementById('scan-findings-section').style.display='none'}
+    if(n>0){document.getElementById('scan-diff-section').style.display='';
+      document.getElementById('scan-original').innerHTML=highlightMatches(text,allMatches);
+      document.getElementById('scan-redacted').innerHTML=data.redactedText?highlightRedacted(data.redactedText):'<span style="color:#555">(not redact mode)</span>';
+    }else{document.getElementById('scan-diff-section').style.display='none'}
+    if(data.trace&&data.trace.entries&&data.trace.entries.length>0){document.getElementById('scan-trace-section').style.display='';
+      document.getElementById('scan-trace-log').innerHTML=renderTrace(data.trace);
+    }else{document.getElementById('scan-trace-section').style.display='none'}
+  }catch(e){alert('Scan failed: '+e.message)}
+  finally{btn.textContent='Scan';btn.disabled=false}
+});
+document.getElementById('scan-input').addEventListener('keydown',function(e){
+  if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){e.preventDefault();document.getElementById('scan-btn').click()}
+});
+
+// ══ 9. BOOTSTRAP ══════════════════════════════════════════════════
+async function pollAlerts(){
+  try{var r=await apiFetch('/api/tool-guard/alerts');var data=await r.json();
+    var badge=document.getElementById('guard-badge');var unack=data.unacknowledged||0;
+    if(unack>0){badge.textContent=unack>99?'99+':String(unack);badge.style.display='inline'}
+    else{badge.style.display='none'}
+  }catch(e){}
+}
 
 async function checkAuth(){
-  const r=await apiFetch('/api/stats');
+  var r=await apiFetch('/api/stats');
   if(r.status===401){
-    const t=prompt('Enter Bastion Dashboard token:');
-    if(t){
-      _authToken=t.trim();
-      localStorage.setItem('bastion_token',_authToken);
-      const r2=await apiFetch('/api/stats');
-      if(r2.status===401){
-        localStorage.removeItem('bastion_token');
-        _authToken='';
-        document.body.innerHTML='<div style="color:#f85149;text-align:center;padding:60px;font-size:16px">Invalid token. Reload to try again.</div>';
-        return false;
-      }
-    }else{
-      document.body.innerHTML='<div style="color:#7d8590;text-align:center;padding:60px;font-size:16px">Authentication required. Reload to enter token.</div>';
-      return false;
-    }
+    var t=prompt('Enter Bastion Dashboard token:');
+    if(t){_authToken=t.trim();localStorage.setItem('bastion_token',_authToken);
+      var r2=await apiFetch('/api/stats');
+      if(r2.status===401){localStorage.removeItem('bastion_token');_authToken='';
+        document.body.innerHTML='<div style="color:#ff4444;text-align:center;padding:60px;font-size:14px">Invalid token. Reload to try again.</div>';return false}
+    }else{document.body.innerHTML='<div style="color:#555;text-align:center;padding:60px;font-size:14px">Authentication required. Reload to enter token.</div>';return false}
   }
   return true;
 }
-(async()=>{
+
+(async function(){
   if(!await checkAuth())return;
-  loadSessions();
-  refresh();
-  await fetchDevMode();
-  fetchLicense();
-  pollToolGuardAlerts();
-  // Only refresh the active tab + alerts; sessions reload every 15s
-  // Guard against overlapping refreshes & skip when tab is hidden
-  let _refreshBusy=false;
-  setInterval(async()=>{
+  refreshOverview();
+  pollAlerts();
+  var _refreshBusy=false;
+  setInterval(async function(){
     if(document.hidden||_refreshBusy)return;
+    if(activePage==='log'||activePage==='settings')return;
     _refreshBusy=true;
-    try{await refreshActiveTab();await pollToolGuardAlerts();}
-    finally{_refreshBusy=false;}
+    try{await refreshActivePage()}finally{_refreshBusy=false}
   },3000);
-  setInterval(()=>{if(!document.hidden)loadSessions()},15000);
+  setInterval(function(){if(!document.hidden)pollAlerts()},3000);
 })();
-</script>
-</body>
-</html>`;
+</script>`;
+
+const HTML = HEAD + '<body><div class="container">' +
+  TITLEBAR + PAGE_OVERVIEW + PAGE_DLP + PAGE_GUARD + PAGE_LOG + PAGE_SETTINGS + FOOTER +
+  '</div>' + SCRIPT + '</body></html>';
 
 export function serveDashboard(res: ServerResponse): void {
   res.writeHead(200, {
