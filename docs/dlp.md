@@ -227,25 +227,134 @@ On AI call failure, a fail-closed policy is applied: the match is treated as tru
 
 ---
 
+## Message-level Cache
+
+**File**: `src/dlp/message-cache.ts`
+
+LLM API requests carry the full conversation history in a `messages[]` array. Without caching, every turn re-scans ALL previous messages — O(N²) cumulative work across a conversation.
+
+### How It Works
+
+```
+Turn 1: [msg₁]              → scan msg₁ (1 scan)
+Turn 2: [msg₁, msg₂, msg₃]  → msg₁ cache hit, scan msg₂ + msg₃ (2 scans)
+Turn 3: [msg₁–₃, msg₄, msg₅] → msg₁–₃ cache hits, scan msg₄ + msg₅ (2 scans)
+...
+Turn N: N-1 cache hits + 2 scans → O(1) new work per turn
+```
+
+The cache uses content-addressed hashing (SHA-256) on individual message content. No session tracking is needed — identical messages always produce the same hash regardless of which conversation or agent they come from.
+
+### Cache Architecture
+
+- **LRU eviction** — Default capacity 5000 entries; least-recently-used messages are evicted first
+- **System prompt caching** — The Anthropic `system` field is also individually cached
+- **Multimodal support** — Content block arrays (text + image) are serialized and hashed
+- **Cross-agent sharing** — A single `DlpMessageCache` instance is shared across all conversations; common system prompts only need to be scanned once
+
+### CachedDlpResult
+
+The cache distinguishes between first-time detections and repeated detections:
+
+```typescript
+interface CachedDlpResult extends DlpResult {
+  newFindings: DlpFinding[];    // First-time detection (new messages)
+  cachedFindings: DlpFinding[]; // Already detected in a previous request
+}
+```
+
+The `dlp-scanner` plugin uses this distinction to:
+
+| Aspect | newFindings | cachedFindings |
+|--------|------------|----------------|
+| DLP event recording | Recorded to database | Skipped (already recorded) |
+| AI validation (Layer 4) | Sent for validation | Skipped (already validated) |
+| block / redact action | Applied | Applied (security not compromised) |
+| Audit log | Written | Skipped |
+| dlpHit context flag | Sets `true` | Does not set `true` |
+
+### Performance
+
+Simulated 10-turn conversation (2 messages per turn):
+
+| Metric | Without cache | With cache | Reduction |
+|--------|--------------|------------|-----------|
+| Messages scanned | 110 | 20 | 82% |
+| Cache hit rate (turn 10) | — | 90% | — |
+
+### Diagnostic Logging
+
+Each request produces per-message detail logs:
+
+```
+msg[0] user HIT          bytes=142 hash=a1b2c3d4 preview="Hello, can you..."
+msg[1] assistant HIT     bytes=89  hash=e5f6a7b8 preview="Sure, I can..."
+msg[2] user SCAN+FINDING bytes=256 hash=c9d0e1f2 findings=["aws-access-key"]
+```
+
+Tags: `HIT` (cache hit, no findings), `HIT+FINDING` (cache hit, has findings), `SCAN` (new scan, no findings), `SCAN+FINDING` (new scan, found sensitive data), `SKIP` (empty message).
+
+---
+
+## False Positive Suppression
+
+### password-assignment Pattern
+
+The `password-assignment` pattern detects `key=value` assignments where the key suggests a secret. Two mechanisms prevent false positives on JavaScript / code content:
+
+**1. Excluded keyword: bare `key`**
+
+The keyword list includes `_key`, `api_key`, `secret_key` etc., but NOT the bare word `key`. Standalone `key` is too common in code (`localStorage.key()`, `Object.keys()`, `map.key`, for-loop variables).
+
+**2. Code-pattern negative lookahead**
+
+The regex value part excludes values that start with JavaScript built-in objects or language keywords:
+
+```
+localStorage, document, window, console, JSON, Object, Array,
+Math, Date, String, Number, Boolean, null, undefined, true, false,
+function, new, this., self., require, import, export, return, typeof, void
+```
+
+This prevents matches like `_authToken=localStorage.getItem(...)` or `_secret=Object.keys(config)`.
+
+**3. Function call exclusion**
+
+The captured value character class `[^\s'"(]{6,}` excludes `(`, so method calls like `key(i)` or `getElementById(...)` are not captured as secret values.
+
+---
+
 ## Full Call Flow
 
 ```
 dlp-scanner plugin
   │
-  ├─ scanText(text, patterns, action)
+  ├─ messageCache.scanWithCache(body, parsedBody, patterns, action)
   │    │
-  │    ├─ Layer 2: Regex matching (loop over each pattern)
-  │    │    ├─ requireContext? → hasNearbyContext() proximity check
-  │    │    ├─ validator? → Luhn / SSN validation
-  │    │    └─ Collect findings + apply redact
+  │    ├─ Has messages[]? ─── No ──→ scanText(body) full scan
+  │    │         │
+  │    │        Yes
+  │    │         │
+  │    │    ├─ For each message: hash → cache lookup
+  │    │    │    ├─ Cache HIT  → collect cachedFindings
+  │    │    │    └─ Cache MISS → scanText(messageText) → store in cache
+  │    │    │         │
+  │    │    │         ├─ Layer 2: Regex matching
+  │    │    │         │    ├─ requireContext? → hasNearbyContext()
+  │    │    │         │    ├─ validator? → Luhn / SSN
+  │    │    │         │    └─ code-pattern lookahead filtering
+  │    │    │         │
+  │    │    │         ├─ Layer 0: extractStructuredFields
+  │    │    │         ├─ Layer 1: isHighEntropy
+  │    │    │         └─ Layer 3: isSensitiveFieldName → generic-secret
+  │    │    │
+  │    │    └─ Return CachedDlpResult { newFindings, cachedFindings }
   │    │
-  │    ├─ Layer 0: extractStructuredFields(text)
-  │    ├─ Layer 1: isHighEntropy(field.value)
-  │    └─ Layer 3: isSensitiveFieldName(field.key) → generic-secret
-  │
-  ├─ Layer 4: aiValidator.validate(findings) [optional]
-  │
-  └─ Return DlpResult { action, findings, redactedBody? }
+  │    ├─ Layer 4: aiValidator.validate(newFindings only) [optional]
+  │    │
+  │    ├─ Record DLP events (newFindings only)
+  │    │
+  │    └─ Apply action: block / redact (all findings)
 ```
 
 ## Real-world Examples
@@ -277,4 +386,5 @@ DLP scanning a Telegram bot message — sensitive credentials in the message bod
 | `src/dlp/semantics.ts` | Layer 3 | Field name semantic analysis |
 | `src/dlp/validators.ts` | Layer 2 | Luhn / SSN validators |
 | `src/dlp/ai-validator.ts` | Layer 4 | LLM false-positive filtering |
+| `src/dlp/message-cache.ts` | — | Message-level LRU cache for deduplication |
 | `src/dlp/actions.ts` | — | Type definitions |
