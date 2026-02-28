@@ -76,7 +76,7 @@ Four action modes: `pass` · `warn` · `redact` · `block`
 
 Add custom patterns from the dashboard. Sync shared patterns from a [remote Git repo](https://github.com/aiwatching/bastion_signature). No restart required.
 
-![DLP Findings](docs/dlp-finding-v2.jpeg "DLP Findings")
+![DLP Findings](docs/dlp-finding-v1.jpeg "DLP Findings")
 
 ### 🧬 Prompt Injection Detection
 
