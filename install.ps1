@@ -72,7 +72,7 @@ if ($Local) {
         git fetch origin
         git checkout $Remote 2>$null
         if ($LASTEXITCODE -ne 0) { git checkout -b $Remote "origin/$Remote" }
-        git pull origin $Remote --ff-only
+        git reset --hard "origin/$Remote"
     } else {
         Info "Cloning repository (branch: $Remote)..."
         New-Item -ItemType Directory -Force -Path (Split-Path -Parent $InstallDir) | Out-Null
@@ -83,7 +83,9 @@ if ($Local) {
 } elseif (Test-Path "$InstallDir\.git") {
     Info "Updating existing installation..."
     Push-Location $InstallDir
-    git pull --ff-only
+    git fetch origin
+    $branch = (git rev-parse --abbrev-ref HEAD)
+    git reset --hard "origin/$branch"
 } elseif (Test-Path "$InstallDir\package.json") {
     Info "Using existing source at $InstallDir"
     Push-Location $InstallDir

@@ -108,7 +108,7 @@ elif [ -n "$REMOTE_BRANCH" ]; then
     cd "$INSTALL_DIR"
     git fetch origin
     git checkout "$REMOTE_BRANCH" 2>/dev/null || git checkout -b "$REMOTE_BRANCH" "origin/$REMOTE_BRANCH"
-    git pull origin "$REMOTE_BRANCH" --ff-only
+    git reset --hard "origin/$REMOTE_BRANCH"
   else
     info "Cloning repository (branch: $REMOTE_BRANCH)..."
     mkdir -p "$(dirname "$INSTALL_DIR")"
@@ -119,7 +119,9 @@ elif [ -n "$REMOTE_BRANCH" ]; then
 elif [ -d "$INSTALL_DIR/.git" ]; then
   info "Updating existing installation..."
   cd "$INSTALL_DIR"
-  git pull --ff-only
+  git fetch origin
+  branch=$(git rev-parse --abbrev-ref HEAD)
+  git reset --hard "origin/$branch"
 elif [ -d "$INSTALL_DIR/package.json" ] || [ -f "$INSTALL_DIR/package.json" ]; then
   info "Using existing source at $INSTALL_DIR"
   cd "$INSTALL_DIR"
