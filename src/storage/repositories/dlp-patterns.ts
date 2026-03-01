@@ -29,14 +29,19 @@ export class DlpPatternsRepository {
    */
   seedBuiltins(patterns: DlpPattern[], enabledCategories: string[]): void {
     const enabledSet = new Set(enabledCategories);
-    const stmt = this.db.prepare(`
+    const insertStmt = this.db.prepare(`
       INSERT OR IGNORE INTO dlp_patterns (id, name, category, regex_source, regex_flags, description, validator, require_context, enabled, is_builtin)
       VALUES (@id, @name, @category, @regex_source, @regex_flags, @description, @validator, @require_context, @enabled, 1)
+    `);
+    // Update regex/description/require_context for existing builtins (preserve user's enabled toggle)
+    const updateStmt = this.db.prepare(`
+      UPDATE dlp_patterns SET regex_source = @regex_source, regex_flags = @regex_flags, description = @description, require_context = @require_context
+      WHERE id = @id AND is_builtin = 1 AND (regex_source != @regex_source OR regex_flags != @regex_flags OR IFNULL(require_context, '') != IFNULL(@require_context, ''))
     `);
 
     const seed = this.db.transaction(() => {
       for (const p of patterns) {
-        stmt.run({
+        const row = {
           id: `builtin-${p.name}`,
           name: p.name,
           category: p.category,
@@ -46,7 +51,9 @@ export class DlpPatternsRepository {
           validator: p.validator ?? null,
           require_context: p.requireContext ? JSON.stringify(p.requireContext) : null,
           enabled: enabledSet.has(p.category) ? 1 : 0,
-        });
+        };
+        insertStmt.run(row);
+        updateStmt.run(row);
       }
     });
     seed();
