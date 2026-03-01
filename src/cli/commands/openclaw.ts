@@ -172,8 +172,13 @@ function generateComposeFile(caPath: string, image: string): string {
     restart: unless-stopped
     command:
       [
-        "sh", "-c",
-        "find /home/node/.openclaw/agents -name '*.lock' -delete 2>/dev/null; exec node dist/index.js gateway --bind \${OPENCLAW_GATEWAY_BIND:-lan} --port 18789",
+        "node",
+        "dist/index.js",
+        "gateway",
+        "--bind",
+        "\${OPENCLAW_GATEWAY_BIND:-lan}",
+        "--port",
+        "18789",
       ]
 
   openclaw-cli:
