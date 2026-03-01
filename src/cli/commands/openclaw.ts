@@ -54,9 +54,11 @@ if (proxyUrl) {
       try { if (typeof input === 'string') url = new URL(input); else if (input instanceof URL) url = new URL(input.href); else if (input instanceof Request) url = new URL(input.url); } catch {}
       if (!url || url.protocol !== 'https:' || shouldBypass(url.hostname)) return _origFetch.call(globalThis, input, init);
       L('fetch proxy:', url.hostname + url.pathname);
-      const hdrs = {}; const h = new Headers(init?.headers || (input instanceof Request ? input.headers : undefined)); for (const [k, v] of h) hdrs[k] = v;
-      const method = init?.method || (input instanceof Request ? input.method : 'GET');
-      let body = init?.body; if (body === undefined && input instanceof Request) body = input.body;
+      // Use Request to normalize headers and body (handles string, URLSearchParams, Blob, FormData, ArrayBuffer, ReadableStream, etc.)
+      const normalized = new Request(input, init);
+      const method = normalized.method;
+      const hdrs = {}; for (const [k, v] of normalized.headers) hdrs[k] = v;
+      const bodyBuf = normalized.body ? Buffer.from(await normalized.arrayBuffer()) : null;
       return new Promise((resolve, reject) => {
         const req = https.request({ hostname: url.hostname, port: url.port || 443, path: url.pathname + url.search, method, headers: hdrs }, (res) => {
           const stream = new ReadableStream({ start(ctrl) { res.on('data', c => ctrl.enqueue(new Uint8Array(c))); res.on('end', () => ctrl.close()); res.on('error', e => ctrl.error(e)); } });
@@ -65,11 +67,7 @@ if (proxyUrl) {
         });
         if (init?.signal) { if (init.signal.aborted) { req.destroy(); reject(new DOMException('The operation was aborted.', 'AbortError')); return; } init.signal.addEventListener('abort', () => { req.destroy(); reject(new DOMException('The operation was aborted.', 'AbortError')); }); }
         req.on('error', reject);
-        if (body == null) { req.end(); }
-        else if (typeof body === 'string') { req.end(body); }
-        else if (body instanceof Uint8Array || body instanceof ArrayBuffer) { req.end(Buffer.from(body)); }
-        else if (body instanceof ReadableStream) { const reader = body.getReader(); const pump = () => reader.read().then(({done, value}) => { if (done) { req.end(); return; } req.write(value); return pump(); }); pump().catch(e => { req.destroy(e); reject(e); }); }
-        else { req.end(body); }
+        if (bodyBuf) { req.end(bodyBuf); } else { req.end(); }
       });
     };
     L('fetch wrapped');
@@ -201,7 +199,7 @@ function generateBastionOverride(caPath: string): string {
     environment:
       HTTPS_PROXY: "http://openclaw-gw@host.docker.internal:\${BASTION_PORT:-8420}"
       NODE_EXTRA_CA_CERTS: "/etc/ssl/certs/bastion-ca.crt"
-      NO_PROXY: "localhost,127.0.0.1,host.docker.internal"
+      NO_PROXY: "localhost,127.0.0.1,host.docker.internal,auth.openai.com"
       NODE_OPTIONS: "--import /opt/bastion/proxy-bootstrap.mjs"
     volumes:
       - ${caPath}:/etc/ssl/certs/bastion-ca.crt:ro
@@ -211,7 +209,7 @@ function generateBastionOverride(caPath: string): string {
     environment:
       HTTPS_PROXY: "http://openclaw-cli@host.docker.internal:\${BASTION_PORT:-8420}"
       NODE_EXTRA_CA_CERTS: "/etc/ssl/certs/bastion-ca.crt"
-      NO_PROXY: "localhost,127.0.0.1,host.docker.internal"
+      NO_PROXY: "localhost,127.0.0.1,host.docker.internal,auth.openai.com"
       NODE_OPTIONS: "--import /opt/bastion/proxy-bootstrap.mjs"
     volumes:
       - ${caPath}:/etc/ssl/certs/bastion-ca.crt:ro
