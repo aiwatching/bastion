@@ -144,7 +144,7 @@ function writeEnvFile(dir: string, vars: Record<string, string>): void {
   writeFileSync(join(dir, '.env'), content, 'utf-8');
 }
 
-function generateComposeFile(caPath: string, image: string): string {
+function generateComposeFile(image: string): string {
   return `services:
   openclaw-gateway:
     image: \${OPENCLAW_IMAGE:-${image}}
@@ -155,16 +155,9 @@ function generateComposeFile(caPath: string, image: string): string {
       CLAUDE_AI_SESSION_KEY: \${CLAUDE_AI_SESSION_KEY}
       CLAUDE_WEB_SESSION_KEY: \${CLAUDE_WEB_SESSION_KEY}
       CLAUDE_WEB_COOKIE: \${CLAUDE_WEB_COOKIE}
-      # Bastion proxy
-      HTTPS_PROXY: "http://openclaw-gw@host.docker.internal:\${BASTION_PORT:-8420}"
-      NODE_EXTRA_CA_CERTS: "/etc/ssl/certs/bastion-ca.crt"
-      NO_PROXY: "localhost,127.0.0.1,host.docker.internal"
-      NODE_OPTIONS: "--import /opt/bastion/proxy-bootstrap.mjs"
     volumes:
       - \${OPENCLAW_CONFIG_DIR}:/home/node/.openclaw
       - \${OPENCLAW_WORKSPACE_DIR}:/home/node/.openclaw/workspace
-      - ${caPath}:/etc/ssl/certs/bastion-ca.crt:ro
-      - ./proxy-bootstrap.mjs:/opt/bastion/proxy-bootstrap.mjs:ro
     ports:
       - "\${OPENCLAW_GATEWAY_PORT:-18789}:18789"
       - "\${OPENCLAW_BRIDGE_PORT:-18790}:18790"
@@ -191,16 +184,9 @@ function generateComposeFile(caPath: string, image: string): string {
       CLAUDE_AI_SESSION_KEY: \${CLAUDE_AI_SESSION_KEY}
       CLAUDE_WEB_SESSION_KEY: \${CLAUDE_WEB_SESSION_KEY}
       CLAUDE_WEB_COOKIE: \${CLAUDE_WEB_COOKIE}
-      # Bastion proxy
-      HTTPS_PROXY: "http://openclaw-cli@host.docker.internal:\${BASTION_PORT:-8420}"
-      NODE_EXTRA_CA_CERTS: "/etc/ssl/certs/bastion-ca.crt"
-      NO_PROXY: "localhost,127.0.0.1,host.docker.internal"
-      NODE_OPTIONS: "--import /opt/bastion/proxy-bootstrap.mjs"
     volumes:
       - \${OPENCLAW_CONFIG_DIR}:/home/node/.openclaw
       - \${OPENCLAW_WORKSPACE_DIR}:/home/node/.openclaw/workspace
-      - ${caPath}:/etc/ssl/certs/bastion-ca.crt:ro
-      - ./proxy-bootstrap.mjs:/opt/bastion/proxy-bootstrap.mjs:ro
     stdin_open: true
     tty: true
     init: true
@@ -208,15 +194,50 @@ function generateComposeFile(caPath: string, image: string): string {
 `;
 }
 
+/** Bastion proxy overlay — merged via docker compose -f ... -f ... */
+function generateBastionOverride(caPath: string): string {
+  return `services:
+  openclaw-gateway:
+    environment:
+      HTTPS_PROXY: "http://openclaw-gw@host.docker.internal:\${BASTION_PORT:-8420}"
+      NODE_EXTRA_CA_CERTS: "/etc/ssl/certs/bastion-ca.crt"
+      NO_PROXY: "localhost,127.0.0.1,host.docker.internal"
+      NODE_OPTIONS: "--import /opt/bastion/proxy-bootstrap.mjs"
+    volumes:
+      - ${caPath}:/etc/ssl/certs/bastion-ca.crt:ro
+      - ./proxy-bootstrap.mjs:/opt/bastion/proxy-bootstrap.mjs:ro
+
+  openclaw-cli:
+    environment:
+      HTTPS_PROXY: "http://openclaw-cli@host.docker.internal:\${BASTION_PORT:-8420}"
+      NODE_EXTRA_CA_CERTS: "/etc/ssl/certs/bastion-ca.crt"
+      NO_PROXY: "localhost,127.0.0.1,host.docker.internal"
+      NODE_OPTIONS: "--import /opt/bastion/proxy-bootstrap.mjs"
+    volumes:
+      - ${caPath}:/etc/ssl/certs/bastion-ca.crt:ro
+      - ./proxy-bootstrap.mjs:/opt/bastion/proxy-bootstrap.mjs:ro
+`;
+}
+
+/** Build the list of compose file args for an instance. */
+function composeFileArgs(name: string): string[] {
+  const dir = instanceDir(name);
+  const args = ['-f', join(dir, 'docker-compose.yml')];
+  const overrideFile = join(dir, 'docker-compose.bastion.yml');
+  if (existsSync(overrideFile)) {
+    args.push('-f', overrideFile);
+  }
+  return args;
+}
+
 /** Run docker compose scoped to an instance, inheriting stdio. Returns exit code. */
 function dc(name: string, args: string[]): Promise<number> {
   const dir = instanceDir(name);
-  const composeFile = join(dir, 'docker-compose.yml');
   const envFile = join(dir, '.env');
   return new Promise((resolve) => {
     const child = spawn('docker', [
       'compose',
-      '-f', composeFile,
+      ...composeFileArgs(name),
       '--env-file', envFile,
       '-p', `openclaw-${name}`,
       ...args,
@@ -232,12 +253,11 @@ function dc(name: string, args: string[]): Promise<number> {
 /** Run docker compose and capture stdout. */
 function dcOutput(name: string, args: string[]): string {
   const dir = instanceDir(name);
-  const composeFile = join(dir, 'docker-compose.yml');
   const envFile = join(dir, '.env');
   try {
     return execSync([
       'docker', 'compose',
-      '-f', composeFile,
+      ...composeFileArgs(name),
       '--env-file', envFile,
       '-p', `openclaw-${name}`,
       ...args,
@@ -274,7 +294,7 @@ function syncToken(name: string): void {
   }
 }
 
-/** Ensure gateway.bind=lan in config (required for Docker networking) */
+/** Ensure gateway config is correct for Docker networking */
 function fixBind(name: string): void {
   const configDir = envVal(name, 'OPENCLAW_CONFIG_DIR');
   const configFile = join(configDir, 'openclaw.json');
@@ -282,11 +302,26 @@ function fixBind(name: string): void {
 
   try {
     const cfg = JSON.parse(readFileSync(configFile, 'utf-8'));
-    if (cfg?.gateway?.bind !== 'lan') {
-      if (!cfg.gateway) cfg.gateway = {};
+    let changed = false;
+
+    if (!cfg.gateway) cfg.gateway = {};
+
+    // bind=lan required for Docker container networking
+    if (cfg.gateway.bind !== 'lan') {
       cfg.gateway.bind = 'lan';
+      changed = true;
+    }
+
+    // non-loopback bind requires controlUi origin config
+    if (!cfg.gateway.controlUi) cfg.gateway.controlUi = {};
+    if (!cfg.gateway.controlUi.dangerouslyAllowHostHeaderOriginFallback) {
+      cfg.gateway.controlUi.dangerouslyAllowHostHeaderOriginFallback = true;
+      changed = true;
+    }
+
+    if (changed) {
       writeFileSync(configFile, JSON.stringify(cfg, null, 2), 'utf-8');
-      console.log('    (fixed gateway.bind to lan for Docker)');
+      console.log('    (fixed gateway config for Docker networking)');
     }
   } catch {
     // best-effort
@@ -484,19 +519,20 @@ export function registerOpenclawCommand(program: Command): void {
       const bridgePort = port + 1;
       const dir = instanceDir(name);
 
-      // If instance already exists, update compose + bootstrap and start
+      // If instance already exists, update overlay + bootstrap and start
       if (existsSync(dir)) {
         console.log(`Instance '${name}' exists, starting...`);
 
-        // Ensure proxy bootstrap exists (always update, it's idempotent)
+        // Always update proxy bootstrap + Bastion override (idempotent)
         writeFileSync(join(dir, 'proxy-bootstrap.mjs'), PROXY_BOOTSTRAP_CONTENT, 'utf-8');
+        writeFileSync(join(dir, 'docker-compose.bastion.yml'), generateBastionOverride(caPath), 'utf-8');
 
-        // Only regenerate compose if it lacks bootstrap config (preserve user edits)
+        // Migrate old-style compose that had Bastion proxy baked in
         const existingCompose = readFileSync(join(dir, 'docker-compose.yml'), 'utf-8');
-        if (!existingCompose.includes('proxy-bootstrap.mjs')) {
-          const composeContent = generateComposeFile(caPath, options.image);
+        if (existingCompose.includes('NODE_EXTRA_CA_CERTS')) {
+          const composeContent = generateComposeFile(options.image);
           writeFileSync(join(dir, 'docker-compose.yml'), composeContent, 'utf-8');
-          console.log('    (updated docker-compose.yml with proxy bootstrap)');
+          console.log('    (migrated docker-compose.yml — Bastion proxy moved to docker-compose.bastion.yml)');
         }
 
         syncToken(name);
@@ -538,8 +574,8 @@ export function registerOpenclawCommand(program: Command): void {
         CLAUDE_WEB_COOKIE: '',
       });
 
-      const composeContent = generateComposeFile(caPath, options.image);
-      writeFileSync(join(dir, 'docker-compose.yml'), composeContent, 'utf-8');
+      writeFileSync(join(dir, 'docker-compose.yml'), generateComposeFile(options.image), 'utf-8');
+      writeFileSync(join(dir, 'docker-compose.bastion.yml'), generateBastionOverride(caPath), 'utf-8');
       writeFileSync(join(dir, 'proxy-bootstrap.mjs'), PROXY_BOOTSTRAP_CONTENT, 'utf-8');
 
       console.log(`==> Instance '${name}' created (gateway: ${port}, bridge: ${bridgePort})`);
