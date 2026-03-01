@@ -79,7 +79,7 @@ export const promptInjectionPatterns: DlpPattern[] = [
   {
     name: 'pi-system-bracket',
     category: 'prompt-injection',
-    regex: /\[SYSTEM\s*(?:UPDATE|NOTE|MESSAGE|OVERRIDE|PROMPT)?\s*\]/gi,
+    regex: /\[SYSTEM\s*(?:UPDATE|NOTE|OVERRIDE|PROMPT)\s*\]/gi,
     description: 'System manipulation: fake [SYSTEM] bracket tag',
   },
   {

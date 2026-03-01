@@ -76,8 +76,9 @@ export const highConfidencePatterns: DlpPattern[] = [
   {
     name: 'replicate-api-token',
     category: 'high-confidence',
-    regex: /r8_[A-Za-z0-9]{37,}/g,
+    regex: /(?<![A-Za-z0-9_/+=.-])r8_[A-Za-z0-9]{37,}(?![A-Za-z0-9_/+=.-])/g,
     description: 'Replicate API Token',
+    requireContext: ['replicate', 'REPLICATE', 'REPLICATE_API_TOKEN'],
   },
   {
     name: 'groq-api-key',
@@ -120,7 +121,7 @@ export const highConfidencePatterns: DlpPattern[] = [
   {
     name: 'password-assignment',
     category: 'high-confidence',
-    regex: /(?:password|passwd|pwd|pass_?word|secret_?key|auth_?token|access_?token|api_?key|apikey|credential)[\s]*[=:]\s*['"]?(?!(?:localStorage|document|window|console|JSON|Object|Array|Math|Date|String|Number|Boolean|null\b|undefined\b|true\b|false\b|function\b|new |this\.|self\.|require|import|export|return |typeof |void ))([^\s'"(]{6,})/gi,
+    regex: /(?:password|passwd|pwd|pass_?word|secret_?key|auth_?token|access_?token|api_?key|apikey|credential)[\s]*=\s*['"]?(?!(?:localStorage|document|window|console|JSON|Object|Array|Math|Date|String|Number|Boolean|null\b|undefined\b|true\b|false\b|function\b|new |this\.|self\.|require|import|export|return |typeof |void ))([^\s'"(]{6,})/gi,
     description: 'Password or secret assignment (key=value pattern)',
   },
 ];

@@ -15,6 +15,68 @@ const OPENCLAW_DIR = join(paths.bastionDir, 'openclaw');
 const DEFAULT_PORT = 18789;
 const DEFAULT_IMAGE = 'openclaw:local';
 
+/** Brew shim for Docker — maps `brew install` to `apt-get install` so OpenClaw skills install correctly */
+const BREW_SHIM_CONTENT = `#!/bin/sh
+# brew shim for Debian/Ubuntu Docker containers
+# Maps common brew commands to apt-get equivalents
+
+# Package name mapping (brew name -> apt name)
+map_pkg() {
+  case "$1" in
+    ripgrep) echo "ripgrep" ;;
+    fd) echo "fd-find" ;;
+    bat) echo "bat" ;;
+    fzf) echo "fzf" ;;
+    jq) echo "jq" ;;
+    yq) echo "yq" ;;
+    tree) echo "tree" ;;
+    wget) echo "wget" ;;
+    curl) echo "curl" ;;
+    git) echo "git" ;;
+    gh) echo "gh" ;;
+    sqlite) echo "sqlite3" ;;
+    python3|python) echo "python3" ;;
+    *) echo "$1" ;;
+  esac
+}
+
+case "$1" in
+  install)
+    shift
+    PKGS=""
+    for pkg in "$@"; do
+      case "$pkg" in -*)  continue ;; esac
+      PKGS="$PKGS $(map_pkg "$pkg")"
+    done
+    if [ -n "$PKGS" ]; then
+      apt-get update -qq 2>/dev/null
+      apt-get install -y -qq $PKGS
+    fi
+    ;;
+  uninstall|remove)
+    shift
+    PKGS=""
+    for pkg in "$@"; do
+      case "$pkg" in -*) continue ;; esac
+      PKGS="$PKGS $(map_pkg "$pkg")"
+    done
+    if [ -n "$PKGS" ]; then
+      apt-get remove -y -qq $PKGS
+    fi
+    ;;
+  list)
+    dpkg -l 2>/dev/null | tail -n +6 | awk '{print $2}'
+    ;;
+  --version|-v)
+    echo "brew-shim 1.0 (apt-get wrapper for Docker)"
+    ;;
+  *)
+    echo "brew-shim: unsupported command '$1' (only install/uninstall/list supported)" >&2
+    exit 1
+    ;;
+esac
+`;
+
 /** Proxy bootstrap script content — mounted into containers / local via NODE_OPTIONS="--import ..." */
 const PROXY_BOOTSTRAP_CONTENT = `// proxy-bootstrap.mjs — forces all Node.js HTTP/HTTPS through the proxy
 // Uses createRequire for writable CJS refs (ESM namespaces are read-only). No undici dependency.
@@ -196,7 +258,9 @@ function generateComposeFile(image: string): string {
 function generateBastionOverride(caPath: string): string {
   return `services:
   openclaw-gateway:
+    user: root
     environment:
+      HOME: /home/node
       HTTPS_PROXY: "http://openclaw-gw@host.docker.internal:\${BASTION_PORT:-8420}"
       NODE_EXTRA_CA_CERTS: "/etc/ssl/certs/bastion-ca.crt"
       NO_PROXY: "localhost,127.0.0.1,host.docker.internal,auth.openai.com"
@@ -204,9 +268,12 @@ function generateBastionOverride(caPath: string): string {
     volumes:
       - ${caPath}:/etc/ssl/certs/bastion-ca.crt:ro
       - ./proxy-bootstrap.mjs:/opt/bastion/proxy-bootstrap.mjs:ro
+      - ./brew:/usr/local/bin/brew:ro
 
   openclaw-cli:
+    user: root
     environment:
+      HOME: /home/node
       HTTPS_PROXY: "http://openclaw-cli@host.docker.internal:\${BASTION_PORT:-8420}"
       NODE_EXTRA_CA_CERTS: "/etc/ssl/certs/bastion-ca.crt"
       NO_PROXY: "localhost,127.0.0.1,host.docker.internal,auth.openai.com"
@@ -214,6 +281,7 @@ function generateBastionOverride(caPath: string): string {
     volumes:
       - ${caPath}:/etc/ssl/certs/bastion-ca.crt:ro
       - ./proxy-bootstrap.mjs:/opt/bastion/proxy-bootstrap.mjs:ro
+      - ./brew:/usr/local/bin/brew:ro
 `;
 }
 
@@ -521,8 +589,9 @@ export function registerOpenclawCommand(program: Command): void {
       if (existsSync(dir)) {
         console.log(`Instance '${name}' exists, starting...`);
 
-        // Always update proxy bootstrap + Bastion override (idempotent)
+        // Always update proxy bootstrap + brew shim + Bastion override (idempotent)
         writeFileSync(join(dir, 'proxy-bootstrap.mjs'), PROXY_BOOTSTRAP_CONTENT, 'utf-8');
+        writeFileSync(join(dir, 'brew'), BREW_SHIM_CONTENT, { mode: 0o755 });
         writeFileSync(join(dir, 'docker-compose.bastion.yml'), generateBastionOverride(caPath), 'utf-8');
 
         // Migrate old-style compose that had Bastion proxy baked in
@@ -575,6 +644,7 @@ export function registerOpenclawCommand(program: Command): void {
       writeFileSync(join(dir, 'docker-compose.yml'), generateComposeFile(options.image), 'utf-8');
       writeFileSync(join(dir, 'docker-compose.bastion.yml'), generateBastionOverride(caPath), 'utf-8');
       writeFileSync(join(dir, 'proxy-bootstrap.mjs'), PROXY_BOOTSTRAP_CONTENT, 'utf-8');
+      writeFileSync(join(dir, 'brew'), BREW_SHIM_CONTENT, { mode: 0o755 });
 
       console.log(`==> Instance '${name}' created (gateway: ${port}, bridge: ${bridgePort})`);
 
