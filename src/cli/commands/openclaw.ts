@@ -537,7 +537,7 @@ export function registerOpenclawCommand(program: Command): void {
 
         syncToken(name);
         fixBind(name);
-        const code = await dc(name, ['up', '-d', 'openclaw-gateway']);
+        const code = await dc(name, ['up', '-d', '--force-recreate', 'openclaw-gateway']);
         if (code !== 0) process.exit(code);
 
         await sleep(3000);
@@ -586,6 +586,9 @@ export function registerOpenclawCommand(program: Command): void {
         console.error('Failed to initialize gateway config');
         process.exit(code);
       }
+
+      // Patch config before first start (controlUi origin, bind=lan)
+      fixBind(name);
 
       console.log('==> Starting gateway...');
       code = await dc(name, ['up', '-d', 'openclaw-gateway']);
