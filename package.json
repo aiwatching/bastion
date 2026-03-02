@@ -9,7 +9,8 @@
   },
   "files": [
     "dist",
-    "config"
+    "config",
+    "integration/openclaw-docker/fix-issues"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

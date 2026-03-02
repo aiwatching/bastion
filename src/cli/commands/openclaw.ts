@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 import { spawn, execSync, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, unlinkSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, unlinkSync, copyFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { homedir, platform } from 'node:os';
 
@@ -197,6 +197,19 @@ function envVal(name: string, key: string): string {
   return match?.[1] ?? '';
 }
 
+/** Check if a Docker image has real Homebrew installed (not the brew-shim). */
+function imageHasRealBrew(image: string): boolean {
+  try {
+    const output = execSync(
+      `docker run --rm --entrypoint sh ${image} -c "test -x /home/linuxbrew/.linuxbrew/bin/brew && echo yes || echo no"`,
+      { stdio: 'pipe', timeout: 15_000 },
+    ).toString().trim();
+    return output === 'yes';
+  } catch {
+    return false;
+  }
+}
+
 function writeEnvFile(dir: string, vars: Record<string, string>): void {
   const content = Object.entries(vars)
     .map(([k, v]) => `${k}=${v}`)
@@ -255,10 +268,13 @@ function generateComposeFile(image: string): string {
 }
 
 /** Bastion proxy overlay — merged via docker compose -f ... -f ... */
-function generateBastionOverride(caPath: string): string {
+function generateBastionOverride(caPath: string, options?: { skipBrewShim?: boolean }): string {
+  const brewMount = options?.skipBrewShim ? '' : '\n      - ./brew:/usr/local/bin/brew:ro';
+  // Only run as root when brew-shim is needed (apt-get requires root).
+  // Real Homebrew refuses to run as root, so we must keep the default user (node).
+  const userLine = options?.skipBrewShim ? '' : '\n    user: root';
   return `services:
-  openclaw-gateway:
-    user: root
+  openclaw-gateway:${userLine}
     environment:
       HOME: /home/node
       HTTPS_PROXY: "http://openclaw-gw@host.docker.internal:\${BASTION_PORT:-8420}"
@@ -267,11 +283,9 @@ function generateBastionOverride(caPath: string): string {
       NODE_OPTIONS: "--import /opt/bastion/proxy-bootstrap.mjs"
     volumes:
       - ${caPath}:/etc/ssl/certs/bastion-ca.crt:ro
-      - ./proxy-bootstrap.mjs:/opt/bastion/proxy-bootstrap.mjs:ro
-      - ./brew:/usr/local/bin/brew:ro
+      - ./proxy-bootstrap.mjs:/opt/bastion/proxy-bootstrap.mjs:ro${brewMount}
 
-  openclaw-cli:
-    user: root
+  openclaw-cli:${userLine}
     environment:
       HOME: /home/node
       HTTPS_PROXY: "http://openclaw-cli@host.docker.internal:\${BASTION_PORT:-8420}"
@@ -280,8 +294,7 @@ function generateBastionOverride(caPath: string): string {
       NODE_OPTIONS: "--import /opt/bastion/proxy-bootstrap.mjs"
     volumes:
       - ${caPath}:/etc/ssl/certs/bastion-ca.crt:ro
-      - ./proxy-bootstrap.mjs:/opt/bastion/proxy-bootstrap.mjs:ro
-      - ./brew:/usr/local/bin/brew:ro
+      - ./proxy-bootstrap.mjs:/opt/bastion/proxy-bootstrap.mjs:ro${brewMount}
 `;
 }
 
@@ -589,10 +602,18 @@ export function registerOpenclawCommand(program: Command): void {
       if (existsSync(dir)) {
         console.log(`Instance '${name}' exists, starting...`);
 
-        // Always update proxy bootstrap + brew shim + Bastion override (idempotent)
+        const instanceImage = envVal(name, 'OPENCLAW_IMAGE') || options.image;
+        const hasRealBrew = imageHasRealBrew(instanceImage);
+        if (hasRealBrew) {
+          console.log('    Image has real Homebrew installed — skipping brew-shim.');
+        }
+
+        // Always update proxy bootstrap + Bastion override (idempotent)
         writeFileSync(join(dir, 'proxy-bootstrap.mjs'), PROXY_BOOTSTRAP_CONTENT, 'utf-8');
-        writeFileSync(join(dir, 'brew'), BREW_SHIM_CONTENT, { mode: 0o755 });
-        writeFileSync(join(dir, 'docker-compose.bastion.yml'), generateBastionOverride(caPath), 'utf-8');
+        if (!hasRealBrew) {
+          writeFileSync(join(dir, 'brew'), BREW_SHIM_CONTENT, { mode: 0o755 });
+        }
+        writeFileSync(join(dir, 'docker-compose.bastion.yml'), generateBastionOverride(caPath, { skipBrewShim: hasRealBrew }), 'utf-8');
 
         // Migrate old-style compose that had Bastion proxy baked in
         const existingCompose = readFileSync(join(dir, 'docker-compose.yml'), 'utf-8');
@@ -617,84 +638,88 @@ export function registerOpenclawCommand(program: Command): void {
         return;
       }
 
-      // Create new instance
+      // Create new instance — delegate to docker-setup.sh for onboarding,
+      // permissions, gateway config, sandbox setup, etc.
       const configDir = options.configDir ?? join(homedir(), `.openclaw-${name}`);
       const workspaceDir = options.workspace ?? join(homedir(), `openclaw-${name}`, 'workspace');
       mkdirSync(dir, { recursive: true });
-      mkdirSync(configDir, { recursive: true });
-      mkdirSync(workspaceDir, { recursive: true });
-      mkdirSync(join(configDir, 'devices'), { recursive: true });
 
-      const token = generateToken();
+      // Generate docker-compose.yml (docker-setup.sh expects it in ROOT_DIR)
+      writeFileSync(join(dir, 'docker-compose.yml'), generateComposeFile(options.image), 'utf-8');
 
-      writeEnvFile(dir, {
-        OPENCLAW_IMAGE: options.image,
-        OPENCLAW_CONFIG_DIR: configDir,
-        OPENCLAW_WORKSPACE_DIR: workspaceDir,
-        OPENCLAW_GATEWAY_TOKEN: token,
-        OPENCLAW_GATEWAY_PORT: String(port),
-        OPENCLAW_BRIDGE_PORT: String(bridgePort),
-        OPENCLAW_GATEWAY_BIND: 'lan',
-        BASTION_PORT: String(bastionPort),
-        CLAUDE_AI_SESSION_KEY: '',
-        CLAUDE_WEB_SESSION_KEY: '',
-        CLAUDE_WEB_COOKIE: '',
+      // Copy docker-setup.sh from fix-issues
+      const fixesDir = resolve(join(__dirname, '..', '..', '..', 'integration', 'openclaw-docker', 'fix-issues', 'not-install-brew'));
+      const setupScript = join(fixesDir, 'docker-setup.sh');
+      if (!existsSync(setupScript)) {
+        console.error('docker-setup.sh not found. Bastion installation may be incomplete.');
+        process.exit(1);
+      }
+      copyFileSync(setupScript, join(dir, 'docker-setup.sh'));
+
+      // Run docker-setup.sh — it handles: .env, permissions, onboarding,
+      // gateway config, controlUi origin, sandbox setup, etc.
+      console.log(`==> Running OpenClaw Docker setup (gateway: ${port}, bridge: ${bridgePort})...`);
+      const setupCode = await new Promise<number>((resolve) => {
+        const child = spawn('bash', [join(dir, 'docker-setup.sh')], {
+          stdio: 'inherit',
+          env: {
+            ...process.env,
+            OPENCLAW_SKIP_BUILD: '1',
+            OPENCLAW_IMAGE: options.image,
+            OPENCLAW_CONFIG_DIR: configDir,
+            OPENCLAW_WORKSPACE_DIR: workspaceDir,
+            OPENCLAW_GATEWAY_PORT: String(port),
+            OPENCLAW_BRIDGE_PORT: String(bridgePort),
+            OPENCLAW_GATEWAY_BIND: 'lan',
+            // Match project name used by dc() so later commands find the containers
+            COMPOSE_PROJECT_NAME: `openclaw-${name}`,
+          },
+        });
+        child.on('close', (c) => resolve(c ?? 1));
+        child.on('error', (err) => {
+          console.error(`docker-setup.sh error: ${err.message}`);
+          resolve(1);
+        });
       });
 
-      writeFileSync(join(dir, 'docker-compose.yml'), generateComposeFile(options.image), 'utf-8');
-      writeFileSync(join(dir, 'docker-compose.bastion.yml'), generateBastionOverride(caPath), 'utf-8');
+      if (setupCode !== 0) {
+        console.error('Docker setup failed.');
+        process.exit(setupCode);
+      }
+
+      // Append Bastion-specific env vars to .env created by docker-setup.sh
+      const envFile = join(dir, '.env');
+      let envContent = existsSync(envFile) ? readFileSync(envFile, 'utf-8') : '';
+      if (!envContent.includes('BASTION_PORT=')) {
+        envContent += `BASTION_PORT=${bastionPort}\n`;
+        writeFileSync(envFile, envContent, 'utf-8');
+      }
+
+      // Add Bastion proxy overlay on top
+      const hasRealBrew = imageHasRealBrew(options.image);
+      if (hasRealBrew) {
+        console.log('    Image has real Homebrew installed — skipping brew-shim.');
+      }
+
       writeFileSync(join(dir, 'proxy-bootstrap.mjs'), PROXY_BOOTSTRAP_CONTENT, 'utf-8');
-      writeFileSync(join(dir, 'brew'), BREW_SHIM_CONTENT, { mode: 0o755 });
-
-      console.log(`==> Instance '${name}' created (gateway: ${port}, bridge: ${bridgePort})`);
-
-      console.log('==> Initializing gateway config...');
-      let code = await dc(name, ['run', '--rm', 'openclaw-cli', 'config', 'set', 'gateway.mode', 'local']);
-      if (code !== 0) {
-        console.error('Failed to initialize gateway config');
-        process.exit(code);
+      if (!hasRealBrew) {
+        writeFileSync(join(dir, 'brew'), BREW_SHIM_CONTENT, { mode: 0o755 });
       }
+      writeFileSync(join(dir, 'docker-compose.bastion.yml'), generateBastionOverride(caPath, { skipBrewShim: hasRealBrew }), 'utf-8');
 
-      // Patch config before first start (controlUi origin, bind=lan)
-      fixBind(name);
-
-      console.log('==> Starting gateway...');
-      code = await dc(name, ['up', '-d', 'openclaw-gateway']);
+      // Restart gateway with Bastion proxy overlay
+      console.log('==> Restarting gateway with Bastion proxy overlay...');
+      const code = await dc(name, ['up', '-d', '--force-recreate', 'openclaw-gateway']);
       if (code !== 0) process.exit(code);
+
       await sleep(3000);
-
-      console.log('');
-      console.log('==> Running interactive onboarding...');
-      console.log(`    When prompted for gateway token, use: ${token}`);
-      console.log('');
-      code = await dc(name, ['exec', 'openclaw-gateway', 'node', 'dist/index.js', 'onboard', '--no-install-daemon']);
-      if (code !== 0) {
-        console.error('Onboarding failed');
-        process.exit(code);
-      }
-
-      console.log('');
-      console.log('==> Applying post-onboard fixes...');
-      syncToken(name);
-      fixBind(name);
-
-      console.log('==> Restarting gateway...');
-      await dc(name, ['restart', 'openclaw-gateway']);
-      await sleep(3000);
-
       approveDevices(name);
-
-      await dc(name, ['restart', 'openclaw-gateway']);
-      await sleep(2000);
 
       const finalToken = envVal(name, 'OPENCLAW_GATEWAY_TOKEN');
       console.log('');
       console.log(`==> Instance '${name}' is ready!`);
       console.log('');
       console.log(`    Dashboard: http://127.0.0.1:${port}/?token=${finalToken}`);
-      console.log('');
-      console.log('    Open the URL above in your browser.');
-      console.log('    If prompted to pair, refresh the page — devices are auto-approved.');
       console.log('');
     });
 
@@ -1191,12 +1216,16 @@ export function registerOpenclawCommand(program: Command): void {
     .option('--tag <tag>', 'Git branch/tag to build', 'main')
     .option('--brew', 'Install Homebrew (~500MB) for brew-based skills')
     .option('--browser', 'Install Chromium + Xvfb (~300MB) for browser automation')
+    .option('--docker-cli', 'Install Docker CLI (~50MB) for sandbox container management')
+    .option('--apt-packages <packages>', 'Extra apt packages to install (comma-separated)')
     .option('--image <name>', 'Docker image name', DEFAULT_IMAGE)
     .option('--src <path>', 'Path to existing OpenClaw source (skip clone)')
     .action(async (options: {
       tag: string;
       brew?: boolean;
       browser?: boolean;
+      dockerCli?: boolean;
+      aptPackages?: string;
       image: string;
       src?: string;
     }) => {
@@ -1225,46 +1254,19 @@ export function registerOpenclawCommand(program: Command): void {
         }
       }
 
-      // Apply Bastion fixes — check if Dockerfile already has OPENCLAW_INSTALL_BREW support
-      const dockerfilePath = join(srcDir, 'Dockerfile');
-      if (existsSync(dockerfilePath)) {
-        const dockerfileContent = readFileSync(dockerfilePath, 'utf-8');
-        if (!dockerfileContent.includes('OPENCLAW_INSTALL_BREW')) {
-          console.log('==> Patching Dockerfile with Homebrew build-arg support...');
-          // Insert optional Linuxbrew installation before "USER node" + "COPY --chown=node:node . ."
-          const brewBlock = `
-# Optional: Install Linuxbrew for skill dependency management.
-# Build with: docker build --build-arg OPENCLAW_INSTALL_BREW=1 ...
-# Adds ~500MB but enables brew-based skill installation (uv, go, signal-cli, etc.)
-ARG OPENCLAW_INSTALL_BREW=""
-RUN if [ -n "$OPENCLAW_INSTALL_BREW" ]; then \\
-      apt-get update && \\
-      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential curl file git procps && \\
-      if ! id -u linuxbrew >/dev/null 2>&1; then useradd -m -s /bin/bash linuxbrew; fi && \\
-      mkdir -p /home/linuxbrew/.linuxbrew && \\
-      chown -R linuxbrew:linuxbrew /home/linuxbrew && \\
-      su - linuxbrew -c "NONINTERACTIVE=1 CI=1 /bin/bash -c '$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)'" && \\
-      if [ ! -e /home/linuxbrew/.linuxbrew/Library ]; then ln -s /home/linuxbrew/.linuxbrew/Homebrew/Library /home/linuxbrew/.linuxbrew/Library; fi && \\
-      if [ ! -x /home/linuxbrew/.linuxbrew/bin/brew ]; then echo "brew install failed"; exit 1; fi && \\
-      chown -R node:node /home/linuxbrew/.linuxbrew && \\
-      apt-get clean && \\
-      rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*; \\
-    fi
-ENV HOMEBREW_PREFIX=/home/linuxbrew/.linuxbrew
-ENV HOMEBREW_CELLAR=/home/linuxbrew/.linuxbrew/Cellar
-ENV HOMEBREW_REPOSITORY=/home/linuxbrew/.linuxbrew/Homebrew
-ENV PATH="/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:\${PATH}"
-`;
-          // Insert before the final "USER node\nCOPY --chown=node:node . ."
-          const insertPoint = dockerfileContent.indexOf('\nUSER node\nCOPY --chown=node:node . .');
-          if (insertPoint !== -1) {
-            const patched = dockerfileContent.slice(0, insertPoint) + '\n' + brewBlock + dockerfileContent.slice(insertPoint);
-            writeFileSync(dockerfilePath, patched, 'utf-8');
-            console.log('    Patched Dockerfile');
-          } else {
-            console.log('    WARNING: Could not find insertion point in Dockerfile, skipping patch.');
+      // Apply Bastion fixes — copy patched Dockerfile and docker-setup.sh from fix-issues
+      const fixesDir = resolve(join(__dirname, '..', '..', '..', 'integration', 'openclaw-docker', 'fix-issues', 'not-install-brew'));
+      if (existsSync(fixesDir)) {
+        console.log('==> Applying Bastion integration fixes...');
+        for (const file of ['Dockerfile', 'docker-setup.sh']) {
+          const src = join(fixesDir, file);
+          if (existsSync(src)) {
+            copyFileSync(src, join(srcDir, file));
+            console.log(`    Patched ${file}`);
           }
         }
+      } else {
+        console.log('    WARNING: Fix files not found, building with original Dockerfile.');
       }
 
       // Build Docker image
@@ -1280,6 +1282,14 @@ ENV PATH="/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:\${PATH
         buildArgs.push('--build-arg', 'OPENCLAW_INSTALL_BROWSER=1');
         extras.push('Chromium + Xvfb (~300MB)');
       }
+      if (options.dockerCli) {
+        buildArgs.push('--build-arg', 'OPENCLAW_INSTALL_DOCKER_CLI=1');
+        extras.push('Docker CLI (~50MB)');
+      }
+      if (options.aptPackages) {
+        buildArgs.push('--build-arg', `OPENCLAW_DOCKER_APT_PACKAGES=${options.aptPackages}`);
+        extras.push(`apt: ${options.aptPackages}`);
+      }
 
       if (extras.length > 0) {
         console.log(`    Optional components: ${extras.join(', ')}`);
@@ -1288,10 +1298,13 @@ ENV PATH="/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:\${PATH
       // Show hints for unused optional components
       const hints: string[] = [];
       if (!options.brew) {
-        hints.push('--brew    : Homebrew for brew-based skills (1password-cli, signal-cli, etc.)');
+        hints.push('--brew       : Homebrew for brew-based skills (1password-cli, signal-cli, etc.)');
       }
       if (!options.browser) {
-        hints.push('--browser : Chromium for browser automation');
+        hints.push('--browser    : Chromium for browser automation');
+      }
+      if (!options.dockerCli) {
+        hints.push('--docker-cli : Docker CLI for sandbox container management');
       }
       if (hints.length > 0) {
         console.log('');
@@ -1299,7 +1312,7 @@ ENV PATH="/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:\${PATH
         for (const hint of hints) {
           console.log(`      ${hint}`);
         }
-        console.log(`    Example: bastion openclaw build --brew --browser`);
+        console.log(`    Example: bastion openclaw build --brew --browser --docker-cli`);
         console.log('');
       }
 
