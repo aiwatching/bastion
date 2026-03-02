@@ -40,7 +40,11 @@ bastion health   # 确认 running
 bastion openclaw build                    # 基础镜像
 bastion openclaw build --brew             # + Homebrew，支持 brew 类 skill（1password-cli、signal-cli 等）
 bastion openclaw build --browser          # + Chromium，支持浏览器自动化
-bastion openclaw build --brew --browser   # 包含所有可选组件
+bastion openclaw build --docker-cli       # + Docker CLI，支持 sandbox 容器管理
+bastion openclaw build --brew --browser --docker-cli   # 包含所有可选组件
+
+# 额外 apt 包
+bastion openclaw build --brew --apt-packages "ffmpeg,imagemagick"
 
 # 指定 git 分支/标签或自定义镜像名
 bastion openclaw build --tag v2.0 --image openclaw:v2.0

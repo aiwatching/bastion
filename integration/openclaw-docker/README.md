@@ -30,7 +30,8 @@ The `openclaw.sh` script manages the full lifecycle: build, create, start, stop,
 bastion openclaw build                    # Basic image
 bastion openclaw build --brew             # + Homebrew for brew-based skills
 bastion openclaw build --browser          # + Chromium for browser automation
-bastion openclaw build --brew --browser   # All optional components
+bastion openclaw build --docker-cli       # + Docker CLI for sandbox
+bastion openclaw build --brew --browser --docker-cli   # All optional components
 
 # 2. Create and start an instance
 bastion start

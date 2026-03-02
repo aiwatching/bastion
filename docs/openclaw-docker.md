@@ -40,7 +40,11 @@ bastion health   # Confirm it's running
 bastion openclaw build                    # Basic image
 bastion openclaw build --brew             # + Homebrew for brew-based skills (1password-cli, signal-cli, etc.)
 bastion openclaw build --browser          # + Chromium for browser automation
-bastion openclaw build --brew --browser   # All optional components
+bastion openclaw build --docker-cli       # + Docker CLI for sandbox container management
+bastion openclaw build --brew --browser --docker-cli   # All optional components
+
+# Extra apt packages
+bastion openclaw build --brew --apt-packages "ffmpeg,imagemagick"
 
 # Specify a git tag/branch or custom image name
 bastion openclaw build --tag v2.0 --image openclaw:v2.0
