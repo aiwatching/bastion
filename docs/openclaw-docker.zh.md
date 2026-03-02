@@ -36,9 +36,17 @@ bastion health   # 确认 running
 ### 2. 准备 Docker 镜像
 
 ```bash
-# 方式 A：从源码构建
-git clone https://github.com/openclaw/openclaw.git ~/openclaw-src
-docker build -t openclaw:local ~/openclaw-src
+# 方式 A：从源码构建（推荐）
+bastion openclaw build                    # 基础镜像
+bastion openclaw build --brew             # + Homebrew，支持 brew 类 skill（1password-cli、signal-cli 等）
+bastion openclaw build --browser          # + Chromium，支持浏览器自动化
+bastion openclaw build --brew --browser   # 包含所有可选组件
+
+# 指定 git 分支/标签或自定义镜像名
+bastion openclaw build --tag v2.0 --image openclaw:v2.0
+
+# 使用本地已有源码（跳过 clone）
+bastion openclaw build --src ~/my-openclaw-fork
 
 # 方式 B：使用已有镜像
 docker images | grep openclaw

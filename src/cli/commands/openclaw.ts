@@ -1181,4 +1181,146 @@ export function registerOpenclawCommand(program: Command): void {
         process.exitCode = code ?? 0;
       });
     });
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // bastion openclaw build ...
+  // ════════════════════════════════════════════════════════════════════════════
+  openclaw
+    .command('build')
+    .description('Build OpenClaw Docker image from source')
+    .option('--tag <tag>', 'Git branch/tag to build', 'main')
+    .option('--brew', 'Install Homebrew (~500MB) for brew-based skills')
+    .option('--browser', 'Install Chromium + Xvfb (~300MB) for browser automation')
+    .option('--image <name>', 'Docker image name', DEFAULT_IMAGE)
+    .option('--src <path>', 'Path to existing OpenClaw source (skip clone)')
+    .action(async (options: {
+      tag: string;
+      brew?: boolean;
+      browser?: boolean;
+      image: string;
+      src?: string;
+    }) => {
+      checkDocker();
+
+      const srcDir = options.src ? resolve(options.src) : join(OPENCLAW_DIR, 'src');
+
+      // Clone or update source
+      if (options.src) {
+        if (!existsSync(srcDir)) {
+          console.error(`Source directory not found: ${srcDir}`);
+          process.exit(1);
+        }
+        console.log(`==> Using existing source: ${srcDir}`);
+      } else {
+        console.log(`==> Preparing source (branch/tag: ${options.tag})...`);
+        if (existsSync(srcDir)) {
+          console.log('    Source directory exists, fetching latest...');
+          execSync(`git -C "${srcDir}" fetch --all --tags`, { stdio: 'inherit' });
+          execSync(`git -C "${srcDir}" checkout "${options.tag}"`, { stdio: 'inherit' });
+          try { execSync(`git -C "${srcDir}" pull --ff-only`, { stdio: 'pipe' }); } catch { /* ignore */ }
+        } else {
+          console.log('    Cloning openclaw repository...');
+          mkdirSync(join(OPENCLAW_DIR), { recursive: true });
+          execSync(`git clone --branch "${options.tag}" https://github.com/openclaw/openclaw.git "${srcDir}"`, { stdio: 'inherit' });
+        }
+      }
+
+      // Apply Bastion fixes — check if Dockerfile already has OPENCLAW_INSTALL_BREW support
+      const dockerfilePath = join(srcDir, 'Dockerfile');
+      if (existsSync(dockerfilePath)) {
+        const dockerfileContent = readFileSync(dockerfilePath, 'utf-8');
+        if (!dockerfileContent.includes('OPENCLAW_INSTALL_BREW')) {
+          console.log('==> Patching Dockerfile with Homebrew build-arg support...');
+          // Insert optional Linuxbrew installation before "USER node" + "COPY --chown=node:node . ."
+          const brewBlock = `
+# Optional: Install Linuxbrew for skill dependency management.
+# Build with: docker build --build-arg OPENCLAW_INSTALL_BREW=1 ...
+# Adds ~500MB but enables brew-based skill installation (uv, go, signal-cli, etc.)
+ARG OPENCLAW_INSTALL_BREW=""
+RUN if [ -n "$OPENCLAW_INSTALL_BREW" ]; then \\
+      apt-get update && \\
+      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential curl file git procps && \\
+      if ! id -u linuxbrew >/dev/null 2>&1; then useradd -m -s /bin/bash linuxbrew; fi && \\
+      mkdir -p /home/linuxbrew/.linuxbrew && \\
+      chown -R linuxbrew:linuxbrew /home/linuxbrew && \\
+      su - linuxbrew -c "NONINTERACTIVE=1 CI=1 /bin/bash -c '$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)'" && \\
+      if [ ! -e /home/linuxbrew/.linuxbrew/Library ]; then ln -s /home/linuxbrew/.linuxbrew/Homebrew/Library /home/linuxbrew/.linuxbrew/Library; fi && \\
+      if [ ! -x /home/linuxbrew/.linuxbrew/bin/brew ]; then echo "brew install failed"; exit 1; fi && \\
+      chown -R node:node /home/linuxbrew/.linuxbrew && \\
+      apt-get clean && \\
+      rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*; \\
+    fi
+ENV HOMEBREW_PREFIX=/home/linuxbrew/.linuxbrew
+ENV HOMEBREW_CELLAR=/home/linuxbrew/.linuxbrew/Cellar
+ENV HOMEBREW_REPOSITORY=/home/linuxbrew/.linuxbrew/Homebrew
+ENV PATH="/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:\${PATH}"
+`;
+          // Insert before the final "USER node\nCOPY --chown=node:node . ."
+          const insertPoint = dockerfileContent.indexOf('\nUSER node\nCOPY --chown=node:node . .');
+          if (insertPoint !== -1) {
+            const patched = dockerfileContent.slice(0, insertPoint) + '\n' + brewBlock + dockerfileContent.slice(insertPoint);
+            writeFileSync(dockerfilePath, patched, 'utf-8');
+            console.log('    Patched Dockerfile');
+          } else {
+            console.log('    WARNING: Could not find insertion point in Dockerfile, skipping patch.');
+          }
+        }
+      }
+
+      // Build Docker image
+      console.log(`==> Building Docker image '${options.image}'...`);
+      const buildArgs: string[] = ['build'];
+      const extras: string[] = [];
+
+      if (options.brew) {
+        buildArgs.push('--build-arg', 'OPENCLAW_INSTALL_BREW=1');
+        extras.push('Homebrew (~500MB)');
+      }
+      if (options.browser) {
+        buildArgs.push('--build-arg', 'OPENCLAW_INSTALL_BROWSER=1');
+        extras.push('Chromium + Xvfb (~300MB)');
+      }
+
+      if (extras.length > 0) {
+        console.log(`    Optional components: ${extras.join(', ')}`);
+      }
+
+      // Show hints for unused optional components
+      const hints: string[] = [];
+      if (!options.brew) {
+        hints.push('--brew    : Homebrew for brew-based skills (1password-cli, signal-cli, etc.)');
+      }
+      if (!options.browser) {
+        hints.push('--browser : Chromium for browser automation');
+      }
+      if (hints.length > 0) {
+        console.log('');
+        console.log('    TIP: Optional build flags available:');
+        for (const hint of hints) {
+          console.log(`      ${hint}`);
+        }
+        console.log(`    Example: bastion openclaw build --brew --browser`);
+        console.log('');
+      }
+
+      buildArgs.push('-t', options.image, '-f', join(srcDir, 'Dockerfile'), srcDir);
+      const code = await new Promise<number>((resolve) => {
+        const child = spawn('docker', buildArgs, { stdio: 'inherit' });
+        child.on('close', (c) => resolve(c ?? 1));
+        child.on('error', (err) => {
+          console.error(`docker build error: ${err.message}`);
+          resolve(1);
+        });
+      });
+
+      if (code !== 0) {
+        console.error('Docker build failed.');
+        process.exit(code);
+      }
+
+      console.log(`==> Build complete: ${options.image}`);
+      if (options.brew) {
+        console.log('    Homebrew installed — brew-shim will NOT be mounted for instances using this image.');
+      }
+    });
 }

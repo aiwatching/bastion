@@ -36,9 +36,17 @@ bastion health   # Confirm it's running
 ### 2. Prepare the Docker Image
 
 ```bash
-# Option A: Build from source
-git clone https://github.com/openclaw/openclaw.git ~/openclaw-src
-docker build -t openclaw:local ~/openclaw-src
+# Option A: Build from source (recommended)
+bastion openclaw build                    # Basic image
+bastion openclaw build --brew             # + Homebrew for brew-based skills (1password-cli, signal-cli, etc.)
+bastion openclaw build --browser          # + Chromium for browser automation
+bastion openclaw build --brew --browser   # All optional components
+
+# Specify a git tag/branch or custom image name
+bastion openclaw build --tag v2.0 --image openclaw:v2.0
+
+# Use existing local source instead of cloning
+bastion openclaw build --src ~/my-openclaw-fork
 
 # Option B: Use an existing image
 docker images | grep openclaw
