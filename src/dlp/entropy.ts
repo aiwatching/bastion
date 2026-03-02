@@ -27,8 +27,10 @@ export function shannonEntropy(s: string): number {
   return h;
 }
 
-/** Default threshold: values at or above this are likely secrets */
-export const DEFAULT_ENTROPY_THRESHOLD = 3.5;
+/** Default threshold: values at or above this are likely secrets.
+ * Real API keys / secrets: 4.5–6.0 bits/char. Natural language: 3.0–4.0.
+ * 4.0 avoids overlap zone and reduces false positives on URLs, paths, code. */
+export const DEFAULT_ENTROPY_THRESHOLD = 4.0;
 
 /** Minimum length for entropy analysis to be meaningful */
 export const MIN_ENTROPY_LENGTH = 8;

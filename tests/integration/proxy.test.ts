@@ -251,7 +251,7 @@ describe('Integration: Proxy Pipeline', () => {
       JSON.stringify({
         model: 'claude-haiku-4.5-20241022',
         max_tokens: 100,
-        messages: [{ role: 'user', content: 'My AWS key is AKIAIOSFODNN7EXAMPLE' }],
+        messages: [{ role: 'user', content: 'My AWS key is AKIAI44QH8DHBF3KP2XY' }],
       }),
       { 'x-api-key': 'sk-test-key' },
     );

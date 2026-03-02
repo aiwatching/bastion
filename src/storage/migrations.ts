@@ -233,6 +233,11 @@ const MIGRATIONS: string[] = [
   CREATE INDEX IF NOT EXISTS idx_plugin_events_request ON plugin_events(request_id);
   CREATE INDEX IF NOT EXISTS idx_plugin_events_created ON plugin_events(created_at);
   `,
+
+  // Migration 16: DLP patterns — context_verify column for anti-pattern / entropy / code-block checks
+  `
+  ALTER TABLE dlp_patterns ADD COLUMN context_verify TEXT;
+  `,
 ];
 
 export function runMigrations(db: Database.Database): void {

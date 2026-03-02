@@ -53,7 +53,7 @@ describe('DlpMessageCache', () => {
 
   it('detects sensitive data in new messages only', () => {
     const safe = { role: 'user', content: 'hello world' };
-    const sensitive = { role: 'user', content: 'My key is AKIAIOSFODNN7EXAMPLE' };
+    const sensitive = { role: 'user', content: 'My AWS access key is AKIAI44QH8DHBF3KP2XY' };
 
     // Turn 1: safe message
     const t1 = makeBody([safe]);
@@ -86,8 +86,8 @@ describe('DlpMessageCache', () => {
   });
 
   it('handles redaction using findings from cache', () => {
-    const secret = 'AKIAIOSFODNN7EXAMPLE';
-    const sensitive = { role: 'user', content: `My key is ${secret}` };
+    const secret = 'AKIAI44QH8DHBF3KP2XY';
+    const sensitive = { role: 'user', content: `My AWS access key is ${secret}` };
     const safe = { role: 'assistant', content: 'got it' };
 
     // Turn 1: detect
@@ -152,7 +152,7 @@ describe('DlpMessageCache', () => {
     const msg = {
       role: 'user',
       content: [
-        { type: 'text', text: 'Check this key: AKIAIOSFODNN7EXAMPLE' },
+        { type: 'text', text: 'Check this AWS access key: AKIAI44QH8DHBF3KP2XY' },
         { type: 'image', source: { data: 'base64...' } },
       ],
     };

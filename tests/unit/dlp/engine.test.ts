@@ -5,7 +5,7 @@ describe('DLP Engine', () => {
   const allPatterns = getPatterns(['high-confidence', 'validated', 'context-aware']);
 
   it('detects AWS access keys', () => {
-    const text = 'My key is AKIAIOSFODNN7EXAMPLE here';
+    const text = 'My AWS access key is AKIAI44QH8DHBF3KP2XY here';
     const result = scanText(text, allPatterns, 'warn');
     expect(result.findings.length).toBeGreaterThan(0);
     expect(result.findings.some((f) => f.patternName === 'aws-access-key')).toBe(true);

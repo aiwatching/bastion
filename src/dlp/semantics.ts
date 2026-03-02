@@ -19,7 +19,7 @@ const BUILTIN_SENSITIVE: RegExp[] = [
   /(?:^|[_-]|\b)secret/i,
   /(?:^|[_-]|\b)token(?:$|[_-]|\b)/i,
   /api[_-]?key/i,
-  /(?:^|[_-]|\b)auth/i,
+  /(?:^|[_-]|\b)auth(?:$|[_-])/i,
   /credential/i,
   /private[_-]?key/i,
   /access[_-]?key/i,

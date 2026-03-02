@@ -26,6 +26,7 @@ export const promptInjectionPatterns: DlpPattern[] = [
     category: 'prompt-injection',
     regex: /new\s+instructions?\s*:/gi,
     description: 'Instruction override: new instructions directive',
+    requireContext: ['ignore', 'system', 'override', 'jailbreak', 'pretend', 'forget', 'disregard', 'you are'],
   },
   {
     name: 'pi-do-not-follow',
@@ -53,7 +54,7 @@ export const promptInjectionPatterns: DlpPattern[] = [
     category: 'prompt-injection',
     regex: /pretend\s+(you\s+are|to\s+be|you're|that\s+you)\s+/gi,
     description: 'Role injection: pretend to be...',
-    requireContext: ['ignore', 'instruction', 'system', 'pretend', 'override', 'jailbreak'],
+    requireContext: ['ignore', 'instruction', 'system', 'override', 'jailbreak', 'bypass', 'disregard', 'forget'],
   },
   {
     name: 'pi-no-restrictions',
@@ -87,24 +88,29 @@ export const promptInjectionPatterns: DlpPattern[] = [
     category: 'prompt-injection',
     regex: /<\s*\/?(?:system|SYSTEM|instruction|INSTRUCTION)\s*>/gi,
     description: 'System manipulation: fake <system>/<instruction> XML tag',
+    contextVerify: { rejectInCodeBlock: true },
   },
   {
     name: 'pi-inst-token',
     category: 'prompt-injection',
     regex: /\[INST\]|\[\/INST\]|<<SYS>>|<\|(?:im_start|im_end|system|user|assistant)\|>/gi,
     description: 'System manipulation: model-specific instruction tokens',
+    contextVerify: { rejectInCodeBlock: true },
   },
   {
     name: 'pi-markdown-system',
     category: 'prompt-injection',
     regex: /^#{1,3}\s*(?:system|instruction|directive)\s*(?:prompt|override)?/gim,
     description: 'System manipulation: markdown heading system/instruction',
+    requireContext: ['ignore', 'override', 'jailbreak', 'bypass', 'pretend', 'forget', 'disregard'],
+    contextVerify: { rejectInCodeBlock: true },
   },
   {
     name: 'pi-codeblock-system',
     category: 'prompt-injection',
     regex: /```\s*(?:system|instruction)/gi,
     description: 'System manipulation: code block with system/instruction label',
+    requireContext: ['ignore', 'override', 'jailbreak', 'bypass', 'pretend', 'forget', 'disregard'],
   },
   {
     name: 'pi-assistant-prefix',
@@ -152,11 +158,12 @@ export const promptInjectionPatterns: DlpPattern[] = [
     category: 'prompt-injection',
     regex: /\bjailbreak\b/gi,
     description: 'Jailbreak: keyword "jailbreak"',
+    requireContext: ['ignore', 'instruction', 'system', 'override', 'bypass', 'AI', 'LLM', 'chatbot', 'GPT', 'prompt'],
   },
   {
     name: 'pi-dan-mode',
     category: 'prompt-injection',
-    regex: /\bDAN\s*(?:mode|prompt)?\b/g,
+    regex: /\bDAN\s+(?:mode|prompt)\b/g,
     description: 'Jailbreak: DAN mode (Do Anything Now)',
   },
   {
@@ -170,6 +177,7 @@ export const promptInjectionPatterns: DlpPattern[] = [
     category: 'prompt-injection',
     regex: /(?:you\s+are\s+now\s+in\s+)?developer\s+mode/gi,
     description: 'Jailbreak: developer mode activation',
+    requireContext: ['ignore', 'instruction', 'system', 'override', 'jailbreak', 'bypass', 'pretend', 'disregard'],
   },
   {
     name: 'pi-override-safety',
@@ -188,14 +196,15 @@ export const promptInjectionPatterns: DlpPattern[] = [
     category: 'prompt-injection',
     regex: /(?:without|remove)\s+(?:any\s+)?(?:restrictions|rules|limits|safety|filters|censorship)/gi,
     description: 'Jailbreak: remove restrictions/rules/safety',
+    requireContext: ['ignore', 'instruction', 'system', 'override', 'jailbreak', 'bypass', 'pretend', 'respond'],
   },
 
   // ── encoding-obfuscation (3) ──
   {
     name: 'pi-zero-width',
     category: 'prompt-injection',
-    regex: /[\u200B-\u200D\uFEFF\u2060-\u2064]/g,
-    description: 'Encoding obfuscation: zero-width characters',
+    regex: /[\u200B\u200C\uFEFF\u2060-\u2064]/g,
+    description: 'Encoding obfuscation: zero-width characters (excludes ZWJ used in emoji)',
   },
   {
     name: 'pi-bidi-override',

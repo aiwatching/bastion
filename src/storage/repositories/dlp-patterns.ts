@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-import type { DlpPattern } from '../../dlp/engine.js';
+import type { DlpPattern, ContextVerification } from '../../dlp/engine.js';
 
 export interface DlpPatternRecord {
   id: string;
@@ -10,9 +10,31 @@ export interface DlpPatternRecord {
   description: string | null;
   validator: string | null;
   require_context: string | null; // JSON array or null
+  context_verify: string | null;  // JSON string or null
   enabled: number;
   is_builtin: number;
   created_at: string;
+}
+
+// ── ContextVerification serialization ──
+
+export function serializeContextVerify(cv: ContextVerification): string {
+  return JSON.stringify({
+    antiPatterns: cv.antiPatterns?.map(r => r.source),
+    confirmPatterns: cv.confirmPatterns?.map(r => r.source),
+    minEntropy: cv.minEntropy,
+    rejectInCodeBlock: cv.rejectInCodeBlock,
+  });
+}
+
+export function deserializeContextVerify(json: string): ContextVerification {
+  const obj = JSON.parse(json);
+  return {
+    antiPatterns: obj.antiPatterns?.map((s: string) => new RegExp(s, 'i')),
+    confirmPatterns: obj.confirmPatterns?.map((s: string) => new RegExp(s, 'i')),
+    minEntropy: obj.minEntropy,
+    rejectInCodeBlock: obj.rejectInCodeBlock,
+  };
 }
 
 export class DlpPatternsRepository {
@@ -30,13 +52,13 @@ export class DlpPatternsRepository {
   seedBuiltins(patterns: DlpPattern[], enabledCategories: string[]): void {
     const enabledSet = new Set(enabledCategories);
     const insertStmt = this.db.prepare(`
-      INSERT OR IGNORE INTO dlp_patterns (id, name, category, regex_source, regex_flags, description, validator, require_context, enabled, is_builtin)
-      VALUES (@id, @name, @category, @regex_source, @regex_flags, @description, @validator, @require_context, @enabled, 1)
+      INSERT OR IGNORE INTO dlp_patterns (id, name, category, regex_source, regex_flags, description, validator, require_context, context_verify, enabled, is_builtin)
+      VALUES (@id, @name, @category, @regex_source, @regex_flags, @description, @validator, @require_context, @context_verify, @enabled, 1)
     `);
-    // Update regex/description/require_context for existing builtins (preserve user's enabled toggle)
+    // Update regex/description/require_context/context_verify for existing builtins (preserve user's enabled toggle)
     const updateStmt = this.db.prepare(`
-      UPDATE dlp_patterns SET regex_source = @regex_source, regex_flags = @regex_flags, description = @description, require_context = @require_context
-      WHERE id = @id AND is_builtin = 1 AND (regex_source != @regex_source OR regex_flags != @regex_flags OR IFNULL(require_context, '') != IFNULL(@require_context, ''))
+      UPDATE dlp_patterns SET regex_source = @regex_source, regex_flags = @regex_flags, description = @description, require_context = @require_context, context_verify = @context_verify
+      WHERE id = @id AND is_builtin = 1 AND (regex_source != @regex_source OR regex_flags != @regex_flags OR IFNULL(require_context, '') != IFNULL(@require_context, '') OR IFNULL(context_verify, '') != IFNULL(@context_verify, ''))
     `);
 
     const seed = this.db.transaction(() => {
@@ -50,6 +72,7 @@ export class DlpPatternsRepository {
           description: p.description ?? null,
           validator: p.validator ?? null,
           require_context: p.requireContext ? JSON.stringify(p.requireContext) : null,
+          context_verify: p.contextVerify ? serializeContextVerify(p.contextVerify) : null,
           enabled: enabledSet.has(p.category) ? 1 : 0,
         };
         insertStmt.run(row);
@@ -91,11 +114,12 @@ export class DlpPatternsRepository {
     description?: string | null;
     validator?: string | null;
     require_context?: string | null;
+    context_verify?: string | null;
     enabled?: boolean;
   }): void {
     this.db.prepare(`
-      INSERT INTO dlp_patterns (id, name, category, regex_source, regex_flags, description, validator, require_context, enabled, is_builtin)
-      VALUES (@id, @name, @category, @regex_source, @regex_flags, @description, @validator, @require_context, @enabled, 0)
+      INSERT INTO dlp_patterns (id, name, category, regex_source, regex_flags, description, validator, require_context, context_verify, enabled, is_builtin)
+      VALUES (@id, @name, @category, @regex_source, @regex_flags, @description, @validator, @require_context, @context_verify, @enabled, 0)
       ON CONFLICT(id) DO UPDATE SET
         name = @name,
         category = @category,
@@ -104,6 +128,7 @@ export class DlpPatternsRepository {
         description = @description,
         validator = @validator,
         require_context = @require_context,
+        context_verify = @context_verify,
         enabled = @enabled
     `).run({
       id: record.id,
@@ -114,6 +139,7 @@ export class DlpPatternsRepository {
       description: record.description ?? null,
       validator: record.validator ?? null,
       require_context: record.require_context ?? null,
+      context_verify: record.context_verify ?? null,
       enabled: record.enabled === false ? 0 : 1,
     });
   }
@@ -132,6 +158,7 @@ export class DlpPatternsRepository {
     description: string | null;
     validator: string | null;
     require_context: string | null;
+    context_verify: string | null;
     enabled: boolean;
     source: string;
   }): void {
@@ -149,7 +176,8 @@ export class DlpPatternsRepository {
           regex_flags = @regex_flags,
           description = @description,
           validator = @validator,
-          require_context = @require_context
+          require_context = @require_context,
+          context_verify = @context_verify
         WHERE id = @id
       `).run({
         id: existing.id,
@@ -159,11 +187,12 @@ export class DlpPatternsRepository {
         description: record.description,
         validator: record.validator,
         require_context: record.require_context,
+        context_verify: record.context_verify,
       });
     } else {
       this.db.prepare(`
-        INSERT INTO dlp_patterns (id, name, category, regex_source, regex_flags, description, validator, require_context, enabled, is_builtin)
-        VALUES (@id, @name, @category, @regex_source, @regex_flags, @description, @validator, @require_context, @enabled, 0)
+        INSERT INTO dlp_patterns (id, name, category, regex_source, regex_flags, description, validator, require_context, context_verify, enabled, is_builtin)
+        VALUES (@id, @name, @category, @regex_source, @regex_flags, @description, @validator, @require_context, @context_verify, @enabled, 0)
       `).run({
         id: record.id,
         name: record.name,
@@ -173,6 +202,7 @@ export class DlpPatternsRepository {
         description: record.description,
         validator: record.validator,
         require_context: record.require_context,
+        context_verify: record.context_verify,
         enabled: record.enabled ? 1 : 0,
       });
     }
@@ -212,5 +242,6 @@ function rowToPattern(row: DlpPatternRecord): DlpPattern {
     description: row.description ?? '',
     validator: row.validator ?? undefined,
     requireContext: row.require_context ? JSON.parse(row.require_context) : undefined,
+    contextVerify: row.context_verify ? deserializeContextVerify(row.context_verify) : undefined,
   };
 }

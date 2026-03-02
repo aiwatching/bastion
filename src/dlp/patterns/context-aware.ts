@@ -5,7 +5,7 @@ export const contextAwarePatterns: DlpPattern[] = [
   {
     name: 'email-address',
     category: 'context-aware',
-    regex: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g,
+    regex: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g,
     description: 'Email Address',
     requireContext: ['email', 'contact', 'user', 'customer', 'address', 'send to', 'mailto'],
   },
@@ -26,14 +26,17 @@ export const contextAwarePatterns: DlpPattern[] = [
   {
     name: 'drivers-license',
     category: 'context-aware',
-    regex: /\b[A-Z][0-9]{7,12}\b/g,
+    regex: /(?<![A-Za-z0-9_-])[A-Z][0-9]{7,12}(?![A-Za-z0-9_-])/g,
     description: 'Driver License Number (letter prefix + 7-12 digits)',
     requireContext: ['driver', 'license', 'licence', 'DL', 'driving'],
+    contextVerify: {
+      antiPatterns: [/(?:version|v\d|build|release|commit|sha|hash|ref)/i],
+    },
   },
   {
     name: 'passport-number',
     category: 'context-aware',
-    regex: /\b[A-Z]{1,2}[0-9]{5,9}\b/g,
+    regex: /(?<![A-Za-z0-9_-])[A-Z]{1,2}[0-9]{6,9}(?![A-Za-z0-9_-])/g,
     description: 'Passport Number',
     requireContext: ['passport'],
   },

@@ -42,6 +42,13 @@ export interface SignatureStatus {
 
 // ── Internal types ──
 
+interface YamlContextVerify {
+  antiPatterns?: string[];
+  confirmPatterns?: string[];
+  minEntropy?: number;
+  rejectInCodeBlock?: boolean;
+}
+
 interface YamlPattern {
   name: string;
   category: string;
@@ -50,6 +57,7 @@ interface YamlPattern {
   description: string;
   validator?: string;
   requireContext?: string[];
+  contextVerify?: YamlContextVerify;
 }
 
 interface YamlPatternFile {
@@ -133,6 +141,17 @@ function loadPatternFiles(repoDir: string): YamlPattern[] {
   return allPatterns;
 }
 
+function serializeYamlContextVerify(cv: YamlContextVerify): string | null {
+  // Validate all regex strings before serializing
+  for (const s of cv.antiPatterns ?? []) {
+    new RegExp(s, 'i'); // throws on invalid regex
+  }
+  for (const s of cv.confirmPatterns ?? []) {
+    new RegExp(s, 'i'); // throws on invalid regex
+  }
+  return JSON.stringify(cv);
+}
+
 function upsertPatterns(repo: DlpPatternsRepository, patterns: YamlPattern[], enabledCategories: string[]): number {
   const enabledSet = new Set(enabledCategories);
   let count = 0;
@@ -140,6 +159,11 @@ function upsertPatterns(repo: DlpPatternsRepository, patterns: YamlPattern[], en
   for (const p of patterns) {
     try {
       new RegExp(p.regex, p.flags ?? 'g');
+
+      let contextVerify: string | null = null;
+      if (p.contextVerify) {
+        contextVerify = serializeYamlContextVerify(p.contextVerify);
+      }
 
       repo.upsertRemote({
         id: `remote-${p.name}`,
@@ -150,6 +174,7 @@ function upsertPatterns(repo: DlpPatternsRepository, patterns: YamlPattern[], en
         description: p.description ?? null,
         validator: p.validator ?? null,
         require_context: p.requireContext ? JSON.stringify(p.requireContext) : null,
+        context_verify: contextVerify,
         enabled: enabledSet.has(p.category),
         source: 'remote',
       });

@@ -21,6 +21,17 @@ export interface DlpTrace {
   totalDurationMs: number;
 }
 
+export interface ContextVerification {
+  /** Reject match if ANY anti-pattern matches in the surrounding context */
+  antiPatterns?: RegExp[];
+  /** Require at least one confirm-pattern to match in surrounding context */
+  confirmPatterns?: RegExp[];
+  /** Reject match if its Shannon entropy is below this threshold */
+  minEntropy?: number;
+  /** Reject match if it appears inside a markdown code block (``` ... ```) */
+  rejectInCodeBlock?: boolean;
+}
+
 export interface DlpPattern {
   name: string;
   category: string;
@@ -28,9 +39,10 @@ export interface DlpPattern {
   description: string;
   validator?: string;
   requireContext?: string[];
+  contextVerify?: ContextVerification;
 }
 
-const PATTERN_TIMEOUT_MS = 10;
+const PATTERN_TIMEOUT_MS = 50;
 
 function runRegexWithPositions(regex: RegExp, text: string, timeoutMs: number): { match: string; index: number }[] {
   const results: { match: string; index: number }[] = [];
@@ -65,17 +77,89 @@ function runRegexWithTimeout(regex: RegExp, text: string, timeoutMs: number): st
 
 const CONTEXT_RADIUS = 200; // chars around match to look for context words
 
+/** Match a context word in text. Short words (<=3 chars) use word-boundary matching
+ *  to avoid substring false positives (e.g., 'ip' matching inside 'script'). */
+function contextWordMatches(haystack: string, word: string): boolean {
+  const lowerWord = word.toLowerCase();
+  // Words with underscores, dots, or length > 3 are specific enough for substring match
+  if (lowerWord.length > 3 || /[_.]/.test(lowerWord)) {
+    return haystack.includes(lowerWord);
+  }
+  // Short words need word-boundary matching
+  const escaped = lowerWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`\\b${escaped}\\b`, 'i').test(haystack);
+}
+
 function hasContext(text: string, contextWords: string[]): boolean {
   const lower = text.toLowerCase();
-  return contextWords.some((word) => lower.includes(word.toLowerCase()));
+  return contextWords.some((word) => contextWordMatches(lower, word));
 }
 
 /** Check if any context word appears within CONTEXT_RADIUS chars of the match position */
 function hasNearbyContext(text: string, matchIndex: number, matchLength: number, contextWords: string[]): boolean {
   const start = Math.max(0, matchIndex - CONTEXT_RADIUS);
   const end = Math.min(text.length, matchIndex + matchLength + CONTEXT_RADIUS);
-  const nearby = text.slice(start, end).toLowerCase();
-  return contextWords.some((word) => nearby.includes(word.toLowerCase()));
+  const nearby = text.slice(start, end);
+  return contextWords.some((word) => contextWordMatches(nearby, word));
+}
+
+const VERIFY_CONTEXT_RADIUS = 300;
+
+/** Check if a position in text falls inside a markdown code block (``` ... ```) */
+function isInsideCodeBlock(text: string, matchIndex: number): boolean {
+  let inside = false;
+  let i = 0;
+  while (i < matchIndex) {
+    if (text[i] === '`' && i + 2 < text.length && text[i + 1] === '`' && text[i + 2] === '`') {
+      inside = !inside;
+      i += 3;
+      // skip to end of line for opening fence (language tag)
+      if (inside) while (i < matchIndex && text[i] !== '\n') i++;
+    } else {
+      i++;
+    }
+  }
+  return inside;
+}
+
+/** Post-match context verification (free tier — always runs) */
+function contextVerifyMatch(
+  text: string, match: string, matchIndex: number,
+  verify: ContextVerification,
+): boolean {
+  // 1. rejectInCodeBlock
+  if (verify.rejectInCodeBlock && isInsideCodeBlock(text, matchIndex)) {
+    return false;
+  }
+
+  // 2. minEntropy
+  if (verify.minEntropy !== undefined) {
+    const entropy = shannonEntropy(match);
+    if (entropy < verify.minEntropy) return false;
+  }
+
+  // 3. antiPatterns — extract context window, reject if any matches
+  const start = Math.max(0, matchIndex - VERIFY_CONTEXT_RADIUS);
+  const end = Math.min(text.length, matchIndex + match.length + VERIFY_CONTEXT_RADIUS);
+  const context = text.slice(start, end);
+
+  if (verify.antiPatterns) {
+    for (const ap of verify.antiPatterns) {
+      ap.lastIndex = 0; // reset in case regex has 'g' flag
+      if (ap.test(context)) return false;
+    }
+  }
+
+  // 4. confirmPatterns — require at least one match
+  if (verify.confirmPatterns && verify.confirmPatterns.length > 0) {
+    const confirmed = verify.confirmPatterns.some(cp => {
+      cp.lastIndex = 0;
+      return cp.test(context);
+    });
+    if (!confirmed) return false;
+  }
+
+  return true;
 }
 
 export function getPatterns(categories: string[]): DlpPattern[] {
@@ -114,20 +198,33 @@ export function scanText(text: string, patterns: DlpPattern[], action: DlpAction
       continue;
     }
 
+    // Use position-aware matching when requireContext or contextVerify needs it
+    const needPositions = !!(pattern.requireContext || pattern.contextVerify);
     let matches: string[];
+    let posMatches: { match: string; index: number }[] | undefined;
 
-    if (pattern.requireContext) {
-      // For context-dependent patterns, filter matches by nearby context
-      const posMatches = runRegexWithPositions(pattern.regex, text, PATTERN_TIMEOUT_MS);
-      const filtered = posMatches.filter((m) => hasNearbyContext(text, m.index, m.match.length, pattern.requireContext!));
-      matches = filtered.map((m) => m.match);
-      if (trace) {
+    if (needPositions) {
+      posMatches = runRegexWithPositions(pattern.regex, text, PATTERN_TIMEOUT_MS);
+
+      if (pattern.requireContext) {
+        const filtered = posMatches.filter((m) => hasNearbyContext(text, m.index, m.match.length, pattern.requireContext!));
+        if (trace) {
+          trace.entries.push({
+            layer: 2, layerName: 'regex', step: 'context-match',
+            detail: `[${pattern.name}] regex matched ${posMatches.length}, ${filtered.length} with nearby context [${pattern.requireContext.join(', ')}]`,
+            durationMs: performance.now() - patStart,
+          });
+        }
+        posMatches = filtered;
+      } else if (trace) {
         trace.entries.push({
-          layer: 2, layerName: 'regex', step: 'context-match',
-          detail: `[${pattern.name}] regex matched ${posMatches.length}, ${filtered.length} with nearby context [${pattern.requireContext.join(', ')}]`,
+          layer: 2, layerName: 'regex', step: 'match',
+          detail: `[${pattern.name}] (${pattern.category}) regex /${pattern.regex.source}/ → ${posMatches.length} match(es)${posMatches.length > 0 ? ': ' + posMatches.map(m => m.match.length > 40 ? m.match.slice(0, 40) + '...' : m.match).join(', ') : ''}`,
           durationMs: performance.now() - patStart,
         });
       }
+
+      matches = posMatches.map((m) => m.match);
     } else {
       matches = runRegexWithTimeout(pattern.regex, text, PATTERN_TIMEOUT_MS);
       if (trace) {
@@ -156,16 +253,37 @@ export function scanText(text: string, patterns: DlpPattern[], action: DlpAction
 
     if (validatedMatches.length === 0) continue;
 
+    // Context verification (free tier — always runs when contextVerify is defined)
+    let verifiedMatches = validatedMatches;
+    if (pattern.contextVerify && posMatches) {
+      // Build verified list from posMatches to preserve per-occurrence position info
+      // (avoids find-first-match bug when same string appears at multiple positions)
+      const validatedSet = new Set(validatedMatches);
+      verifiedMatches = [];
+      for (const pos of posMatches) {
+        if (!validatedSet.has(pos.match)) continue; // filtered by validator
+        if (contextVerifyMatch(text, pos.match, pos.index, pattern.contextVerify)) {
+          verifiedMatches.push(pos.match);
+        } else if (trace) {
+          trace.entries.push({
+            layer: 2, layerName: 'regex', step: 'context-verify-reject',
+            detail: `[${pattern.name}] match "${pos.match.length > 30 ? pos.match.slice(0, 30) + '...' : pos.match}" rejected by context verification`,
+          });
+        }
+      }
+    }
+    if (verifiedMatches.length === 0) continue;
+
     findings.push({
       patternName: pattern.name,
       patternCategory: pattern.category,
-      matchCount: validatedMatches.length,
-      matches: validatedMatches,
+      matchCount: verifiedMatches.length,
+      matches: verifiedMatches,
     });
 
     // Apply redaction if needed
     if (action === 'redact') {
-      for (const m of validatedMatches) {
+      for (const m of verifiedMatches) {
         redactedBody = redactedBody.replaceAll(m, `[${pattern.name.toUpperCase()}_REDACTED]`);
       }
     }
