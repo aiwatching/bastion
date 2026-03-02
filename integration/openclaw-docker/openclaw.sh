@@ -14,7 +14,10 @@ usage() {
 Usage: $(basename "$0") <command> [options]
 
 Commands:
-  build    [--tag TAG]          Build Docker image from source
+  build    [options]             Build Docker image from source
+           --tag TAG             Git branch/tag to build (default: main)
+           --brew                Install Homebrew (~500MB) for brew-based skills
+           --browser             Install Chromium + Xvfb (~300MB) for browser automation
   create   <name> [--port PORT] Create instance and run interactive onboarding
   start    <name>               Start the gateway
   stop     <name>               Stop the gateway
@@ -26,6 +29,7 @@ Commands:
 
 Examples:
   $(basename "$0") build
+  $(basename "$0") build --brew --browser
   $(basename "$0") create work --port 18789
   $(basename "$0") start work
   $(basename "$0") status
@@ -170,9 +174,13 @@ print(f'    (auto-approved {count} pending device(s))')
 
 cmd_build() {
     local tag="main"
+    local install_brew=""
+    local install_browser=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --tag) tag="$2"; shift 2 ;;
+            --brew) install_brew="1"; shift ;;
+            --browser) install_browser="1"; shift ;;
             *) die "Unknown option: $1" ;;
         esac
     done
@@ -189,8 +197,53 @@ cmd_build() {
         git clone --branch "${tag}" https://github.com/openclaw/openclaw.git "${SRC_DIR}"
     fi
 
+    # Apply Bastion fixes (Homebrew support, docker-setup improvements)
+    local fixes_dir="${SCRIPT_DIR}/fix-issues/not-install-brew"
+    if [[ -d "${fixes_dir}" ]]; then
+        echo "==> Applying Bastion integration fixes..."
+        for f in Dockerfile docker-setup.sh; do
+            if [[ -f "${fixes_dir}/${f}" ]]; then
+                cp "${fixes_dir}/${f}" "${SRC_DIR}/${f}"
+                echo "    Patched ${f}"
+            fi
+        done
+    fi
+
     echo "==> Building Docker image '${IMAGE_NAME}'..."
-    docker build -t "${IMAGE_NAME}" -f "${SRC_DIR}/Dockerfile" "${SRC_DIR}"
+    local build_args=()
+    local extras=()
+    if [[ -n "${install_brew}" ]]; then
+        build_args+=(--build-arg "OPENCLAW_INSTALL_BREW=1")
+        extras+=("Homebrew (~500MB)")
+    fi
+    if [[ -n "${install_browser}" ]]; then
+        build_args+=(--build-arg "OPENCLAW_INSTALL_BROWSER=1")
+        extras+=("Chromium + Xvfb (~300MB)")
+    fi
+
+    if [[ ${#extras[@]} -gt 0 ]]; then
+        echo "    Optional components: ${extras[*]}"
+    fi
+
+    # Show hints for unused optional components
+    local hints=()
+    if [[ -z "${install_brew}" ]]; then
+        hints+=("--brew  : Homebrew for brew-based skills (1password-cli, signal-cli, etc.)")
+    fi
+    if [[ -z "${install_browser}" ]]; then
+        hints+=("--browser: Chromium for browser automation (eliminates 60-90s Playwright install on start)")
+    fi
+    if [[ ${#hints[@]} -gt 0 ]]; then
+        echo ""
+        echo "    TIP: Optional build flags available:"
+        for hint in "${hints[@]}"; do
+            echo "      ${hint}"
+        done
+        echo "    Example: ./openclaw.sh build --brew --browser"
+        echo ""
+    fi
+
+    docker build "${build_args[@]}" -t "${IMAGE_NAME}" -f "${SRC_DIR}/Dockerfile" "${SRC_DIR}"
 
     echo "==> Build complete: ${IMAGE_NAME}"
 }

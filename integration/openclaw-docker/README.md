@@ -19,10 +19,32 @@ Bastion intercepts `claude.ai` via HTTPS proxy. The container trusts Bastion's C
 ## Prerequisites
 
 - Bastion installed and working (`bastion start`)
-- OpenClaw Docker image built (`openclaw:local`)
-- An existing OpenClaw `.env` file with your credentials
+- Docker and Docker Compose available
 
-## Quick Start (Existing OpenClaw Setup)
+## Quick Start
+
+The `openclaw.sh` script manages the full lifecycle: build, create, start, stop, and multi-instance support.
+
+```bash
+# 1. Build OpenClaw image from source
+./openclaw.sh build
+
+# 2. Build with optional components
+./openclaw.sh build --brew              # + Homebrew for brew-based skills
+./openclaw.sh build --browser           # + Chromium for browser automation
+./openclaw.sh build --brew --browser    # both
+
+# 3. Create a named instance (interactive onboarding)
+./openclaw.sh create work --port 18789
+
+# 4. Start Bastion
+bastion start
+
+# 5. Start the instance — traffic goes through Bastion automatically
+./openclaw.sh start work
+```
+
+### Existing OpenClaw Setup
 
 If you already have a running OpenClaw instance with a `.env` file:
 
@@ -42,29 +64,11 @@ docker compose \
 
 Your data, config, and sessions are preserved — only environment variables and a CA cert volume are added.
 
-## Fresh Setup (Using openclaw.sh)
-
-The `openclaw.sh` script manages the full lifecycle: build, create, start, stop, and multi-instance support.
-
-```bash
-# 1. Build OpenClaw image from source
-./openclaw.sh build
-
-# 2. Create a named instance (interactive onboarding)
-./openclaw.sh create work --port 18789
-
-# 3. Start Bastion
-bastion start
-
-# 4. Start the instance — traffic goes through Bastion automatically
-./openclaw.sh start work
-```
-
 ### Script Commands
 
 | Command | Description |
 |---------|-------------|
-| `build [--tag TAG]` | Clone OpenClaw repo and build Docker image |
+| `build [--tag TAG] [--brew] [--browser]` | Clone OpenClaw repo and build Docker image. `--brew` adds Homebrew (~500MB), `--browser` adds Chromium (~300MB) |
 | `create <name> [--port PORT]` | Create instance, generate .env, run onboarding |
 | `start <name>` | Start gateway (auto-syncs config, approves devices) |
 | `stop <name>` | Stop gateway |
