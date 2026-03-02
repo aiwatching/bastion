@@ -25,7 +25,12 @@ export function isProcessRunning(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return true;
-  } catch {
+  } catch (err: unknown) {
+    // On Windows, process.kill(pid, 0) may throw EPERM when the process exists
+    // but the current user lacks permission to signal it. Treat EPERM as running.
+    if (process.platform === 'win32' && err instanceof Error && (err as NodeJS.ErrnoException).code === 'EPERM') {
+      return true;
+    }
     return false;
   }
 }

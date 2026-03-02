@@ -27,20 +27,21 @@ The `openclaw.sh` script manages the full lifecycle: build, create, start, stop,
 
 ```bash
 # 1. Build OpenClaw image from source
-./openclaw.sh build
+bastion openclaw build                    # Basic image
+bastion openclaw build --brew             # + Homebrew for brew-based skills
+bastion openclaw build --browser          # + Chromium for browser automation
+bastion openclaw build --brew --browser   # All optional components
 
-# 2. Build with optional components
-./openclaw.sh build --brew              # + Homebrew for brew-based skills
-./openclaw.sh build --browser           # + Chromium for browser automation
-./openclaw.sh build --brew --browser    # both
-
-# 3. Create a named instance (interactive onboarding)
-./openclaw.sh create work --port 18789
-
-# 4. Start Bastion
+# 2. Create and start an instance
 bastion start
+bastion openclaw docker up work --port 18789
+```
 
-# 5. Start the instance — traffic goes through Bastion automatically
+You can also use `./openclaw.sh` directly for standalone usage (without the bastion CLI):
+
+```bash
+./openclaw.sh build --brew --browser
+./openclaw.sh create work --port 18789
 ./openclaw.sh start work
 ```
 
