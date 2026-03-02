@@ -79,7 +79,7 @@ function resolveBranch(branch: string): string {
   if (branch !== 'auto') return branch;
 
   const major = getMajorVersion();
-  if (major && major !== '0.0.0') {
+  if (major && major !== '0.0') {
     return `v${major}`;
   }
 

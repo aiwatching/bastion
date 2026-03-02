@@ -1,11 +1,16 @@
 {
-  "name": "@aiwatching/bastion",
-  "version": "0.1.0",
-  "description": "Local-first AI gateway for proxying LLM provider requests",
+  "name": "@aion0/bastion",
+  "version": "0.1.7",
+  "description": "Local-first AI gateway for proxying and securing LLM provider requests",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "bin": {
     "bastion": "dist/cli/index.js"
   },
+  "files": [
+    "dist",
+    "config"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "dev": "tsx src/cli/index.ts",
@@ -13,11 +18,33 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint src/",
+    "prepublishOnly": "npm run build",
     "dlp:test": "tsx scripts/dlp-test-env.ts",
     "dlp:test:block": "tsx scripts/dlp-test-env.ts --action block",
     "dlp:test:redact": "tsx scripts/dlp-test-env.ts --action redact",
     "dlp:test:warn": "tsx scripts/dlp-test-env.ts --action warn",
     "dlp:test:interactive": "tsx scripts/dlp-test-env.ts --interactive"
+  },
+  "keywords": [
+    "ai",
+    "gateway",
+    "proxy",
+    "llm",
+    "security",
+    "dlp",
+    "anthropic",
+    "openai",
+    "gemini"
+  ],
+  "author": "aion0",
+  "license": "UNLICENSED",
+  "homepage": "https://github.com/aiwatching/bastion",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aiwatching/bastion.git"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
     "better-sqlite3": "^11.7.0",
