@@ -148,6 +148,17 @@ npm install 2>&1 | tail -1
 info "Building..."
 npm run build 2>&1 | tail -1
 
+# --- Config migration ---
+USER_CONFIG="$HOME/.bastion/config.yaml"
+if [ -f "$USER_CONFIG" ]; then
+  # Migrate hardcoded branch (e.g. "v0.1.0") to "auto"
+  if grep -qE 'branch:\s*v[0-9]+\.[0-9]+\.[0-9]+' "$USER_CONFIG"; then
+    sed -i.bak -E 's/(branch:\s*)v[0-9]+\.[0-9]+\.[0-9]+/\1auto/' "$USER_CONFIG"
+    rm -f "${USER_CONFIG}.bak"
+    info "Migrated config: remotePatterns.branch → auto"
+  fi
+fi
+
 # --- Create wrapper script ---
 WRAPPER="$INSTALL_DIR/bin/bastion"
 mkdir -p "$INSTALL_DIR/bin"
