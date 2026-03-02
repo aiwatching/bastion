@@ -112,7 +112,7 @@ function replaceBlockedToolCalls(
   return JSON.stringify(body);
 }
 
-export function createToolGuardPlugin(db: Database.Database, config: ToolGuardConfig): Plugin {
+export function createToolGuardPlugin(db: Database.Database, config: ToolGuardConfig, eventBus?: import('../event-bus.js').PluginEventBus): Plugin {
   const repo = new ToolCallsRepository(db);
   const rulesRepo = new ToolGuardRulesRepository(db);
   const auditRepo = new AuditLogRepository(db);
@@ -191,6 +191,17 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
         });
 
         dispatchAlert(getAlertConfig(), tc.toolName, ruleMatch, requestId, sessionId);
+
+        eventBus?.emit('toolguard:alert', {
+          requestId,
+          toolName: tc.toolName,
+          ruleId: ruleMatch.rule.id,
+          ruleName: ruleMatch.rule.name,
+          severity: ruleMatch.rule.severity,
+          category: ruleMatch.rule.category,
+          action: actionResult,
+          matchedText: ruleMatch.matchedText,
+        });
       }
     }
     return flaggedCount;

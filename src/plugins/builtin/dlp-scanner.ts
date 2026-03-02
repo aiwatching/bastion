@@ -55,7 +55,7 @@ function extractSnippet(text: string, match: string): string {
   return snippet;
 }
 
-export function createDlpScannerPlugin(db: Database.Database, config: DlpScannerConfig): Plugin {
+export function createDlpScannerPlugin(db: Database.Database, config: DlpScannerConfig, eventBus?: import('../event-bus.js').PluginEventBus): Plugin {
   const dlpRepo = new DlpEventsRepository(db);
   const patternsRepo = new DlpPatternsRepository(db);
   const auditRepo = new AuditLogRepository(db);
@@ -138,6 +138,15 @@ export function createDlpScannerPlugin(db: Database.Database, config: DlpScanner
           match_count: finding.matchCount,
           original_snippet: originalSnippet,
           redacted_snippet: redactedSnippet,
+        });
+
+        eventBus?.emit('dlp:finding', {
+          requestId: context.id,
+          patternName: finding.patternName,
+          patternCategory: finding.patternCategory,
+          action: result.action,
+          matchCount: finding.matchCount,
+          direction: 'request',
         });
       }
 
@@ -229,6 +238,15 @@ export function createDlpScannerPlugin(db: Database.Database, config: DlpScanner
           redacted_snippet: redactedSnippet,
           direction: 'response',
         });
+
+        eventBus?.emit('dlp:finding', {
+          requestId: context.request.id,
+          patternName: finding.patternName,
+          patternCategory: finding.patternCategory,
+          action: result.action,
+          matchCount: finding.matchCount,
+          direction: 'response',
+        });
       }
 
       log.info('DLP response findings', {
@@ -301,6 +319,15 @@ export function createDlpScannerPlugin(db: Database.Database, config: DlpScanner
           original_snippet: extractSnippet(context.body, firstMatch),
           redacted_snippet: null,
           direction: 'response',
+        });
+
+        eventBus?.emit('dlp:finding', {
+          requestId: context.request.id,
+          patternName: finding.patternName,
+          patternCategory: finding.patternCategory,
+          action: 'warn',
+          matchCount: finding.matchCount,
+          direction: 'response-streaming',
         });
       }
 

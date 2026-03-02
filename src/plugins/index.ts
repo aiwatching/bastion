@@ -1,4 +1,5 @@
 import type { Plugin, PluginRequestResult, PluginResponseResult, RequestContext, ResponseInterceptContext, ResponseCompleteContext } from './types.js';
+import type { PluginEventBus } from './event-bus.js';
 import { withTimeout, TimeoutError } from '../utils/timeout.js';
 import { createLogger } from '../utils/logger.js';
 
@@ -9,10 +10,12 @@ export class PluginManager {
   private disabledPlugins: Set<string> = new Set();
   private timeoutMs: number;
   private failMode: 'open' | 'closed';
+  private eventBus?: PluginEventBus;
 
-  constructor(timeoutMs: number = 50, failMode: 'open' | 'closed' = 'open') {
+  constructor(timeoutMs: number = 50, failMode: 'open' | 'closed' = 'open', eventBus?: PluginEventBus) {
     this.timeoutMs = timeoutMs;
     this.failMode = failMode;
+    this.eventBus = eventBus;
   }
 
   setFailMode(mode: 'open' | 'closed'): void {
@@ -71,6 +74,11 @@ export class PluginManager {
           // Block takes second priority
           if (pluginResult.blocked) {
             log.info('Plugin blocked request', { plugin: plugin.name, reason: pluginResult.blocked.reason });
+            this.eventBus?.emit('request:blocked', {
+              pluginName: plugin.name,
+              reason: pluginResult.blocked.reason,
+              requestId: context.id,
+            });
             return pluginResult;
           }
           // Accumulate body modifications
@@ -164,5 +172,15 @@ export class PluginManager {
         }
       }
     }
+
+    this.eventBus?.emit('request:complete', {
+      requestId: context.request.id,
+      statusCode: context.statusCode,
+      latencyMs: context.latencyMs,
+      isStreaming: context.isStreaming,
+      provider: context.request.provider,
+      model: context.request.model,
+      usage: context.usage,
+    });
   }
 }
