@@ -139,6 +139,55 @@ if (proxyUrl) {
 
 // ── shared helpers ───────────────────────────────────────────────────────────
 
+/**
+ * 3-way merge a fix file into the upstream source using `git merge-file`.
+ * - srcFile:  current upstream file (in the OpenClaw source directory)
+ * - baseFile: the upstream version our fixes were originally based on (.upstream)
+ * - oursFile: our modified version with fixes
+ * Falls back to overwrite if git is unavailable or conflicts are unresolvable.
+ */
+function mergeFixFile(srcFile: string, baseFile: string, oursFile: string, label: string): void {
+  if (!existsSync(baseFile)) {
+    // No merge base — just overwrite
+    copyFileSync(oursFile, srcFile);
+    console.log(`    Patched ${label} (no merge base, overwrite)`);
+    return;
+  }
+
+  // Work on a temp copy so merge failures don't corrupt the original
+  const tmpFile = srcFile + '.bastion-merge';
+  copyFileSync(srcFile, tmpFile);
+
+  try {
+    execSync(`git merge-file "${tmpFile}" "${baseFile}" "${oursFile}"`, {
+      stdio: 'pipe',
+    });
+    // Exit 0 — clean merge
+    copyFileSync(tmpFile, srcFile);
+    console.log(`    Merged ${label}`);
+  } catch (err: unknown) {
+    const exitCode = (err as { status?: number }).status;
+    if (exitCode !== undefined && exitCode > 0) {
+      // Conflicts exist — check if they contain real conflict markers
+      const merged = readFileSync(tmpFile, 'utf-8');
+      if (merged.includes('<<<<<<<')) {
+        console.log(`    WARNING: ${label} merge has conflicts, using our version.`);
+        copyFileSync(oursFile, srcFile);
+      } else {
+        // Some changes but no conflict markers — safe to use
+        copyFileSync(tmpFile, srcFile);
+        console.log(`    Merged ${label}`);
+      }
+    } else {
+      // git merge-file not available or other error
+      console.log(`    WARNING: git merge-file failed for ${label}, using our version.`);
+      copyFileSync(oursFile, srcFile);
+    }
+  } finally {
+    if (existsSync(tmpFile)) unlinkSync(tmpFile);
+  }
+}
+
 function generateToken(): string {
   return randomBytes(32).toString('hex');
 }
@@ -1254,15 +1303,29 @@ export function registerOpenclawCommand(program: Command): void {
         }
       }
 
-      // Apply Bastion fixes — copy patched Dockerfile and docker-setup.sh from fix-issues
+      // Apply Bastion fixes — merge into upstream source via 3-way merge
       const fixesDir = resolve(join(__dirname, '..', '..', '..', 'integration', 'openclaw-docker', 'fix-issues', 'not-install-brew'));
       if (existsSync(fixesDir)) {
         console.log('==> Applying Bastion integration fixes...');
-        for (const file of ['Dockerfile', 'docker-setup.sh']) {
-          const src = join(fixesDir, file);
-          if (existsSync(src)) {
-            copyFileSync(src, join(srcDir, file));
-            console.log(`    Patched ${file}`);
+
+        // Dockerfile: 3-way merge (preserves upstream changes)
+        const upstreamDockerfile = join(srcDir, 'Dockerfile');
+        const baseDockerfile = join(fixesDir, 'Dockerfile.upstream');
+        const oursDockerfile = join(fixesDir, 'Dockerfile');
+        if (existsSync(upstreamDockerfile) && existsSync(oursDockerfile)) {
+          mergeFixFile(upstreamDockerfile, baseDockerfile, oursDockerfile, 'Dockerfile');
+        }
+
+        // docker-setup.sh: 3-way merge (preserves upstream changes)
+        const upstreamSetup = join(srcDir, 'docker-setup.sh');
+        const baseSetup = join(fixesDir, 'docker-setup.sh.upstream');
+        const oursSetup = join(fixesDir, 'docker-setup.sh');
+        if (existsSync(oursSetup)) {
+          if (existsSync(upstreamSetup)) {
+            mergeFixFile(upstreamSetup, baseSetup, oursSetup, 'docker-setup.sh');
+          } else {
+            copyFileSync(oursSetup, upstreamSetup);
+            console.log('    Copied docker-setup.sh (upstream has none)');
           }
         }
       } else {
