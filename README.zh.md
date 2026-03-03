@@ -13,31 +13,18 @@
 
 ## 安装
 
-### macOS / Linux
-
 ```bash
+# npm（推荐）
+npm install -g @aion0/bastion
+
+# macOS / Linux（从源码安装）
 curl -fsSL https://raw.githubusercontent.com/aiwatching/bastion/main/install.sh | bash
-```
 
-或从本地源码安装：
-
-```bash
-cd bastion && bash install.sh
-```
-
-### Windows (PowerShell)
-
-```powershell
+# Windows (PowerShell，从源码安装)
 irm https://raw.githubusercontent.com/aiwatching/bastion/main/install.ps1 -OutFile install.ps1; .\install.ps1
 ```
 
-或从本地源码安装：
-
-```powershell
-cd bastion; .\install.ps1
-```
-
-需要 **Node.js 22 LTS**（推荐）。Node.js 18+ 可用，但非 LTS 版本可能需要[额外配置](docs/windows-troubleshooting.zh.md#1-better-sqlite3-编译失败非-lts-nodejs)。安装至 `~/.bastion/app/`。
+需要 **Node.js 22 LTS**（推荐）。Node.js 18+ 可用，但非 LTS 版本可能需要[额外配置](docs/windows-troubleshooting.zh.md#1-better-sqlite3-编译失败非-lts-nodejs)。
 
 ## 快速开始
 
@@ -95,6 +82,22 @@ bastion openclaw local stop mywork
 # 将 Bastion 代理注入到运行中的 Docker 容器
 bastion openclaw docker attach <container-name>
 ```
+
+### OpenClaw Skills
+
+安装 [`@aion0/bastion-skills`](https://www.npmjs.com/package/@aion0/bastion-skills) 后，可通过自然语言在 OpenClaw 中管理 Bastion——启停网关、查看 DLP 发现、工具调用告警和用量统计。
+
+```bash
+openclaw skill install @aion0/bastion-skills
+```
+
+Docker 环境下，skill 内置的 setup 脚本会自动 patch `docker-compose.yml`，通过 `HTTPS_PROXY` 将所有 LLM 流量路由经 Bastion：
+
+```bash
+bash ~/.openclaw/skills/bastion/scripts/docker-setup.sh
+```
+
+详见 [@aion0/bastion-skills (GitHub)](https://github.com/aiwatching/bastion-skills)
 
 ## 使用方法
 

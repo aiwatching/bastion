@@ -30,14 +30,17 @@ You can't watch every request manually. Bastion does it for you.
 ## Install
 
 ```bash
-# macOS / Linux
+# npm (recommended)
+npm install -g @aion0/bastion
+
+# macOS / Linux (from source)
 curl -fsSL https://raw.githubusercontent.com/aiwatching/bastion/main/install.sh | bash
 
-# Windows (PowerShell)
+# Windows (PowerShell, from source)
 irm https://raw.githubusercontent.com/aiwatching/bastion/main/install.ps1 -OutFile install.ps1; .\install.ps1
 ```
 
-Requires Node.js 22 LTS (recommended). Node.js 18+ supported. Installs to `~/.bastion/app/`.
+Requires Node.js 22 LTS (recommended). Node.js 18+ supported.
 
 ## Quick Start
 
@@ -148,6 +151,22 @@ bastion openclaw docker attach <container-name>   # Existing container
 ```
 
 See [OpenClaw Docker Guide](docs/openclaw-docker.md) | [Local Guide](docs/openclaw-local.md)
+
+#### OpenClaw Skills
+
+Install [`@aion0/bastion-skills`](https://www.npmjs.com/package/@aion0/bastion-skills) to manage Bastion from within OpenClaw — start/stop the gateway, view DLP findings, tool guard alerts, and usage stats through natural language.
+
+```bash
+openclaw skill install @aion0/bastion-skills
+```
+
+For Docker environments, the skill includes a setup script that automatically patches `docker-compose.yml` to route all LLM traffic through Bastion via `HTTPS_PROXY`:
+
+```bash
+bash ~/.openclaw/skills/bastion/scripts/docker-setup.sh
+```
+
+See [@aion0/bastion-skills on GitHub](https://github.com/aiwatching/bastion-skills)
 
 ## Documentation
 
