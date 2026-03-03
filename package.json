@@ -1,9 +1,22 @@
 {
   "name": "@aion0/bastion",
-  "version": "0.1.9",
+  "version": "0.1.11",
   "description": "Local-first AI gateway for proxying and securing LLM provider requests",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./api": {
+      "import": "./dist/api.js",
+      "types": "./dist/api.d.ts"
+    },
+    "./cli": {
+      "import": "./dist/cli/index.js"
+    }
+  },
   "bin": {
     "bastion": "dist/cli/index.js"
   },
