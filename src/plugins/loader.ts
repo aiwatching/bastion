@@ -33,10 +33,25 @@ export async function loadExternalPlugins(
       continue;
     }
 
-    // Dynamic import
+    // Dynamic import — resolve directory to package.json main entry for ESM compatibility
+    let importPath = cfg.package;
+    try {
+      const { join } = await import('node:path');
+      const { readFileSync, statSync } = await import('node:fs');
+      const s = statSync(importPath);
+      if (s.isDirectory()) {
+        const pkgPath = join(importPath, 'package.json');
+        const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
+        const entry = pkg.main ?? 'index.js';
+        importPath = join(importPath, entry);
+      }
+    } catch {
+      // If stat/read fails, keep original path and let import() handle the error
+    }
+
     let mod: Record<string, unknown>;
     try {
-      mod = await import(cfg.package);
+      mod = await import(importPath);
     } catch (err) {
       log.warn('Failed to import external plugin package', {
         package: cfg.package,
@@ -100,9 +115,10 @@ export async function loadExternalPlugins(
         continue;
       }
 
-      // Adapt to internal Plugin interface
-      const adapted = adaptPlugin(externalPlugin, priorityCounter, repo, cfg.package);
-      priorityCounter += 1;
+      // Adapt to internal Plugin interface — use declared priority if available
+      const declaredPriority = externalPlugin.priority ?? priorityCounter;
+      const adapted = adaptPlugin(externalPlugin, declaredPriority, repo, cfg.package);
+      if (!externalPlugin.priority) priorityCounter += 1;
       plugins.push(adapted);
 
       // Collect destroy callbacks

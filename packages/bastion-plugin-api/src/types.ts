@@ -6,6 +6,7 @@ export interface BastionPlugin {
   name: string;
   version: string;
   apiVersion: number; // must match PLUGIN_API_VERSION
+  priority?: number; // declared execution order (lower = runs first); auto-assigned from 50 if omitted
 
   // Lifecycle (called by loader in Step 2.2)
   onInit?(context: PluginContext): Promise<void>;
@@ -96,4 +97,23 @@ export interface PluginEvent {
   rule: string;
   detail: string;
   matchedText?: string;
+}
+
+// ── ML Classifier abstraction ──
+
+export interface ClassificationResult {
+  label: string;           // e.g. 'INJECTION', 'BENIGN', 'JAILBREAK'
+  score: number;           // 0-1
+  labels: Array<{ label: string; score: number }>;
+  latencyMs: number;
+}
+
+export interface ClassifierProvider {
+  readonly name: string;
+  readonly modelName: string;
+  readonly ready: boolean;
+  initialize(): Promise<void>;
+  classify(text: string): Promise<ClassificationResult>;
+  classifyBatch?(texts: string[]): Promise<ClassificationResult[]>;
+  destroy(): Promise<void>;
 }

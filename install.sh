@@ -6,6 +6,7 @@ BIN_DIR="${BASTION_BIN_DIR:-/usr/local/bin}"
 REPO_URL="${BASTION_REPO_URL:-https://github.com/aiwatching/bastion.git}"
 LOCAL_SOURCE=""
 REMOTE_BRANCH=""
+INSTALL_PLUGINS=""
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -29,12 +30,30 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       ;;
+    -plugins|--plugins)
+      if [[ -n "${2:-}" && "$2" != -* ]]; then
+        INSTALL_PLUGINS="$(cd "$2" && pwd)"
+        shift 2
+      else
+        # Default: look for bastion-plugin-api sibling directory
+        SCRIPT_DIR_P="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)"
+        PARENT_DIR="$(dirname "$SCRIPT_DIR_P")"
+        if [ -d "$PARENT_DIR/bastion-plugin-api" ] && [ -f "$PARENT_DIR/bastion-plugin-api/package.json" ]; then
+          INSTALL_PLUGINS="$PARENT_DIR/bastion-plugin-api"
+        else
+          echo "Error: cannot find bastion-plugin-api sibling directory. Specify path: --plugins <path>" >&2
+          exit 1
+        fi
+        shift
+      fi
+      ;;
     -h|--help)
       echo "Usage: install.sh [options]"
       echo ""
       echo "Options:"
       echo "  -local [path]       Install from local source directory"
       echo "  -remote <branch>    Install from a specific git branch"
+      echo "  -plugins [path]     Also install Pro plugin pack (bastion-plugin-api)"
       echo "  -h, --help          Show this help message"
       exit 0
       ;;
@@ -147,6 +166,54 @@ npm install 2>&1 | tail -1
 
 info "Building..."
 npm run build 2>&1 | tail -1
+
+# --- Install Pro plugins (optional) ---
+if [ -n "$INSTALL_PLUGINS" ]; then
+  if [ ! -f "$INSTALL_PLUGINS/package.json" ]; then
+    warn "Plugin directory not valid: $INSTALL_PLUGINS (no package.json)"
+  else
+    PLUGINS_DEST="$INSTALL_DIR/plugins/bastion-pro"
+    info "Installing Pro plugins from: $INSTALL_PLUGINS"
+    mkdir -p "$PLUGINS_DEST"
+    rsync -a --exclude node_modules --exclude .git --exclude dist "$INSTALL_PLUGINS/" "$PLUGINS_DEST/"
+
+    # Rewrite the file: dependency to point to the installed plugin-api types package
+    cd "$PLUGINS_DEST"
+    PLUGIN_API_REL="$(node -e "const p=require('path'); console.log(p.relative('$PLUGINS_DEST','$INSTALL_DIR/packages/bastion-plugin-api'))")"
+    sed -i.bak "s|\"file:../bastion/packages/bastion-plugin-api\"|\"file:${PLUGIN_API_REL}\"|" package.json
+    rm -f package.json.bak
+    info "Rewrote plugin-api path to: file:${PLUGIN_API_REL}"
+    # Install plugin deps (including onnxruntime-node)
+    npm install 2>&1 | tail -1
+    npm run build 2>&1 | tail -1
+    cd "$INSTALL_DIR"
+
+    # Auto-configure external plugin in config.yaml
+    USER_CONFIG="$HOME/.bastion/config.yaml"
+    if [ -f "$USER_CONFIG" ]; then
+      if ! grep -q 'bastion-pro' "$USER_CONFIG"; then
+        info "Adding @aiwatching/bastion-pro to config.yaml"
+        # Replace "external: []" with the actual plugin entry (must stay inside plugins: block)
+        if grep -q 'external: \[\]' "$USER_CONFIG"; then
+          sed -i.bak 's|  external: \[\]|  external:\n    - package: "'"$PLUGINS_DEST"'"\n      enabled: true\n      config: {}|' "$USER_CONFIG"
+          rm -f "${USER_CONFIG}.bak"
+        else
+          # No external key yet — insert before retention: line
+          sed -i.bak '/^retention:/i\
+  external:\
+    - package: "'"$PLUGINS_DEST"'"\
+      enabled: true\
+      config: {}' "$USER_CONFIG"
+          rm -f "${USER_CONFIG}.bak"
+        fi
+      else
+        info "Plugin already configured in config.yaml"
+      fi
+    fi
+
+    info "Pro plugins installed"
+  fi
+fi
 
 # --- Config migration ---
 USER_CONFIG="$HOME/.bastion/config.yaml"

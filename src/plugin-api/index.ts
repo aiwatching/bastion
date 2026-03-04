@@ -8,5 +8,7 @@ export type {
   PluginManifest,
   Logger,
   DatabaseAccess,
+  ClassificationResult,
+  ClassifierProvider,
 } from './types.js';
 export { PLUGIN_API_VERSION } from './types.js';

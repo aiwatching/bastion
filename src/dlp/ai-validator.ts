@@ -8,11 +8,13 @@ const SNIPPET_RADIUS = 200;
 
 export interface AiValidatorConfig {
   enabled: boolean;
-  provider: 'anthropic' | 'openai';
+  provider: 'anthropic' | 'openai' | 'local';
   model: string;
   apiKey: string;
   timeoutMs: number;
   cacheSize: number;
+  /** Lazy getter for local ClassifierProvider (set by bootstrap when pi-classifier is available) */
+  getLocalProvider?: () => import('../plugin-api/types.js').ClassifierProvider | undefined;
 }
 
 interface CacheEntry {
@@ -65,9 +67,13 @@ export class AiValidator {
     this.cache = new LRUCache(config.cacheSize);
   }
 
-  /** Returns true if the validator is ready (enabled + apiKey configured) */
+  /** Returns true if the validator is ready (enabled + provider configured) */
   get ready(): boolean {
-    return this.config.enabled && this.config.apiKey.length > 0;
+    if (!this.config.enabled) return false;
+    if (this.config.provider === 'local') {
+      return this.config.getLocalProvider?.() !== undefined;
+    }
+    return this.config.apiKey.length > 0;
   }
 
   /** Update config at runtime (e.g. toggle enabled) */
@@ -132,12 +138,30 @@ export class AiValidator {
     matchText: string,
     context: string,
   ): Promise<CacheEntry> {
+    if (this.config.provider === 'local') {
+      return this.callLocal(context);
+    }
+
     const prompt = buildPrompt(finding, matchText, context);
 
     if (this.config.provider === 'anthropic') {
       return this.callAnthropic(prompt);
     }
     return this.callOpenAI(prompt);
+  }
+
+  private async callLocal(context: string): Promise<CacheEntry> {
+    const provider = this.config.getLocalProvider?.();
+    if (!provider) {
+      throw new Error('Local classifier provider not available');
+    }
+
+    const result = await provider.classify(context);
+    // Map classifier labels to AI validator verdicts
+    if (result.label === 'BENIGN' || result.label === 'SAFE') {
+      return { verdict: 'false_positive', reason: `Local ML: ${result.label} (score: ${result.score.toFixed(3)})` };
+    }
+    return { verdict: 'sensitive', reason: `Local ML: ${result.label} (score: ${result.score.toFixed(3)})` };
   }
 
   private callAnthropic(prompt: string): Promise<CacheEntry> {

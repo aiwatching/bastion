@@ -123,6 +123,7 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
     remotePatterns: config.plugins.dlp.remotePatterns,
     aiValidation: config.plugins.dlp.aiValidation,
     getAction: () => configManager.get().plugins.dlp.action,
+    getLocalProvider: () => pluginStateGetter('pi-classifier', 'classifierProvider') as import('../plugin-api/types.js').ClassifierProvider | undefined,
   }, eventBus));
   if (!config.plugins.dlp.enabled) pluginManager.disable('dlp-scanner');
 
@@ -161,6 +162,10 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
   }, eventBus));
   if (!config.plugins.toolGuard?.enabled) pluginManager.disable('tool-guard');
 
+  // pluginStateGetter is a lazy closure — DLP scanner is created before external plugins,
+  // so it captures the getter that gets updated once external plugins are loaded.
+  let pluginStateGetter: (pluginName: string, key: string) => unknown | undefined = () => undefined;
+
   // Load external plugins
   const externalConfigs = config.plugins.external ?? [];
   let destroyCallbacks: Array<() => Promise<void>> = [];
@@ -169,6 +174,7 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
     const result = await loadExternalPlugins(externalConfigs, db, eventBus);
     destroyCallbacks = result.destroyCallbacks;
     getPluginState = result.getPluginState;
+    pluginStateGetter = result.getPluginState;
     for (const plugin of result.plugins) {
       pluginManager.register(plugin);
     }
