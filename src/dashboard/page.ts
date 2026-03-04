@@ -560,31 +560,36 @@ async function refreshOverview(){
   try{
     var sp=sinceParam();
     var qp=sp?'?'+sp:'';
-    var [statsR,alertsR,dlpRecentR]=await Promise.all([
+    var [statsR,alertsR,dlpRecentR,piRecentR]=await Promise.all([
       apiFetch('/api/stats'+qp),
       apiFetch('/api/tool-guard/alerts'),
-      apiFetch('/api/dlp/recent?limit=5'+(sp?'&'+sp:''))
+      apiFetch('/api/dlp/recent?limit=5'+(sp?'&'+sp:'')),
+      apiFetch('/api/plugin-events/recent?limit=5&plugin=pi-classifier'+(sp?'&'+sp:''))
     ]);
     var statsData=await statsR.json();
     var alertsData=await alertsR.json();
     var dlpRecent=await dlpRecentR.json();
+    var piRecent=await piRecentR.json();
     var s=statsData.stats;
     var dlp=statsData.dlp||{};
     var ba=dlp.by_action||{};
+    var piStats=statsData.pluginEvents||{};
 
     // Gauges
-    if(!skipIfSame('ov-gauges',{s:s,dlp:dlp})){
+    if(!skipIfSame('ov-gauges',{s:s,dlp:dlp,pi:piStats})){
       var dlpTotal=dlp.total_events||0;
+      var piTotal=piStats.total_events||0;
       var latAvg=s.avg_latency_ms||0;
       document.getElementById('ov-gauges').innerHTML=
         gauge('Requests',fmt(s.total_requests),'','')+
         gauge('Cost',cost(s.total_cost_usd),'','green')+
         gauge('Tokens',fmt(s.total_input_tokens+s.total_output_tokens),fmt(s.total_input_tokens)+' in / '+fmt(s.total_output_tokens)+' out','')+
         gauge('DLP Hits',fmt(dlpTotal),(ba.redact||0)+' redact, '+(ba.block||0)+' block',dlpTotal>0?'red':'')+
+        gauge('PI Detections',fmt(piTotal),'ML injection','red')+
         gauge('Avg Latency',Math.round(latAvg)+'ms','','cyan');
     }
 
-    // Alerts pane (combine DLP + Guard)
+    // Alerts pane (combine DLP + Guard + PI)
     var combined=[];
     (dlpRecent||[]).forEach(function(d){
       combined.push({type:'dlp',time:d.created_at,text:'<b>'+esc(d.pattern_name)+'</b> \\u2192 '+esc(d.action),tag:'dlp'});
@@ -592,8 +597,11 @@ async function refreshOverview(){
     (alertsData.alerts||[]).filter(function(a){return !a.acknowledged}).slice(0,5).forEach(function(a){
       combined.push({type:'guard',time:a.timestamp,text:'<b>'+esc(a.toolName)+'</b> \\u2192 '+esc(a.ruleName),tag:'guard'});
     });
+    (piRecent||[]).forEach(function(p){
+      combined.push({type:'pi',time:p.created_at,text:'<b>'+esc(p.rule)+'</b> '+esc(p.detail),tag:'block'});
+    });
     combined.sort(function(a,b){return new Date(b.time)-new Date(a.time)});
-    var alertCount=(alertsData.unacknowledged||0)+(dlpRecent||[]).length;
+    var alertCount=(alertsData.unacknowledged||0)+(dlpRecent||[]).length+(piRecent||[]).length;
     document.getElementById('ov-alert-count').textContent=alertCount||'';
     if(!skipIfSame('ov-alerts',combined)){
       document.getElementById('ov-alerts').innerHTML=combined.length?combined.slice(0,8).map(function(c){
