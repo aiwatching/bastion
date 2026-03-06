@@ -207,12 +207,12 @@ bastion trust-ca
 网关运行时，在浏览器中打开 `http://127.0.0.1:8420/dashboard`。
 
 6 个标签页：
-- **Overview** — 请求指标、费用、token 数、按提供商/模型/会话分类的统计
+- **Overview** — 请求指标、费用、token 数、按提供商/模型/会话分类的统计、威胁仪表盘
 - **DLP** — 子标签：Findings（方向、片段、钻取至审计记录）、Config（引擎开关、动作模式、AI 验证、语义规则）、Signatures（远程同步状态、版本追踪、变更日志、模式管理）、Test（独立扫描器，含预设、trace 日志）
-- **Tool Guard** — 子标签：Calls（最近工具调用历史，含严重级别、规则匹配、执行动作）、Rules（26 条内置规则 + 自定义规则管理，可逐条启用/禁用）
+- **Tool Guard** — 子标签：Calls（最近工具调用历史，含严重级别、规则匹配、执行动作）、Rules（26 条内置规则 + 自定义规则管理，可逐条启用/禁用）、威胁会话、链式检测
 - **Optimizer** — 缓存命中率、节省的 token 数
 - **Audit** — 基于会话的时间线、DLP/Tool Guard 标记条目、摘要预览、格式化请求/响应查看器
-- **Settings** — 切换 plugin、配置 AI 验证、语义规则，运行时修改无需重启
+- **Settings** — 切换 plugin、可选功能管理，运行时修改无需重启
 
 ## 工作原理
 
@@ -329,6 +329,14 @@ plugins:
 - **响应缓存** — 对相同请求进行精确匹配缓存（AES-256-GCM 加密）
 - **空白压缩** — 折叠多余空白以节省 token
 
+### 威胁情报
+会话级威胁评分，多信号关联分析。聚合 DLP、Tool Guard、Prompt Injection 检测事件，为每个会话生成统一威胁分数。
+
+- **链式检测** — 检测多步攻击模式（如凭证访问后跟网络外泄）
+- **污点追踪** — 跟踪敏感数据指纹在工具调用间的流动，检测数据流违规
+- **威胁等级** — normal / elevated / high / critical，指数衰减评分
+- **3 条内置链式规则** — 凭证→外泄、执行→破坏、凭证→发布
+
 ### Audit Logger
 存储请求/响应内容（静态加密）以供在 Dashboard 中查看。可配置保留期限，自动清理。即使此 plugin 未启用，DLP 命中也会自动记录审计日志。
 
@@ -443,6 +451,20 @@ BASTION_LOG_LEVEL=debug bastion start
 | `GET` | `/api/config` | Current configuration + plugin status |
 | `PUT` | `/api/config` | Update configuration at runtime |
 
+## 可选插件
+
+Bastion 核心检测能力完全免费。如需基于 ML 的检测（ONNX Runtime，~436 MB 模型），可安装可选插件包：
+
+```bash
+bastion plugins install          # 自动检测同级 bastion-plugin-api 目录
+bastion plugins list             # 查看已安装插件
+bastion plugins uninstall        # 卸载（会提示是否同时删除模型文件）
+```
+
+也可通过 Dashboard → Settings → Optional Features 管理。
+
+详见 [@aiwatching/bastion-pro](https://github.com/aiwatching/bastion-plugin-api)。
+
 ## 文档
 
 - [DLP 引擎架构](docs/dlp.zh.md) — 5 层检测管线详解
@@ -468,4 +490,5 @@ BASTION_LOG_LEVEL=debug bastion start
   .key          # AES encryption key for cache & audit
   bastion.pid   # Daemon PID file
   bastion.log   # Daemon log file
+  models/       # ML 模型（可选，安装插件后 ~436 MB）
 ```
