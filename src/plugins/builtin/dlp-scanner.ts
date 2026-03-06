@@ -147,6 +147,7 @@ export function createDlpScannerPlugin(db: Database.Database, config: DlpScanner
 
         eventBus?.emit('dlp:finding', {
           requestId: context.id,
+          sessionId: context.sessionId,
           patternName: finding.patternName,
           patternCategory: finding.patternCategory,
           action: result.action,
@@ -246,6 +247,7 @@ export function createDlpScannerPlugin(db: Database.Database, config: DlpScanner
 
         eventBus?.emit('dlp:finding', {
           requestId: context.request.id,
+          sessionId: context.request.sessionId,
           patternName: finding.patternName,
           patternCategory: finding.patternCategory,
           action: result.action,
@@ -328,6 +330,7 @@ export function createDlpScannerPlugin(db: Database.Database, config: DlpScanner
 
         eventBus?.emit('dlp:finding', {
           requestId: context.request.id,
+          sessionId: context.request.sessionId,
           patternName: finding.patternName,
           patternCategory: finding.patternCategory,
           action: 'warn',

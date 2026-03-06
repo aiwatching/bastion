@@ -13,6 +13,7 @@ import { createDlpScannerPlugin } from '../plugins/builtin/dlp-scanner.js';
 import { createTokenOptimizerPlugin } from '../plugins/builtin/token-optimizer.js';
 import { createAuditLoggerPlugin } from '../plugins/builtin/audit-logger.js';
 import { createToolGuardPlugin } from '../plugins/builtin/tool-guard.js';
+import { createThreatScorerPlugin } from '../plugins/builtin/threat-scorer.js';
 import { registerAnthropicProvider } from '../proxy/providers/anthropic.js';
 import { registerOpenAIProvider } from '../proxy/providers/openai.js';
 import { registerGeminiProvider } from '../proxy/providers/gemini.js';
@@ -141,6 +142,10 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
     summaryMaxBytes: config.plugins.audit?.summaryMaxBytes ?? 1024,
   }));
   if (!config.plugins.audit?.enabled) pluginManager.disable('audit-logger');
+
+  // Threat scorer — priority 4, sets context._threatLevel before tool-guard (priority 5)
+  pluginManager.register(createThreatScorerPlugin(config, db, eventBus));
+  if (config.plugins.threatIntelligence?.enabled === false) pluginManager.disable('threat-scorer');
 
   pluginManager.register(createToolGuardPlugin(db, {
     enabled: config.plugins.toolGuard?.enabled ?? true,

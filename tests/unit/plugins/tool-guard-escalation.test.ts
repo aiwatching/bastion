@@ -1,6 +1,6 @@
 /**
- * Test Tool Guard pi:detected escalation — when pi-classifier detects prompt injection,
- * tool-guard should lower blockMinSeverity for that session.
+ * Test Tool Guard threat-level escalation — when threat-scorer sets context._threatLevel,
+ * tool-guard should adjust blockMinSeverity accordingly.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createTestDatabase } from '../../../src/storage/database.js';
@@ -11,7 +11,7 @@ import { mkdirSync } from 'node:fs';
 import type Database from 'better-sqlite3';
 import type { RequestContext, ResponseInterceptContext } from '../../../src/plugins/types.js';
 
-describe('Tool Guard: pi:detected escalation', () => {
+describe('Tool Guard: threat-level escalation', () => {
   let db: Database.Database;
   let eventBus: PluginEventBus;
 
@@ -93,42 +93,50 @@ describe('Tool Guard: pi:detected escalation', () => {
     const result = await plugin.onResponse!(resCtx);
 
     // blockMinSeverity is 'critical', medium-severity should NOT be blocked
-    // (result may contain modifiedBody only if it meets the threshold)
     if (result?.modifiedBody) {
       expect(result.modifiedBody).not.toContain('BLOCKED');
     }
   });
 
-  it('escalates session when pi:detected event is emitted', async () => {
+  it('escalates session when _threatLevel is set to high', async () => {
     const plugin = createPlugin();
     const sessionId = 'session-injected';
 
-    // Simulate pi-classifier detecting injection
-    eventBus.emit('pi:detected', {
-      sessionId,
-      label: 'INJECTION',
-      score: 0.95,
-      detections: 1,
-    });
-
-    // Now process a request with medium-severity tool call
-    const reqCtx = makeRequestContext(sessionId);
-    await plugin.onRequest!(reqCtx);
-
-    // For streaming requests, the escalated severity should be used
+    // Simulate threat-scorer setting _threatLevel on the context
     const streamReqCtx = makeRequestContext(sessionId);
     streamReqCtx.isStreaming = true;
+    streamReqCtx._threatLevel = 'high';
     await plugin.onRequest!(streamReqCtx);
+    // high threat → blockMinSeverity should be 'medium'
     expect(streamReqCtx._toolGuardStreamBlock).toBe('medium');
+  });
+
+  it('critical threat level blocks all severities', async () => {
+    const plugin = createPlugin();
+    const sessionId = 'session-critical';
+
+    const reqCtx = makeRequestContext(sessionId);
+    reqCtx.isStreaming = true;
+    reqCtx._threatLevel = 'critical';
+    await plugin.onRequest!(reqCtx);
+    expect(reqCtx._toolGuardStreamBlock).toBe('low');
+  });
+
+  it('elevated threat level blocks high+', async () => {
+    const plugin = createPlugin();
+    const sessionId = 'session-elevated';
+
+    const reqCtx = makeRequestContext(sessionId);
+    reqCtx.isStreaming = true;
+    reqCtx._threatLevel = 'elevated';
+    await plugin.onRequest!(reqCtx);
+    expect(reqCtx._toolGuardStreamBlock).toBe('high');
   });
 
   it('non-escalated sessions use default blockMinSeverity', async () => {
     const plugin = createPlugin();
 
-    // Escalate session A
-    eventBus.emit('pi:detected', { sessionId: 'session-A', label: 'INJECTION', score: 0.9, detections: 1 });
-
-    // Session B should not be affected
+    // Session B has no _threatLevel set
     const reqCtx = makeRequestContext('session-B');
     reqCtx.isStreaming = true;
     await plugin.onRequest!(reqCtx);

@@ -12,6 +12,10 @@ import { ToolCallsRepository } from '../storage/repositories/tool-calls.js';
 import { ToolGuardRulesRepository } from '../storage/repositories/tool-guard-rules.js';
 import { PluginEventsRepository } from '../storage/repositories/plugin-events.js';
 import { getRecentAlerts, getUnacknowledgedCount, acknowledgeAlerts } from '../tool-guard/alert.js';
+import { ThreatScoresRepository } from '../storage/repositories/threat-scores.js';
+import { ThreatScoreEventsRepository } from '../storage/repositories/threat-score-events.js';
+import { ToolChainDetectionsRepository } from '../storage/repositories/tool-chain-detections.js';
+import { BUILTIN_CHAIN_RULES } from '../tool-guard/chain-rules.js';
 import { scanText, type DlpTrace } from '../dlp/engine.js';
 import type { DlpAction } from '../dlp/actions.js';
 import { getBuiltinSensitivePatterns, getBuiltinNonSensitiveNames } from '../dlp/semantics.js';
@@ -59,6 +63,9 @@ export function createApiRouter(
   const toolCallsRepo = new ToolCallsRepository(db);
   const toolGuardRulesRepo = new ToolGuardRulesRepository(db);
   const pluginEventsRepo = new PluginEventsRepository(db);
+  const threatScoresRepo = new ThreatScoresRepository(db);
+  const threatScoreEventsRepo = new ThreatScoreEventsRepository(db);
+  const chainDetectionsRepo = new ToolChainDetectionsRepository(db);
 
   let devUnlocked = false;
 
@@ -713,6 +720,53 @@ export function createApiRouter(
       } else {
         sendJson(res, { pro: false, installed: true, reason: result.reason });
       }
+      return true;
+    }
+
+    // ── Threat Intelligence API ──
+
+    // GET /api/threat/sessions — all elevated+ sessions
+    if (req.method === 'GET' && path === '/api/threat/sessions') {
+      sendJson(res, threatScoresRepo.getElevated());
+      return true;
+    }
+
+    // GET /api/threat/sessions/:id — single session threat details + event history
+    if (req.method === 'GET' && path.startsWith('/api/threat/sessions/')) {
+      const sessionId = decodeURIComponent(path.slice('/api/threat/sessions/'.length));
+      if (!sessionId) {
+        sendJson(res, { error: 'Missing session ID' }, 400);
+        return true;
+      }
+      const score = threatScoresRepo.get(sessionId);
+      const events = threatScoreEventsRepo.getBySession(sessionId);
+      const chainDetections = chainDetectionsRepo.getBySession(sessionId);
+      sendJson(res, { score, events, chainDetections });
+      return true;
+    }
+
+    // POST /api/threat/sessions/:id/reset — manually reset threat score
+    if (req.method === 'POST' && path.match(/^\/api\/threat\/sessions\/[^/]+\/reset$/)) {
+      const sessionId = decodeURIComponent(path.slice('/api/threat/sessions/'.length, path.lastIndexOf('/reset')));
+      if (!sessionId) {
+        sendJson(res, { error: 'Missing session ID' }, 400);
+        return true;
+      }
+      threatScoresRepo.reset(sessionId);
+      sendJson(res, { ok: true });
+      return true;
+    }
+
+    // GET /api/threat/chain-detections — recent tool chain detections
+    if (req.method === 'GET' && path === '/api/threat/chain-detections') {
+      const limit = parseInt(url.searchParams.get('limit') ?? '50', 10);
+      sendJson(res, chainDetectionsRepo.getRecent(limit));
+      return true;
+    }
+
+    // GET /api/threat/chain-rules — tool chain rules list
+    if (req.method === 'GET' && path === '/api/threat/chain-rules') {
+      sendJson(res, BUILTIN_CHAIN_RULES);
       return true;
     }
 

@@ -101,6 +101,11 @@ tr:hover td{background:var(--border)}
 .pro-feature-row.unlocked .toggle-label{color:var(--green)}
 .filter-input{background:var(--bg);border:1px solid var(--border);color:var(--bright);padding:4px 10px;font-family:inherit;font-size:11px;width:280px}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+.row-tag.elevated{background:#1a1a00;color:var(--yellow)}
+.row-tag.high-threat{background:#1a0a00;color:#ff6600}
+.row-tag.critical-threat{background:#330000;color:var(--red)}
+.ti-reset-btn{padding:2px 8px;font-size:10px;cursor:pointer;font-family:inherit;color:var(--red);background:none;border:1px solid #330000;border-radius:2px}
+.ti-reset-btn:hover{background:#1a0000}
 </style>
 </head>`;
 
@@ -182,6 +187,20 @@ const PAGE_GUARD = `
   <div class="section">
     <div class="section-head"><span class="section-title">Rules (top)</span></div>
     <div class="section-body" id="gd-rules"><div class="empty">No rules</div></div>
+  </div>
+</div>
+<div class="section" style="margin-top:8px">
+  <div class="section-head"><span class="section-title">Threat Sessions</span><span style="color:var(--muted);font-size:10px;margin-left:4px">(elevated+)</span></div>
+  <div class="section-body">
+    <table><thead><tr><th>Session</th><th>Score</th><th>Level</th><th>Events</th><th>Last Event</th><th></th></tr></thead><tbody id="ti-sessions-list"></tbody></table>
+    <p class="empty" id="ti-no-sessions">No elevated sessions</p>
+  </div>
+</div>
+<div class="section" style="margin-top:2px">
+  <div class="section-head"><span class="section-title">Chain Detections</span></div>
+  <div class="section-body">
+    <table><thead><tr><th>Time</th><th>Session</th><th>Rule</th><th>Sequence</th><th>Action</th></tr></thead><tbody id="ti-chains-list"></tbody></table>
+    <p class="empty" id="ti-no-chains">No chain detections</p>
   </div>
 </div>
 </div>`;
@@ -554,29 +573,39 @@ function actionTag(a){
   if(a==='flag')return '<span class="row-tag warn">flag</span>';
   return '<span class="row-tag">'+esc(a)+'</span>';
 }
+function threatLevelTag(level){
+  if(level==='critical')return '<span class="row-tag critical-threat">critical</span>';
+  if(level==='high')return '<span class="row-tag high-threat">high</span>';
+  if(level==='elevated')return '<span class="row-tag elevated">elevated</span>';
+  return '<span class="row-tag">'+esc(level||'normal')+'</span>';
+}
 
 // ══ 4. PAGE: OVERVIEW ═════════════════════════════════════════════
 async function refreshOverview(){
   try{
     var sp=sinceParam();
     var qp=sp?'?'+sp:'';
-    var [statsR,alertsR,dlpRecentR,piRecentR]=await Promise.all([
+    var [statsR,alertsR,dlpRecentR,piRecentR,threatOvR]=await Promise.all([
       apiFetch('/api/stats'+qp),
       apiFetch('/api/tool-guard/alerts'),
       apiFetch('/api/dlp/recent?limit=5'+(sp?'&'+sp:'')),
-      apiFetch('/api/plugin-events/recent?limit=5&plugin=pi-classifier'+(sp?'&'+sp:''))
+      apiFetch('/api/plugin-events/recent?limit=5&plugin=pi-classifier'+(sp?'&'+sp:'')),
+      apiFetch('/api/threat/sessions').catch(function(){return{json:function(){return[]}}})
     ]);
     var statsData=await statsR.json();
     var alertsData=await alertsR.json();
     var dlpRecent=await dlpRecentR.json();
     var piRecent=await piRecentR.json();
+    var threatOvData=await threatOvR.json();
+    var threatSessions=Array.isArray(threatOvData)?threatOvData:threatOvData.sessions||[];
+    var threatCount=threatSessions.length;
     var s=statsData.stats;
     var dlp=statsData.dlp||{};
     var ba=dlp.by_action||{};
     var piStats=statsData.pluginEvents||{};
 
     // Gauges
-    if(!skipIfSame('ov-gauges',{s:s,dlp:dlp,pi:piStats})){
+    if(!skipIfSame('ov-gauges',{s:s,dlp:dlp,pi:piStats,tc:threatCount})){
       var dlpTotal=dlp.total_events||0;
       var piTotal=piStats.total_events||0;
       var latAvg=s.avg_latency_ms||0;
@@ -586,6 +615,7 @@ async function refreshOverview(){
         gauge('Tokens',fmt(s.total_input_tokens+s.total_output_tokens),fmt(s.total_input_tokens)+' in / '+fmt(s.total_output_tokens)+' out','')+
         gauge('DLP Hits',fmt(dlpTotal),(ba.redact||0)+' redact, '+(ba.block||0)+' block',dlpTotal>0?'red':'')+
         gauge('PI Detections',fmt(piTotal),'ML injection','red')+
+        gauge('Threats',fmt(threatCount),'elevated+ sessions',threatCount>0?'red':'green')+
         gauge('Avg Latency',Math.round(latAvg)+'ms','','cyan');
     }
 
@@ -790,11 +820,57 @@ async function refreshGuard(){
           '<span class="row-tag '+(r.enabled?'audit':'')+'">'+((r.enabled?'ON':'OFF'))+'</span></div>';
       }).join(''):'<div class="empty">No rules</div>';
     }
+
+    // Threat Intelligence sections
+    try{
+      var [threatR,chainR]=await Promise.all([
+        apiFetch('/api/threat/sessions'),
+        apiFetch('/api/threat/chain-detections?limit=20')
+      ]);
+      var sessions=await threatR.json();
+      var chains=await chainR.json();
+
+      // Threat sessions table
+      if(!skipIfSame('ti-sessions',sessions)){
+        var tsList=Array.isArray(sessions)?sessions:sessions.sessions||[];
+        document.getElementById('ti-no-sessions').style.display=tsList.length?'none':'';
+        document.getElementById('ti-sessions-list').innerHTML=tsList.map(function(s){
+          return '<tr><td class="mono" style="font-size:11px;color:#555">'+esc((s.session_id||s.sessionId||'').slice(0,12))+'</td>'+
+            '<td style="font-weight:700;color:var(--bright)">'+Math.round(s.score||0)+'</td>'+
+            '<td>'+threatLevelTag(s.level||s.threatLevel)+'</td>'+
+            '<td>'+fmt(s.events||s.eventCount||0)+'</td>'+
+            '<td>'+ago(s.last_event||s.lastEvent||s.updated_at||'')+'</td>'+
+            '<td><button class="ti-reset-btn" data-sid="'+esc(s.session_id||s.sessionId||'')+'">Reset</button></td></tr>';
+        }).join('');
+      }
+
+      // Chain detections table
+      if(!skipIfSame('ti-chains',chains)){
+        var chList=Array.isArray(chains)?chains:chains.detections||[];
+        document.getElementById('ti-no-chains').style.display=chList.length?'none':'';
+        document.getElementById('ti-chains-list').innerHTML=chList.map(function(c){
+          var seq=(c.sequence||c.tools||[]).map(function(t){return esc(t)}).join(' \\u2192 ');
+          var actionCls=(c.action==='block')?'block':'warn';
+          return '<tr><td>'+ago(c.created_at||c.timestamp||'')+'</td>'+
+            '<td class="mono" style="font-size:11px;color:#555">'+esc((c.session_id||c.sessionId||'').slice(0,12))+'</td>'+
+            '<td class="mono">'+esc(c.rule||c.ruleName||'')+'</td>'+
+            '<td style="font-size:11px">'+seq+'</td>'+
+            '<td><span class="row-tag '+actionCls+'">'+esc((c.action||'warn').toUpperCase())+'</span></td></tr>';
+        }).join('');
+      }
+    }catch(te){/* threat API may not be available */}
   }catch(e){console.error('Guard refresh error',e)}
 }
 document.getElementById('gd-ack-btn').addEventListener('click',async function(){
   await apiFetch('/api/tool-guard/alerts/ack',{method:'POST'});
   refreshGuard();pollAlerts();
+});
+document.getElementById('ti-sessions-list').addEventListener('click',async function(e){
+  var btn=e.target.closest('.ti-reset-btn');if(!btn)return;
+  var sid=btn.dataset.sid;if(!sid)return;
+  btn.textContent='...';btn.disabled=true;
+  try{await apiFetch('/api/threat/sessions/'+encodeURIComponent(sid)+'/reset',{method:'POST'});_lastJson={};refreshGuard()}
+  catch(ex){btn.textContent='Reset';btn.disabled=false}
 });
 // Click guard event → go to Log detail
 document.getElementById('gd-events').addEventListener('click',function(e){

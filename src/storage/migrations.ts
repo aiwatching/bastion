@@ -238,6 +238,50 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE dlp_patterns ADD COLUMN context_verify TEXT;
   `,
+
+  // Migration 17: Threat Intelligence — session threat scoring, tool chain detection, taint tracking
+  `
+  CREATE TABLE IF NOT EXISTS threat_scores (
+    session_id TEXT PRIMARY KEY,
+    score REAL DEFAULT 0,
+    level TEXT DEFAULT 'normal',
+    event_count INTEGER DEFAULT 0,
+    last_event_at TEXT,
+    updated_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS threat_score_events (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    source_event TEXT,
+    points REAL NOT NULL,
+    score_after REAL NOT NULL,
+    level_after TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_tse_session ON threat_score_events(session_id);
+
+  CREATE TABLE IF NOT EXISTS tool_chain_detections (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    rule_id TEXT NOT NULL,
+    matched_sequence TEXT NOT NULL,
+    action TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS taint_marks (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    request_id TEXT NOT NULL,
+    pattern_name TEXT NOT NULL,
+    direction TEXT NOT NULL,
+    fingerprint TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_taint_session ON taint_marks(session_id);
+  `,
 ];
 
 export function runMigrations(db: Database.Database): void {

@@ -26,6 +26,9 @@ export interface RequestContext {
   _toolGuardStreamBlock?: string;
   /** Internal: DB-loaded rules for streaming guard (set by tool-guard onRequest) */
   _toolGuardRules?: import('../tool-guard/rules.js').ToolGuardRule[];
+  /** Internal: set by threat-scorer for tool-guard to read */
+  _threatLevel?: 'normal' | 'elevated' | 'high' | 'critical';
+  _threatScore?: number;
 }
 
 export interface ResponseCompleteContext {
