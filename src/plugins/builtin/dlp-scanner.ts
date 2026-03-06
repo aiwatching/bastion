@@ -38,6 +38,8 @@ export interface DlpScannerConfig {
   aiValidation?: AiValidatorConfig;
   /** Live getter for action — when provided, overrides static `action` field */
   getAction?: () => DlpAction;
+  /** Lazy getter for local ClassifierProvider from pi-classifier plugin */
+  getLocalProvider?: () => import('../../plugin-api/types.js').ClassifierProvider | undefined;
 }
 
 /**
@@ -62,8 +64,11 @@ export function createDlpScannerPlugin(db: Database.Database, config: DlpScanner
   const getAction = (): DlpAction => config.getAction ? config.getAction() : config.action;
 
   // AI validation — optional, default off
-  const aiValidator = config.aiValidation
-    ? new AiValidator(config.aiValidation)
+  const aiValidationConfig = config.aiValidation
+    ? { ...config.aiValidation, getLocalProvider: config.getLocalProvider }
+    : null;
+  const aiValidator = aiValidationConfig
+    ? new AiValidator(aiValidationConfig)
     : null;
 
   // Message-level DLP cache — avoids re-scanning repeated conversation history
@@ -94,7 +99,7 @@ export function createDlpScannerPlugin(db: Database.Database, config: DlpScanner
 
   return {
     name: 'dlp-scanner',
-    priority: 20,
+    priority: 10,
     version: '1.0.0',
     apiVersion: 2,
 

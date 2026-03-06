@@ -44,7 +44,7 @@ export function createTokenOptimizerPlugin(db: Database.Database, config: TokenO
 
   return {
     name: 'token-optimizer',
-    priority: 30,
+    priority: 20,
     version: '1.0.0',
     apiVersion: 2,
 

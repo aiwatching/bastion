@@ -51,7 +51,7 @@ export function createMetricsCollectorPlugin(db: Database.Database): Plugin {
 
   return {
     name: 'metrics-collector',
-    priority: 10,
+    priority: 1,
     version: '1.0.0',
     apiVersion: 2,
 

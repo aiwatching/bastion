@@ -11,4 +11,7 @@ export const paths = {
   pidFile: join(BASTION_DIR, 'bastion.pid'),
   logFile: join(BASTION_DIR, 'bastion.log'),
   signaturesDir: join(BASTION_DIR, 'signatures'),
+  licenseFile: join(BASTION_DIR, 'license'),
+  pluginsDir: join(BASTION_DIR, 'plugins'),
+  modelsDir: join(BASTION_DIR, 'models'),
 };

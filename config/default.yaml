@@ -69,5 +69,5 @@ retention:
   pluginEventsHours: 720
 
 timeouts:
-  upstream: 120000
-  plugin: 50
+  upstream: 120000   # ms — max wait for upstream LLM response
+  plugin: 500        # ms — per-plugin onRequest timeout (onResponse: x100, onResponseComplete: x10)

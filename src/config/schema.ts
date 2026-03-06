@@ -29,7 +29,7 @@ export interface BastionConfig {
       };
       aiValidation: {
         enabled: boolean;
-        provider: 'anthropic' | 'openai';
+        provider: 'anthropic' | 'openai' | 'local';
         model: string;
         apiKey: string;
         timeoutMs: number;

@@ -10,6 +10,7 @@ import { DlpPatternsRepository } from '../storage/repositories/dlp-patterns.js';
 import { DlpConfigHistoryRepository } from '../storage/repositories/dlp-config-history.js';
 import { ToolCallsRepository } from '../storage/repositories/tool-calls.js';
 import { ToolGuardRulesRepository } from '../storage/repositories/tool-guard-rules.js';
+import { PluginEventsRepository } from '../storage/repositories/plugin-events.js';
 import { getRecentAlerts, getUnacknowledgedCount, acknowledgeAlerts } from '../tool-guard/alert.js';
 import { scanText, type DlpTrace } from '../dlp/engine.js';
 import type { DlpAction } from '../dlp/actions.js';
@@ -57,6 +58,7 @@ export function createApiRouter(
   const dlpConfigHistory = new DlpConfigHistoryRepository(db);
   const toolCallsRepo = new ToolCallsRepository(db);
   const toolGuardRulesRepo = new ToolGuardRulesRepository(db);
+  const pluginEventsRepo = new PluginEventsRepository(db);
 
   let devUnlocked = false;
 
@@ -104,12 +106,14 @@ export function createApiRouter(
       const recent = requestsRepo.getRecent(20, sinceHours);
       const cacheStats = cacheRepo.getStats();
       const dlpStats = dlpRepo.getStats();
+      const pluginEventStats = pluginEventsRepo.getStats();
 
       sendJson(res, {
         stats,
         recent,
         cache: cacheStats,
         dlp: dlpStats,
+        pluginEvents: pluginEventStats,
         version: getVersion(),
         uptime: process.uptime(),
         memory: process.memoryUsage().rss,
@@ -661,6 +665,26 @@ export function createApiRouter(
       } catch (err) {
         sendJson(res, { error: (err as Error).message }, 400);
       }
+      return true;
+    }
+
+    // GET /api/plugin-events/recent — recent plugin events (pi-classifier, etc.)
+    if (req.method === 'GET' && path === '/api/plugin-events/recent') {
+      const limit = parseInt(url.searchParams.get('limit') ?? '50', 10);
+      const hours = url.searchParams.get('hours');
+      const sinceHours = hours ? parseInt(hours, 10) : undefined;
+      const plugin = url.searchParams.get('plugin') ?? undefined;
+      if (plugin) {
+        sendJson(res, pluginEventsRepo.getByPlugin(plugin, limit));
+      } else {
+        sendJson(res, pluginEventsRepo.getRecent(limit, sinceHours));
+      }
+      return true;
+    }
+
+    // GET /api/plugin-events/stats — plugin event stats
+    if (req.method === 'GET' && path === '/api/plugin-events/stats') {
+      sendJson(res, pluginEventsRepo.getStats());
       return true;
     }
 

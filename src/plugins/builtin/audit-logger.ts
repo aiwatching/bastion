@@ -20,7 +20,7 @@ export function createAuditLoggerPlugin(db: Database.Database, config: AuditLogg
 
   return {
     name: 'audit-logger',
-    priority: 25,
+    priority: 15,
     version: '1.0.0',
     apiVersion: 2,
 
