@@ -46,17 +46,15 @@ function addProPluginConfig(): void {
   const plugins = (config.plugins as Record<string, unknown>) ?? {};
   const external = (plugins.external as Array<Record<string, unknown>>) ?? [];
 
-  // Check if already present
-  const existing = external.find((e) => e.package === proPluginDir());
-  if (existing) {
-    existing.enabled = true;
-    info('Config: updated existing bastion-pro entry');
-  } else {
-    external.push({ package: proPluginDir(), enabled: true });
-    info('Config: added bastion-pro to plugins.external');
-  }
+  // Remove any old-path entries, then add/update with new path
+  const cleanExternal = external.filter((e) => {
+    const pkg = typeof e.package === 'string' ? e.package : '';
+    return !pkg.endsWith('/bastion-pro');
+  });
+  cleanExternal.push({ package: proPluginDir(), enabled: true });
+  info('Config: configured bastion-pro in plugins.external');
 
-  plugins.external = external;
+  plugins.external = cleanExternal;
   config.plugins = plugins;
   writeUserConfig(config);
 }
@@ -67,7 +65,10 @@ function removeProPluginConfig(): void {
   const plugins = (config.plugins as Record<string, unknown>) ?? {};
   const external = (plugins.external as Array<Record<string, unknown>>) ?? [];
 
-  const filtered = external.filter((e) => e.package !== proPluginDir());
+  const filtered = external.filter((e) => {
+    const pkg = typeof e.package === 'string' ? e.package : '';
+    return pkg !== proPluginDir() && !pkg.endsWith('/bastion-pro');
+  });
   if (filtered.length !== external.length) {
     plugins.external = filtered.length > 0 ? filtered : undefined;
     config.plugins = plugins;
