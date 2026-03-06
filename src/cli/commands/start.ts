@@ -1,5 +1,4 @@
-import crypto from 'node:crypto';
-import { type Command, Option } from 'commander';
+import { type Command } from 'commander';
 import { getDaemonStatus, spawnDaemon } from '../daemon.js';
 import { getVersion } from '../../version.js';
 
@@ -9,24 +8,9 @@ export function registerStartCommand(program: Command): void {
     .description('Start the Bastion AI Gateway')
     .option('--foreground', 'Run in foreground (no daemon)')
     .option('-p, --port <port>', 'Override port')
-    .addOption(new Option('--dev').default(false).hideHelp())
     .action(async (options) => {
       if (options.port) {
         process.env.BASTION_PORT = options.port;
-      }
-
-      // --dev only works with --foreground
-      if (options.dev && !options.foreground) {
-        console.error('--dev requires --foreground');
-        process.exit(1);
-      }
-
-      if (options.dev) {
-        process.env.BASTION_DEV = '1';
-        const devToken = crypto.randomBytes(16).toString('hex');
-        process.env.BASTION_DEV_TOKEN = devToken;
-        console.log(`\n  Dev token: ${devToken}`);
-        console.log('  Enter this token in Dashboard → Settings → Pro Features to unlock all features\n');
       }
 
       if (options.foreground) {

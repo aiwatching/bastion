@@ -104,6 +104,15 @@ Monitors and blocks dangerous tool calls made by AI agents in real-time. Interce
 
 Action modes: `audit` (log and alert) or `block` (intercept in real-time, including streaming responses). Desktop notifications and webhook alerts (Slack, Discord) for high-severity matches.
 
+### 🔍 Threat Intelligence
+
+Session-level threat scoring with multi-signal correlation. Aggregates events from DLP, Tool Guard, and Prompt Injection detection into a unified threat score per session.
+
+- **Chain detection** — detects multi-step attack patterns (e.g., credential access followed by network exfiltration)
+- **Taint tracking** — tracks sensitive data fingerprints across tool calls to detect data flow violations
+- **Threat levels** — normal / elevated / high / critical with exponential decay scoring
+- **3 built-in chain rules** — credential→exfil, execution→destruction, credential→publish
+
 ### 📝 Audit Logger
 
 Full request/response history for every AI interaction, encrypted at rest. Session-based timeline with DLP and Tool Guard tags. Any security event automatically creates an audit entry — even if the audit plugin is disabled.
@@ -116,11 +125,11 @@ Configurable retention with automatic purge. Formatted viewer in the dashboard f
 
 Real-time security dashboard at `http://127.0.0.1:8420/dashboard`:
 
-- **Overview** — Request metrics, cost, tokens, per-provider/model/session breakdown
+- **Overview** — Request metrics, cost, tokens, per-provider/model/session breakdown, threat gauge
 - **DLP** — Findings, config, signature management, standalone test scanner with trace log
-- **Tool Guard** — Tool call history, severity, rule management (built-in + custom)
+- **Tool Guard** — Tool call history, severity, rule management (built-in + custom), threat sessions, chain detections
 - **Audit** — Session timeline, security-tagged entries, formatted request/response viewer
-- **Settings** — Toggle plugins, configure rules — all changes apply without restart
+- **Settings** — Toggle plugins, optional features management — all changes apply without restart
 
 ## How It Works
 
@@ -168,6 +177,20 @@ bash ~/.openclaw/skills/bastion/scripts/docker-setup.sh
 
 See [@aion0/bastion-skills on GitHub](https://github.com/aiwatching/bastion-skills)
 
+## Optional Plugins
+
+Bastion's core detection is fully free. For ML-based detection with heavier dependencies (ONNX Runtime, ~436 MB models), install the optional plugin pack:
+
+```bash
+bastion plugins install          # auto-detects sibling bastion-plugin-api
+bastion plugins list             # show installed plugins
+bastion plugins uninstall        # remove (prompts to also delete models)
+```
+
+Or via the Dashboard → Settings → Optional Features.
+
+See [@aiwatching/bastion-pro](https://github.com/aiwatching/bastion-plugin-api) for details.
+
 ## Documentation
 
 | Doc | Description |
@@ -191,6 +214,7 @@ Everything stays on your machine in `~/.bastion/`:
   config.yaml   # Your config overrides
   ca.key / ca.crt / certs/   # Local CA & certificates
   .key          # AES encryption key for audit data
+  models/       # ML models (optional, ~436 MB if plugins installed)
 ```
 
 ## Contributing

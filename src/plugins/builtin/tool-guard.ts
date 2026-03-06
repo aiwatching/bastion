@@ -120,52 +120,18 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
   // Seed built-in rules on first init (INSERT OR IGNORE preserves user toggles)
   rulesRepo.seedBuiltins(BUILTIN_RULES);
 
-  // ── PI escalation: track sessions flagged by pi-classifier ──
-  const escalatedSessions = new Map<string, { blockMinSeverity: string; expiresAt: number }>();
-  const ESCALATION_TTL_MS = 60 * 60 * 1000; // 1 hour
-
-  // Listen for pi:detected events from pi-classifier plugin
-  if (eventBus) {
-    eventBus.on('pi:detected', (data: unknown) => {
-      const event = data as { sessionId?: string; severity?: string } | undefined;
-      if (!event?.sessionId) return;
-      // Escalate session: lower the blockMinSeverity to 'medium' (stricter)
-      escalatedSessions.set(event.sessionId, {
-        blockMinSeverity: 'medium',
-        expiresAt: Date.now() + ESCALATION_TTL_MS,
-      });
-      log.warn('Session escalated due to prompt injection detection', {
-        sessionId: event.sessionId,
-        escalatedBlockMinSeverity: 'medium',
-      });
-    });
-  }
-
-  /** Clean up expired escalations */
-  function cleanExpiredEscalations(): void {
-    const now = Date.now();
-    for (const [sessionId, entry] of escalatedSessions) {
-      if (entry.expiresAt <= now) {
-        escalatedSessions.delete(sessionId);
-        log.debug('Escalation expired', { sessionId });
-      }
-    }
-  }
-
   // Live config readers — support hot-reload from Dashboard
   const getAction = () => config.getLiveConfig ? config.getLiveConfig().action : config.action;
   const getRecordAll = () => config.getLiveConfig ? config.getLiveConfig().recordAll : config.recordAll;
   const getBlockMinSeverity = () => config.getLiveConfig ? config.getLiveConfig().blockMinSeverity : config.blockMinSeverity;
   const getAlertMinSeverity = () => config.getLiveConfig ? config.getLiveConfig().alertMinSeverity : config.alertMinSeverity;
 
-  /** Get effective blockMinSeverity for a session (may be escalated) */
-  function getEffectiveBlockMinSeverity(sessionId?: string): string {
-    if (sessionId) {
-      const escalation = escalatedSessions.get(sessionId);
-      if (escalation && escalation.expiresAt > Date.now()) {
-        return escalation.blockMinSeverity;
-      }
-    }
+  /** Get effective blockMinSeverity for a request context (uses threat-scorer's _threatLevel) */
+  function getEffectiveBlockMinSeverity(context: RequestContext): string {
+    const threatLevel = context._threatLevel;
+    if (threatLevel === 'critical') return 'low';       // Block all severities
+    if (threatLevel === 'high') return 'medium';        // Block medium+
+    if (threatLevel === 'elevated') return 'high';      // Block high+
     return getBlockMinSeverity();
   }
 
@@ -237,6 +203,7 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
 
         eventBus?.emit('toolguard:alert', {
           requestId,
+          sessionId,
           toolName: tc.toolName,
           ruleId: ruleMatch.rule.id,
           ruleName: ruleMatch.rule.name,
@@ -258,11 +225,10 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
 
     // ── Load rules from DB and set streaming block flag ──
     async onRequest(context: RequestContext): Promise<PluginRequestResult | void> {
-      cleanExpiredEscalations();
       const rules = rulesRepo.getEnabled();
       context._toolGuardRules = rules;
-      const effectiveBlockMin = getEffectiveBlockMinSeverity(context.sessionId);
-      log.debug('onRequest', { action: getAction(), recordAll: getRecordAll(), isStreaming: context.isStreaming, effectiveBlockMin });
+      const effectiveBlockMin = getEffectiveBlockMinSeverity(context);
+      log.debug('onRequest', { action: getAction(), recordAll: getRecordAll(), isStreaming: context.isStreaming, effectiveBlockMin, threatLevel: context._threatLevel });
       if (getAction() === 'block' && context.isStreaming) {
         context._toolGuardStreamBlock = effectiveBlockMin;
       }
@@ -284,8 +250,8 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
       });
       if (matches.length === 0) return;
 
-      // Check if any flagged call meets the block severity threshold (may be escalated)
-      const currentBlockMin = getEffectiveBlockMinSeverity(context.request.sessionId);
+      // Check if any flagged call meets the block severity threshold (may be escalated by threat level)
+      const currentBlockMin = getEffectiveBlockMinSeverity(context.request);
       const blockable = matches.filter(
         m => m.ruleMatch && shouldAlert(m.ruleMatch.rule.severity, currentBlockMin),
       );

@@ -62,6 +62,29 @@ export interface BastionConfig {
       alertDesktop: boolean;
       alertWebhookUrl: string;
     };
+    threatIntelligence?: {
+      enabled: boolean;
+      scoring?: {
+        piWeight?: number;
+        dlpWeight?: number;
+        toolGuardWeights?: { critical?: number; high?: number; medium?: number; low?: number };
+        toolChainWeight?: number;
+        decayPerMinute?: number;
+      };
+      thresholds?: {
+        elevated?: number;
+        high?: number;
+        critical?: number;
+      };
+      toolChain?: {
+        enabled?: boolean;
+        maxWindowSize?: number;
+      };
+      taintTracking?: {
+        enabled?: boolean;
+        ttlMinutes?: number;
+      };
+    };
     external?: Array<{
       package: string;
       enabled: boolean;

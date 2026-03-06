@@ -96,11 +96,13 @@ tr:hover td{background:var(--border)}
 .audit-kv .v{color:var(--bright)}
 .timeline-card{margin-bottom:4px;cursor:pointer;transition:border-color .15s;padding:10px 12px}
 .timeline-card:hover{border-color:var(--cyan)}
-.pro-feature-row{cursor:pointer;transition:border-color .15s}
-.pro-feature-row:hover{border-color:var(--cyan)}
-.pro-feature-row.unlocked .toggle-label{color:var(--green)}
 .filter-input{background:var(--bg);border:1px solid var(--border);color:var(--bright);padding:4px 10px;font-family:inherit;font-size:11px;width:280px}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+.row-tag.elevated{background:#1a1a00;color:var(--yellow)}
+.row-tag.high-threat{background:#1a0a00;color:#ff6600}
+.row-tag.critical-threat{background:#330000;color:var(--red)}
+.ti-reset-btn{padding:2px 8px;font-size:10px;cursor:pointer;font-family:inherit;color:var(--red);background:none;border:1px solid #330000;border-radius:2px}
+.ti-reset-btn:hover{background:#1a0000}
 </style>
 </head>`;
 
@@ -184,6 +186,20 @@ const PAGE_GUARD = `
     <div class="section-body" id="gd-rules"><div class="empty">No rules</div></div>
   </div>
 </div>
+<div class="section" style="margin-top:8px">
+  <div class="section-head"><span class="section-title">Threat Sessions</span><span style="color:var(--muted);font-size:10px;margin-left:4px">(elevated+)</span></div>
+  <div class="section-body">
+    <table><thead><tr><th>Session</th><th>Score</th><th>Level</th><th>Events</th><th>Last Event</th><th></th></tr></thead><tbody id="ti-sessions-list"></tbody></table>
+    <p class="empty" id="ti-no-sessions">No elevated sessions</p>
+  </div>
+</div>
+<div class="section" style="margin-top:2px">
+  <div class="section-head"><span class="section-title">Chain Detections</span></div>
+  <div class="section-body">
+    <table><thead><tr><th>Time</th><th>Session</th><th>Rule</th><th>Sequence</th><th>Action</th></tr></thead><tbody id="ti-chains-list"></tbody></table>
+    <p class="empty" id="ti-no-chains">No chain detections</p>
+  </div>
+</div>
 </div>`;
 
 // ── PAGE: LOG ─────────────────────────────────────────────────────
@@ -259,25 +275,20 @@ const PAGE_SETTINGS = `
 <div class="section"><div class="section-head setting-toggle" data-target="set-plugins"><span class="section-title"><span class="sect-arrow">&#9662;</span> PLUGINS</span></div>
 <div class="section-body" id="set-plugins" style="padding:12px"><div id="plugin-toggles"></div></div></div>
 
-<!-- 2. Pro Features (dev-only) -->
-<div class="section" id="sec-pro" style="display:none"><div class="section-head setting-toggle" data-target="set-pro"><span class="section-title"><span class="sect-arrow">&#9656;</span> PRO FEATURES</span></div>
-<div class="section-body" id="set-pro" style="display:none;padding:12px">
-  <div id="pro-features">
-    <div class="toggle-row pro-feature-row" data-pro-feature="ai-injection"><div><div class="toggle-label">AI Injection Detection</div><div class="toggle-desc">Multi-layer AI-driven prompt injection detection</div></div><span class="row-tag" style="background:#1a1a1a;color:var(--dim)">PRO</span></div>
-    <div class="toggle-row pro-feature-row" data-pro-feature="budget"><div><div class="toggle-label">Budget Control</div><div class="toggle-desc">Per-session/user/project usage and cost budgets</div></div><span class="row-tag" style="background:#1a1a1a;color:var(--dim)">PRO</span></div>
-    <div class="toggle-row pro-feature-row" data-pro-feature="ratelimit"><div><div class="toggle-label">Rate Limiting</div><div class="toggle-desc">Configurable rate limiting by API key, session, or global</div></div><span class="row-tag" style="background:#1a1a1a;color:var(--dim)">PRO</span></div>
+<!-- 2. Optional Features -->
+<div class="section"><div class="section-head setting-toggle" data-target="set-optional"><span class="section-title"><span class="sect-arrow">&#9656;</span> OPTIONAL FEATURES</span></div>
+<div class="section-body" id="set-optional" style="display:none;padding:12px">
+  <div id="optional-features">
+    <div class="toggle-row" data-opt="pi-classifier"><div><div class="toggle-label">AI Injection Detection</div><div class="toggle-desc">ML-based prompt injection detection (ONNX Runtime)</div></div><span class="row-tag" id="opt-tag-pi-classifier" style="background:#1a1a1a;color:var(--dim)">NOT INSTALLED</span></div>
+    <div class="toggle-row" data-opt="content-extractor"><div><div class="toggle-label">Content Extractor</div><div class="toggle-desc">PDF text extraction and image OCR for DLP scanning</div></div><span class="row-tag" id="opt-tag-content-extractor" style="background:#1a1a1a;color:var(--dim)">NOT INSTALLED</span></div>
   </div>
-  <div id="pro-detail" style="display:none;margin-top:12px;padding:16px;background:var(--bg);border:1px solid var(--border);text-align:center">
-    <div id="pro-detail-title" style="color:var(--bright);font-size:13px;font-weight:700;margin-bottom:6px"></div>
-    <div id="pro-detail-desc" style="color:var(--dim);font-size:12px;max-width:480px;margin:0 auto 12px"></div>
-    <div id="pro-detail-unlocked" style="display:none;color:var(--green);font-size:12px">Feature enabled.</div>
-    <div id="pro-detail-locked">
-      <a style="display:inline-block;padding:6px 20px;background:#0a3d0a;color:var(--green);border:1px solid var(--green);font-size:12px;text-decoration:none;font-family:inherit" href="https://bastion.dev/pro" target="_blank">Upgrade to Pro</a>
-      <div class="pro-license-input" id="pro-detail-license" style="display:none;margin-top:12px">
-        <input type="text" class="cfg-input" style="width:240px;display:inline-block" placeholder="License key" id="pro-license-key">
-        <button class="cfg-btn primary" onclick="activateLicense('pro-license-key')">Activate</button>
-      </div>
-    </div>
+  <div id="opt-install-hint" style="margin-top:12px;padding:12px;background:var(--bg);border:1px solid var(--border);font-size:11px;color:var(--dim)">
+    <div style="margin-bottom:4px;color:var(--bright)">Install optional plugins:</div>
+    <code style="color:var(--green);font-size:12px">bastion plugins install</code> or <code style="color:var(--green);font-size:12px">./install.sh -local -plugins</code>
+    <div style="margin-top:4px">Adds ML-based detection, PDF/OCR content extraction, and more.</div>
+  </div>
+  <div id="opt-uninstall-row" style="display:none;margin-top:12px;text-align:right">
+    <button id="opt-uninstall-btn" class="cfg-btn secondary" style="color:var(--red);border-color:#330000">Uninstall Optional Plugins</button>
   </div>
 </div></div>
 
@@ -554,29 +565,39 @@ function actionTag(a){
   if(a==='flag')return '<span class="row-tag warn">flag</span>';
   return '<span class="row-tag">'+esc(a)+'</span>';
 }
+function threatLevelTag(level){
+  if(level==='critical')return '<span class="row-tag critical-threat">critical</span>';
+  if(level==='high')return '<span class="row-tag high-threat">high</span>';
+  if(level==='elevated')return '<span class="row-tag elevated">elevated</span>';
+  return '<span class="row-tag">'+esc(level||'normal')+'</span>';
+}
 
 // ══ 4. PAGE: OVERVIEW ═════════════════════════════════════════════
 async function refreshOverview(){
   try{
     var sp=sinceParam();
     var qp=sp?'?'+sp:'';
-    var [statsR,alertsR,dlpRecentR,piRecentR]=await Promise.all([
+    var [statsR,alertsR,dlpRecentR,piRecentR,threatOvR]=await Promise.all([
       apiFetch('/api/stats'+qp),
       apiFetch('/api/tool-guard/alerts'),
       apiFetch('/api/dlp/recent?limit=5'+(sp?'&'+sp:'')),
-      apiFetch('/api/plugin-events/recent?limit=5&plugin=pi-classifier'+(sp?'&'+sp:''))
+      apiFetch('/api/plugin-events/recent?limit=5&plugin=pi-classifier'+(sp?'&'+sp:'')),
+      apiFetch('/api/threat/sessions').catch(function(){return{json:function(){return[]}}})
     ]);
     var statsData=await statsR.json();
     var alertsData=await alertsR.json();
     var dlpRecent=await dlpRecentR.json();
     var piRecent=await piRecentR.json();
+    var threatOvData=await threatOvR.json();
+    var threatSessions=Array.isArray(threatOvData)?threatOvData:threatOvData.sessions||[];
+    var threatCount=threatSessions.length;
     var s=statsData.stats;
     var dlp=statsData.dlp||{};
     var ba=dlp.by_action||{};
     var piStats=statsData.pluginEvents||{};
 
     // Gauges
-    if(!skipIfSame('ov-gauges',{s:s,dlp:dlp,pi:piStats})){
+    if(!skipIfSame('ov-gauges',{s:s,dlp:dlp,pi:piStats,tc:threatCount})){
       var dlpTotal=dlp.total_events||0;
       var piTotal=piStats.total_events||0;
       var latAvg=s.avg_latency_ms||0;
@@ -586,6 +607,7 @@ async function refreshOverview(){
         gauge('Tokens',fmt(s.total_input_tokens+s.total_output_tokens),fmt(s.total_input_tokens)+' in / '+fmt(s.total_output_tokens)+' out','')+
         gauge('DLP Hits',fmt(dlpTotal),(ba.redact||0)+' redact, '+(ba.block||0)+' block',dlpTotal>0?'red':'')+
         gauge('PI Detections',fmt(piTotal),'ML injection','red')+
+        gauge('Threats',fmt(threatCount),'elevated+ sessions',threatCount>0?'red':'green')+
         gauge('Avg Latency',Math.round(latAvg)+'ms','','cyan');
     }
 
@@ -790,11 +812,57 @@ async function refreshGuard(){
           '<span class="row-tag '+(r.enabled?'audit':'')+'">'+((r.enabled?'ON':'OFF'))+'</span></div>';
       }).join(''):'<div class="empty">No rules</div>';
     }
+
+    // Threat Intelligence sections
+    try{
+      var [threatR,chainR]=await Promise.all([
+        apiFetch('/api/threat/sessions'),
+        apiFetch('/api/threat/chain-detections?limit=20')
+      ]);
+      var sessions=await threatR.json();
+      var chains=await chainR.json();
+
+      // Threat sessions table
+      if(!skipIfSame('ti-sessions',sessions)){
+        var tsList=Array.isArray(sessions)?sessions:sessions.sessions||[];
+        document.getElementById('ti-no-sessions').style.display=tsList.length?'none':'';
+        document.getElementById('ti-sessions-list').innerHTML=tsList.map(function(s){
+          return '<tr><td class="mono" style="font-size:11px;color:#555">'+esc((s.session_id||s.sessionId||'').slice(0,12))+'</td>'+
+            '<td style="font-weight:700;color:var(--bright)">'+Math.round(s.score||0)+'</td>'+
+            '<td>'+threatLevelTag(s.level||s.threatLevel)+'</td>'+
+            '<td>'+fmt(s.events||s.eventCount||0)+'</td>'+
+            '<td>'+ago(s.last_event||s.lastEvent||s.updated_at||'')+'</td>'+
+            '<td><button class="ti-reset-btn" data-sid="'+esc(s.session_id||s.sessionId||'')+'">Reset</button></td></tr>';
+        }).join('');
+      }
+
+      // Chain detections table
+      if(!skipIfSame('ti-chains',chains)){
+        var chList=Array.isArray(chains)?chains:chains.detections||[];
+        document.getElementById('ti-no-chains').style.display=chList.length?'none':'';
+        document.getElementById('ti-chains-list').innerHTML=chList.map(function(c){
+          var seq=(c.sequence||c.tools||[]).map(function(t){return esc(t)}).join(' \\u2192 ');
+          var actionCls=(c.action==='block')?'block':'warn';
+          return '<tr><td>'+ago(c.created_at||c.timestamp||'')+'</td>'+
+            '<td class="mono" style="font-size:11px;color:#555">'+esc((c.session_id||c.sessionId||'').slice(0,12))+'</td>'+
+            '<td class="mono">'+esc(c.rule||c.ruleName||'')+'</td>'+
+            '<td style="font-size:11px">'+seq+'</td>'+
+            '<td><span class="row-tag '+actionCls+'">'+esc((c.action||'warn').toUpperCase())+'</span></td></tr>';
+        }).join('');
+      }
+    }catch(te){/* threat API may not be available */}
   }catch(e){console.error('Guard refresh error',e)}
 }
 document.getElementById('gd-ack-btn').addEventListener('click',async function(){
   await apiFetch('/api/tool-guard/alerts/ack',{method:'POST'});
   refreshGuard();pollAlerts();
+});
+document.getElementById('ti-sessions-list').addEventListener('click',async function(e){
+  var btn=e.target.closest('.ti-reset-btn');if(!btn)return;
+  var sid=btn.dataset.sid;if(!sid)return;
+  btn.textContent='...';btn.disabled=true;
+  try{await apiFetch('/api/threat/sessions/'+encodeURIComponent(sid)+'/reset',{method:'POST'});_lastJson={};refreshGuard()}
+  catch(ex){btn.textContent='Reset';btn.disabled=false}
 });
 // Click guard event → go to Log detail
 document.getElementById('gd-events').addEventListener('click',function(e){
@@ -1153,19 +1221,10 @@ document.querySelectorAll('.setting-toggle[data-target]').forEach(function(h){
   });
 });
 
-var _devMode=false;var _proLicense={pro:false};
-var _proFeatures={
-  'ai-injection':{title:'AI Injection Detection',desc:'Multi-layer AI-driven prompt injection detection with semantic analysis.'},
-  'budget':{title:'Budget Control',desc:'Per-session/user/project cost budgets with auto-blocking.'},
-  'ratelimit':{title:'Rate Limiting',desc:'Configurable rate limiting by API key, session, or global scope.'}
-};
-
 async function refreshSettings(){
   try{
-    var [cfgR,licR,devR]=await Promise.all([apiFetch('/api/config'),apiFetch('/api/license'),apiFetch('/api/dev')]);
-    var cfgData=await cfgR.json();_proLicense=await licR.json();var devData=await devR.json();
-    _devMode=!!devData.dev;
-    document.getElementById('sec-pro').style.display=_devMode?'':'none';
+    var cfgR=await apiFetch('/api/config');
+    var cfgData=await cfgR.json();
 
     // 1. Plugins
     var info=cfgData.pluginInfo||[];
@@ -1191,8 +1250,25 @@ async function refreshSettings(){
       });
     });
 
-    // 2. Pro Features
-    updateProFeatures();
+    // 2. Optional Features
+    var extNames=external.map(function(p){return p.name});
+    var optMap={'pi-classifier':'pi-classifier','content-extractor':'content-extractor'};
+    var hasAnyOpt=false;
+    Object.keys(optMap).forEach(function(key){
+      var tag=document.getElementById('opt-tag-'+key);if(!tag)return;
+      var installed=extNames.indexOf(optMap[key])>=0;
+      if(installed){
+        hasAnyOpt=true;
+        var p=external.find(function(x){return x.name===optMap[key]});
+        tag.style.background=p&&p.enabled?'#0a1a0a':'#1a1a00';
+        tag.style.color=p&&p.enabled?'#00ff88':'var(--yellow)';
+        tag.textContent=p&&p.enabled?'ACTIVE':'DISABLED';
+      }else{
+        tag.style.background='#1a1a1a';tag.style.color='var(--dim)';tag.textContent='NOT INSTALLED';
+      }
+    });
+    document.getElementById('opt-install-hint').style.display=hasAnyOpt?'none':'';
+    document.getElementById('opt-uninstall-row').style.display=hasAnyOpt?'':'none';
 
     // 3. DLP Config
     await loadDlpConfig(cfgData);
@@ -1223,37 +1299,16 @@ async function refreshSettings(){
   }catch(e){console.error('Settings refresh error',e)}
 }
 
-// Pro features
-function updateProFeatures(){
-  document.querySelectorAll('.pro-feature-row').forEach(function(row){
-    if(_proLicense.pro){
-      row.classList.add('unlocked');
-      var badge=row.querySelector('.row-tag');
-      if(badge){badge.style.background='#0a1a0a';badge.style.color='#00ff88';badge.textContent='ACTIVE'}
-    }
-  });
-}
-function showProDetail(feature){
-  var info=_proFeatures[feature];if(!info)return;
-  document.getElementById('pro-detail-title').textContent=info.title;
-  document.getElementById('pro-detail-desc').textContent=info.desc;
-  document.getElementById('pro-detail').style.display='block';
-  if(_proLicense.pro){document.getElementById('pro-detail-unlocked').style.display='block';document.getElementById('pro-detail-locked').style.display='none'}
-  else{document.getElementById('pro-detail-unlocked').style.display='none';document.getElementById('pro-detail-locked').style.display='block';
-    document.getElementById('pro-detail-license').style.display=(_devMode||_proLicense.installed)?'block':'none'}
-}
-document.querySelectorAll('.pro-feature-row').forEach(function(row){
-  row.addEventListener('click',function(){showProDetail(row.dataset.proFeature)});
+// Optional plugins uninstall
+document.getElementById('opt-uninstall-btn').addEventListener('click',async function(){
+  if(!confirm('Uninstall optional plugins (bastion-pro)?'))return;
+  var removeModels=confirm('Also remove downloaded models? This frees disk space but models will need to be re-downloaded on next install.');
+  try{
+    var r=await apiFetch('/api/plugins/uninstall',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:'bastion-pro',removeModels:removeModels})});
+    var d=await r.json();
+    if(d.ok){refreshSettings()}else{alert(d.error||'Uninstall failed')}
+  }catch(e){alert('Uninstall failed: '+e.message)}
 });
-async function activateLicense(inputId){
-  var key=document.getElementById(inputId).value.trim();if(!key)return;
-  if(_devMode){
-    try{var r=await apiFetch('/api/dev/activate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({token:key})});
-      var d=await r.json();if(d.ok){refreshSettings();return}alert(d.error||'Invalid token');
-    }catch(e){alert('Activation failed')}
-  }else{alert('License activation requires the Bastion Pro plugin.')}
-}
-window.activateLicense=activateLicense;
 
 // DLP Config
 var dlpServerState=null;var dlpBuiltinsLoaded=false;var dlpCleanSnapshot='';
