@@ -1,4 +1,6 @@
+import { rmSync, existsSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { paths } from '../config/paths.js';
 import type Database from 'better-sqlite3';
 import { RequestsRepository } from '../storage/repositories/requests.js';
 import { DlpEventsRepository } from '../storage/repositories/dlp-events.js';
@@ -23,7 +25,6 @@ import { getLocalSignatureMeta, checkForUpdates, syncRemotePatterns } from '../d
 import type { ConfigManager } from '../config/manager.js';
 import type { PluginManager } from '../plugins/index.js';
 import { getVersion } from '../version.js';
-import { verifyLicenseToken } from '../license/verify.js';
 import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('api-routes');
@@ -67,40 +68,9 @@ export function createApiRouter(
   const threatScoreEventsRepo = new ThreatScoreEventsRepository(db);
   const chainDetectionsRepo = new ToolChainDetectionsRepository(db);
 
-  let devUnlocked = false;
-
   return (req: IncomingMessage, res: ServerResponse): boolean => {
     const url = parseUrl(req);
     const path = url.pathname;
-
-    // GET /api/dev — dev mode check (only true when started with --dev)
-    if (req.method === 'GET' && path === '/api/dev') {
-      sendJson(res, { dev: process.env.BASTION_DEV === '1' });
-      return true;
-    }
-
-    // POST /api/dev/activate — activate dev unlock with token
-    if (req.method === 'POST' && path === '/api/dev/activate') {
-      const expected = process.env.BASTION_DEV_TOKEN;
-      if (!expected) {
-        sendJson(res, { error: 'Dev mode not enabled' }, 403);
-        return true;
-      }
-      bufferBody(req).then((body) => {
-        try {
-          const data = JSON.parse(body);
-          if (data.token === expected) {
-            devUnlocked = true;
-            sendJson(res, { ok: true });
-          } else {
-            sendJson(res, { error: 'Invalid token' }, 403);
-          }
-        } catch {
-          sendJson(res, { error: 'Invalid request' }, 400);
-        }
-      }).catch(() => sendJson(res, { error: 'Internal error' }, 500));
-      return true;
-    }
 
     // GET /api/stats — Enhanced with filters
     if (req.method === 'GET' && path === '/api/stats') {
@@ -695,31 +665,50 @@ export function createApiRouter(
       return true;
     }
 
-    // GET /api/license — Pro license status
-    if (req.method === 'GET' && path === '/api/license') {
-      // Dev token unlock — all features available for debugging
-      if (devUnlocked) {
-        sendJson(res, { pro: true, plan: 'dev', expiresAt: '', features: ['ai-injection', 'budget', 'ratelimit'] });
-        return true;
-      }
-
-      const proPlugin = pluginManager.getPlugins().find(p =>
-        p.source === 'external' && p.packageName?.match(/bastion-pro|@bastion\/pro/)
-      );
-      if (!proPlugin || pluginManager.isDisabled(proPlugin.name)) {
-        sendJson(res, { pro: false });
-        return true;
-      }
-      // The Pro plugin stores a signed token — we verify the signature
-      // so a forged plugin cannot simply claim valid: true.
-      const licenseState = getPluginState ? getPluginState(proPlugin.name, 'license') as Record<string, unknown> | undefined : undefined;
-      const token = licenseState?.token;
-      const result = verifyLicenseToken(token);
-      if (result.valid && result.payload) {
-        sendJson(res, { pro: true, plan: result.payload.plan, expiresAt: result.payload.expiresAt, features: result.payload.features });
-      } else {
-        sendJson(res, { pro: false, installed: true, reason: result.reason });
-      }
+    // POST /api/plugins/uninstall — uninstall an external plugin
+    if (req.method === 'POST' && path === '/api/plugins/uninstall') {
+      bufferBody(req).then((body) => {
+        try {
+          const data = JSON.parse(body);
+          const name = data.name as string;
+          if (!name) {
+            sendJson(res, { error: 'name is required' }, 400);
+            return;
+          }
+          const config = configManager.get();
+          const external = config.plugins.external ?? [];
+          const match = external.find(e => e.package.includes(name));
+          if (!match) {
+            sendJson(res, { error: `No external plugin matching "${name}"` }, 404);
+            return;
+          }
+          // Remove plugin directory
+          if (existsSync(match.package)) {
+            rmSync(match.package, { recursive: true, force: true });
+          }
+          // Remove models if requested
+          const removeModels = data.removeModels === true;
+          const modelsDir = paths.modelsDir;
+          let modelsRemoved = false;
+          if (removeModels && existsSync(modelsDir)) {
+            rmSync(modelsDir, { recursive: true, force: true });
+            modelsRemoved = true;
+          }
+          // Update config — remove the entry
+          const updated = external.filter(e => e !== match);
+          configManager.update({ plugins: { external: updated } });
+          // Disable the plugin in the running manager
+          for (const p of pluginManager.getPlugins()) {
+            if (p.source === 'external' && p.packageName?.includes(name)) {
+              pluginManager.disable(p.name);
+            }
+          }
+          log.info('Plugin uninstalled', { name, package: match.package, modelsRemoved });
+          sendJson(res, { ok: true, removed: match.package, modelsRemoved });
+        } catch (err) {
+          sendJson(res, { error: (err as Error).message }, 400);
+        }
+      }).catch((err) => sendJson(res, { error: (err as Error).message }, 500));
       return true;
     }
 

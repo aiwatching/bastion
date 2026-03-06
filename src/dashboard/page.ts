@@ -96,9 +96,6 @@ tr:hover td{background:var(--border)}
 .audit-kv .v{color:var(--bright)}
 .timeline-card{margin-bottom:4px;cursor:pointer;transition:border-color .15s;padding:10px 12px}
 .timeline-card:hover{border-color:var(--cyan)}
-.pro-feature-row{cursor:pointer;transition:border-color .15s}
-.pro-feature-row:hover{border-color:var(--cyan)}
-.pro-feature-row.unlocked .toggle-label{color:var(--green)}
 .filter-input{background:var(--bg);border:1px solid var(--border);color:var(--bright);padding:4px 10px;font-family:inherit;font-size:11px;width:280px}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
 .row-tag.elevated{background:#1a1a00;color:var(--yellow)}
@@ -278,25 +275,20 @@ const PAGE_SETTINGS = `
 <div class="section"><div class="section-head setting-toggle" data-target="set-plugins"><span class="section-title"><span class="sect-arrow">&#9662;</span> PLUGINS</span></div>
 <div class="section-body" id="set-plugins" style="padding:12px"><div id="plugin-toggles"></div></div></div>
 
-<!-- 2. Pro Features (dev-only) -->
-<div class="section" id="sec-pro" style="display:none"><div class="section-head setting-toggle" data-target="set-pro"><span class="section-title"><span class="sect-arrow">&#9656;</span> PRO FEATURES</span></div>
-<div class="section-body" id="set-pro" style="display:none;padding:12px">
-  <div id="pro-features">
-    <div class="toggle-row pro-feature-row" data-pro-feature="ai-injection"><div><div class="toggle-label">AI Injection Detection</div><div class="toggle-desc">Multi-layer AI-driven prompt injection detection</div></div><span class="row-tag" style="background:#1a1a1a;color:var(--dim)">PRO</span></div>
-    <div class="toggle-row pro-feature-row" data-pro-feature="budget"><div><div class="toggle-label">Budget Control</div><div class="toggle-desc">Per-session/user/project usage and cost budgets</div></div><span class="row-tag" style="background:#1a1a1a;color:var(--dim)">PRO</span></div>
-    <div class="toggle-row pro-feature-row" data-pro-feature="ratelimit"><div><div class="toggle-label">Rate Limiting</div><div class="toggle-desc">Configurable rate limiting by API key, session, or global</div></div><span class="row-tag" style="background:#1a1a1a;color:var(--dim)">PRO</span></div>
+<!-- 2. Optional Features -->
+<div class="section"><div class="section-head setting-toggle" data-target="set-optional"><span class="section-title"><span class="sect-arrow">&#9656;</span> OPTIONAL FEATURES</span></div>
+<div class="section-body" id="set-optional" style="display:none;padding:12px">
+  <div id="optional-features">
+    <div class="toggle-row" data-opt="pi-classifier"><div><div class="toggle-label">AI Injection Detection</div><div class="toggle-desc">ML-based prompt injection detection (ONNX Runtime)</div></div><span class="row-tag" id="opt-tag-pi-classifier" style="background:#1a1a1a;color:var(--dim)">NOT INSTALLED</span></div>
+    <div class="toggle-row" data-opt="content-extractor"><div><div class="toggle-label">Content Extractor</div><div class="toggle-desc">PDF text extraction and image OCR for DLP scanning</div></div><span class="row-tag" id="opt-tag-content-extractor" style="background:#1a1a1a;color:var(--dim)">NOT INSTALLED</span></div>
   </div>
-  <div id="pro-detail" style="display:none;margin-top:12px;padding:16px;background:var(--bg);border:1px solid var(--border);text-align:center">
-    <div id="pro-detail-title" style="color:var(--bright);font-size:13px;font-weight:700;margin-bottom:6px"></div>
-    <div id="pro-detail-desc" style="color:var(--dim);font-size:12px;max-width:480px;margin:0 auto 12px"></div>
-    <div id="pro-detail-unlocked" style="display:none;color:var(--green);font-size:12px">Feature enabled.</div>
-    <div id="pro-detail-locked">
-      <a style="display:inline-block;padding:6px 20px;background:#0a3d0a;color:var(--green);border:1px solid var(--green);font-size:12px;text-decoration:none;font-family:inherit" href="https://bastion.dev/pro" target="_blank">Upgrade to Pro</a>
-      <div class="pro-license-input" id="pro-detail-license" style="display:none;margin-top:12px">
-        <input type="text" class="cfg-input" style="width:240px;display:inline-block" placeholder="License key" id="pro-license-key">
-        <button class="cfg-btn primary" onclick="activateLicense('pro-license-key')">Activate</button>
-      </div>
-    </div>
+  <div id="opt-install-hint" style="margin-top:12px;padding:12px;background:var(--bg);border:1px solid var(--border);font-size:11px;color:var(--dim)">
+    <div style="margin-bottom:4px;color:var(--bright)">Install optional plugins:</div>
+    <code style="color:var(--green);font-size:12px">bastion plugins install</code> or <code style="color:var(--green);font-size:12px">./install.sh -local -plugins</code>
+    <div style="margin-top:4px">Adds ML-based detection, PDF/OCR content extraction, and more.</div>
+  </div>
+  <div id="opt-uninstall-row" style="display:none;margin-top:12px;text-align:right">
+    <button id="opt-uninstall-btn" class="cfg-btn secondary" style="color:var(--red);border-color:#330000">Uninstall Optional Plugins</button>
   </div>
 </div></div>
 
@@ -1229,19 +1221,10 @@ document.querySelectorAll('.setting-toggle[data-target]').forEach(function(h){
   });
 });
 
-var _devMode=false;var _proLicense={pro:false};
-var _proFeatures={
-  'ai-injection':{title:'AI Injection Detection',desc:'Multi-layer AI-driven prompt injection detection with semantic analysis.'},
-  'budget':{title:'Budget Control',desc:'Per-session/user/project cost budgets with auto-blocking.'},
-  'ratelimit':{title:'Rate Limiting',desc:'Configurable rate limiting by API key, session, or global scope.'}
-};
-
 async function refreshSettings(){
   try{
-    var [cfgR,licR,devR]=await Promise.all([apiFetch('/api/config'),apiFetch('/api/license'),apiFetch('/api/dev')]);
-    var cfgData=await cfgR.json();_proLicense=await licR.json();var devData=await devR.json();
-    _devMode=!!devData.dev;
-    document.getElementById('sec-pro').style.display=_devMode?'':'none';
+    var cfgR=await apiFetch('/api/config');
+    var cfgData=await cfgR.json();
 
     // 1. Plugins
     var info=cfgData.pluginInfo||[];
@@ -1267,8 +1250,25 @@ async function refreshSettings(){
       });
     });
 
-    // 2. Pro Features
-    updateProFeatures();
+    // 2. Optional Features
+    var extNames=external.map(function(p){return p.name});
+    var optMap={'pi-classifier':'pi-classifier','content-extractor':'content-extractor'};
+    var hasAnyOpt=false;
+    Object.keys(optMap).forEach(function(key){
+      var tag=document.getElementById('opt-tag-'+key);if(!tag)return;
+      var installed=extNames.indexOf(optMap[key])>=0;
+      if(installed){
+        hasAnyOpt=true;
+        var p=external.find(function(x){return x.name===optMap[key]});
+        tag.style.background=p&&p.enabled?'#0a1a0a':'#1a1a00';
+        tag.style.color=p&&p.enabled?'#00ff88':'var(--yellow)';
+        tag.textContent=p&&p.enabled?'ACTIVE':'DISABLED';
+      }else{
+        tag.style.background='#1a1a1a';tag.style.color='var(--dim)';tag.textContent='NOT INSTALLED';
+      }
+    });
+    document.getElementById('opt-install-hint').style.display=hasAnyOpt?'none':'';
+    document.getElementById('opt-uninstall-row').style.display=hasAnyOpt?'':'none';
 
     // 3. DLP Config
     await loadDlpConfig(cfgData);
@@ -1299,37 +1299,16 @@ async function refreshSettings(){
   }catch(e){console.error('Settings refresh error',e)}
 }
 
-// Pro features
-function updateProFeatures(){
-  document.querySelectorAll('.pro-feature-row').forEach(function(row){
-    if(_proLicense.pro){
-      row.classList.add('unlocked');
-      var badge=row.querySelector('.row-tag');
-      if(badge){badge.style.background='#0a1a0a';badge.style.color='#00ff88';badge.textContent='ACTIVE'}
-    }
-  });
-}
-function showProDetail(feature){
-  var info=_proFeatures[feature];if(!info)return;
-  document.getElementById('pro-detail-title').textContent=info.title;
-  document.getElementById('pro-detail-desc').textContent=info.desc;
-  document.getElementById('pro-detail').style.display='block';
-  if(_proLicense.pro){document.getElementById('pro-detail-unlocked').style.display='block';document.getElementById('pro-detail-locked').style.display='none'}
-  else{document.getElementById('pro-detail-unlocked').style.display='none';document.getElementById('pro-detail-locked').style.display='block';
-    document.getElementById('pro-detail-license').style.display=(_devMode||_proLicense.installed)?'block':'none'}
-}
-document.querySelectorAll('.pro-feature-row').forEach(function(row){
-  row.addEventListener('click',function(){showProDetail(row.dataset.proFeature)});
+// Optional plugins uninstall
+document.getElementById('opt-uninstall-btn').addEventListener('click',async function(){
+  if(!confirm('Uninstall optional plugins (bastion-pro)?'))return;
+  var removeModels=confirm('Also remove downloaded models? This frees disk space but models will need to be re-downloaded on next install.');
+  try{
+    var r=await apiFetch('/api/plugins/uninstall',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:'bastion-pro',removeModels:removeModels})});
+    var d=await r.json();
+    if(d.ok){refreshSettings()}else{alert(d.error||'Uninstall failed')}
+  }catch(e){alert('Uninstall failed: '+e.message)}
 });
-async function activateLicense(inputId){
-  var key=document.getElementById(inputId).value.trim();if(!key)return;
-  if(_devMode){
-    try{var r=await apiFetch('/api/dev/activate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({token:key})});
-      var d=await r.json();if(d.ok){refreshSettings();return}alert(d.error||'Invalid token');
-    }catch(e){alert('Activation failed')}
-  }else{alert('License activation requires the Bastion Pro plugin.')}
-}
-window.activateLicense=activateLicense;
 
 // DLP Config
 var dlpServerState=null;var dlpBuiltinsLoaded=false;var dlpCleanSnapshot='';

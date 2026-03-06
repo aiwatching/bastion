@@ -53,7 +53,7 @@ while [[ $# -gt 0 ]]; do
       echo "Options:"
       echo "  -local [path]       Install from local source directory"
       echo "  -remote <branch>    Install from a specific git branch"
-      echo "  -plugins [path]     Also install Pro plugin pack (bastion-plugin-api)"
+      echo "  -plugins [path]     Also install optional plugin pack (bastion-plugin-api)"
       echo "  -h, --help          Show this help message"
       exit 0
       ;;
@@ -167,21 +167,28 @@ npm install 2>&1 | tail -1
 info "Building..."
 npm run build 2>&1 | tail -1
 
-# --- Install Pro plugins (optional) ---
+# --- Install optional plugins ---
 if [ -n "$INSTALL_PLUGINS" ]; then
   if [ ! -f "$INSTALL_PLUGINS/package.json" ]; then
     warn "Plugin directory not valid: $INSTALL_PLUGINS (no package.json)"
   else
     PLUGINS_DEST="$INSTALL_DIR/plugins/bastion-pro"
-    info "Installing Pro plugins from: $INSTALL_PLUGINS"
+    info "Installing optional plugins from: $INSTALL_PLUGINS"
     mkdir -p "$PLUGINS_DEST"
     rsync -a --exclude node_modules --exclude .git --exclude dist "$INSTALL_PLUGINS/" "$PLUGINS_DEST/"
 
-    # Rewrite the file: dependency to point to the installed plugin-api types package
+    # Rewrite @aiwatching/bastion-plugin-api dependency to point to installed package
     cd "$PLUGINS_DEST"
     PLUGIN_API_REL="$(node -e "const p=require('path'); console.log(p.relative('$PLUGINS_DEST','$INSTALL_DIR/packages/bastion-plugin-api'))")"
-    sed -i.bak "s|\"file:../bastion/packages/bastion-plugin-api\"|\"file:${PLUGIN_API_REL}\"|" package.json
-    rm -f package.json.bak
+    # Replace any version spec (semver or file: path) with the correct relative file: path
+    node -e "
+      const fs=require('fs');
+      const pkg=JSON.parse(fs.readFileSync('package.json','utf8'));
+      if(pkg.dependencies&&pkg.dependencies['@aiwatching/bastion-plugin-api']){
+        pkg.dependencies['@aiwatching/bastion-plugin-api']='file:${PLUGIN_API_REL}';
+        fs.writeFileSync('package.json',JSON.stringify(pkg,null,2)+'\n');
+      }
+    "
     info "Rewrote plugin-api path to: file:${PLUGIN_API_REL}"
     # Install plugin deps (including onnxruntime-node)
     npm install 2>&1 | tail -1
@@ -211,7 +218,7 @@ if [ -n "$INSTALL_PLUGINS" ]; then
       fi
     fi
 
-    info "Pro plugins installed"
+    info "Optional plugins installed"
   fi
 fi
 

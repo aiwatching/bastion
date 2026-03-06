@@ -12,7 +12,7 @@ import { registerTrustCaCommand } from './commands/trust-ca.js';
 import { registerProxyCommand } from './commands/proxy.js';
 import { registerOpenclawCommand } from './commands/openclaw.js';
 import { registerTokenCommand } from './commands/token.js';
-import { registerProCommand } from './commands/pro.js';
+import { registerPluginsCommand } from './commands/plugins.js';
 import { getVersion } from '../version.js';
 
 const program = new Command();
@@ -34,6 +34,6 @@ registerTrustCaCommand(program);
 registerProxyCommand(program);
 registerOpenclawCommand(program);
 registerTokenCommand(program);
-registerProCommand(program);
+registerPluginsCommand(program);
 
 program.parse();
