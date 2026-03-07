@@ -463,7 +463,7 @@ bastion plugins uninstall        # 卸载（会提示是否同时删除模型文
 
 也可通过 Dashboard → Settings → Optional Features 管理。
 
-详见 [@aiwatching/bastion-pro](https://github.com/aiwatching/bastion-plugin-api)。
+详见 [@aion0/bastion-plugin-api](https://github.com/aiwatching/bastion-plugin-api)。
 
 ## 文档
 

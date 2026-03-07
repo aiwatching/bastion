@@ -126,12 +126,12 @@ export function registerPluginsCommand(program: Command): void {
         cpSync(pluginSource, pluginsDest, { recursive: true, filter: (src) => !src.includes('node_modules') && !src.includes('.git') });
       }
 
-      // Rewrite @aiwatching/bastion-plugin-api to file: path
+      // Rewrite @aion0/bastion-plugin-api to file: path
       const pkgPath = join(pluginsDest, 'package.json');
       const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
-      if (pkg.dependencies?.['@aiwatching/bastion-plugin-api']) {
+      if (pkg.dependencies?.['@aion0/bastion-plugin-api']) {
         const relPath = relative(pluginsDest, pluginApiDir);
-        pkg.dependencies['@aiwatching/bastion-plugin-api'] = `file:${relPath}`;
+        pkg.dependencies['@aion0/bastion-plugin-api'] = `file:${relPath}`;
         writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
         console.log(`Rewrote plugin-api path to: file:${relPath}`);
       }

@@ -189,7 +189,7 @@ bastion plugins uninstall        # remove (prompts to also delete models)
 
 Or via the Dashboard → Settings → Optional Features.
 
-See [@aiwatching/bastion-pro](https://github.com/aiwatching/bastion-plugin-api) for details.
+See [@aion0/bastion-plugin-api](https://github.com/aiwatching/bastion-plugin-api) for details.
 
 ## Documentation
 

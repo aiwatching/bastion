@@ -1,5 +1,5 @@
 {
-  "name": "@aiwatching/bastion-plugin-api",
+  "name": "@aion0/bastion-plugin-api",
   "version": "2.0.0",
   "description": "Type definitions for Bastion AI Gateway plugins",
   "main": "dist/index.js",
