@@ -1,6 +1,6 @@
 {
   "name": "@aion0/bastion",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "description": "Local-first AI gateway for proxying and securing LLM provider requests",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
