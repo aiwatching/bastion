@@ -1301,10 +1301,10 @@ async function refreshSettings(){
 
 // Optional plugins uninstall
 document.getElementById('opt-uninstall-btn').addEventListener('click',async function(){
-  if(!confirm('Uninstall optional plugins (bastion-pro)?'))return;
+  if(!confirm('Uninstall optional plugins (bastion-plugin-api)?'))return;
   var removeModels=confirm('Also remove downloaded models? This frees disk space but models will need to be re-downloaded on next install.');
   try{
-    var r=await apiFetch('/api/plugins/uninstall',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:'bastion-pro',removeModels:removeModels})});
+    var r=await apiFetch('/api/plugins/uninstall',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:'bastion-plugin-api',removeModels:removeModels})});
     var d=await r.json();
     if(d.ok){refreshSettings()}else{alert(d.error||'Uninstall failed')}
   }catch(e){alert('Uninstall failed: '+e.message)}

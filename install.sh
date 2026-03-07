@@ -172,7 +172,7 @@ if [ -n "$INSTALL_PLUGINS" ]; then
   if [ ! -f "$INSTALL_PLUGINS/package.json" ]; then
     warn "Plugin directory not valid: $INSTALL_PLUGINS (no package.json)"
   else
-    PLUGINS_DEST="$INSTALL_DIR/plugins/bastion-pro"
+    PLUGINS_DEST="$INSTALL_DIR/plugins"
     info "Installing optional plugins from: $INSTALL_PLUGINS"
     mkdir -p "$PLUGINS_DEST"
     rsync -a --exclude node_modules --exclude .git --exclude dist "$INSTALL_PLUGINS/" "$PLUGINS_DEST/"
@@ -198,7 +198,7 @@ if [ -n "$INSTALL_PLUGINS" ]; then
     # Auto-configure external plugin in config.yaml
     USER_CONFIG="$HOME/.bastion/config.yaml"
     if [ -f "$USER_CONFIG" ]; then
-      if ! grep -q 'bastion-pro' "$USER_CONFIG"; then
+      if ! grep -q '/plugins"' "$USER_CONFIG"; then
         info "Adding @aion0/bastion-plugin-api to config.yaml"
         # Replace "external: []" with the actual plugin entry (must stay inside plugins: block)
         if grep -q 'external: \[\]' "$USER_CONFIG"; then
