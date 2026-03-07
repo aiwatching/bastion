@@ -1,6 +1,7 @@
 import https from 'node:https';
 import { createLogger } from '../utils/logger.js';
 import type { DlpFinding } from './actions.js';
+import { heuristicValidate } from './heuristic-validator.js';
 
 const log = createLogger('ai-validator');
 
@@ -71,7 +72,7 @@ export class AiValidator {
   get ready(): boolean {
     if (!this.config.enabled) return false;
     if (this.config.provider === 'local') {
-      return this.config.getLocalProvider?.() !== undefined;
+      return true; // heuristic validator is always available
     }
     return this.config.apiKey.length > 0;
   }
@@ -139,7 +140,7 @@ export class AiValidator {
     context: string,
   ): Promise<CacheEntry> {
     if (this.config.provider === 'local') {
-      return this.callLocal(context);
+      return this.callLocal(finding, matchText, context);
     }
 
     const prompt = buildPrompt(finding, matchText, context);
@@ -150,18 +151,14 @@ export class AiValidator {
     return this.callOpenAI(prompt);
   }
 
-  private async callLocal(context: string): Promise<CacheEntry> {
-    const provider = this.config.getLocalProvider?.();
-    if (!provider) {
-      throw new Error('Local classifier provider not available');
-    }
-
-    const result = await provider.classify(context);
-    // Map classifier labels to AI validator verdicts
-    if (result.label === 'BENIGN' || result.label === 'SAFE') {
-      return { verdict: 'false_positive', reason: `Local ML: ${result.label} (score: ${result.score.toFixed(3)})` };
-    }
-    return { verdict: 'sensitive', reason: `Local ML: ${result.label} (score: ${result.score.toFixed(3)})` };
+  private async callLocal(finding: DlpFinding, matchText: string, context: string): Promise<CacheEntry> {
+    const verdict = heuristicValidate({
+      matchText,
+      surrounding: context,
+      patternName: finding.patternName,
+      patternCategory: finding.patternCategory,
+    });
+    return { verdict: verdict.verdict, reason: verdict.reason };
   }
 
   private callAnthropic(prompt: string): Promise<CacheEntry> {

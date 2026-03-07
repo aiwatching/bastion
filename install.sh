@@ -172,20 +172,20 @@ if [ -n "$INSTALL_PLUGINS" ]; then
   if [ ! -f "$INSTALL_PLUGINS/package.json" ]; then
     warn "Plugin directory not valid: $INSTALL_PLUGINS (no package.json)"
   else
-    PLUGINS_DEST="$INSTALL_DIR/plugins/bastion-pro"
+    PLUGINS_DEST="$INSTALL_DIR/plugins"
     info "Installing optional plugins from: $INSTALL_PLUGINS"
     mkdir -p "$PLUGINS_DEST"
     rsync -a --exclude node_modules --exclude .git --exclude dist "$INSTALL_PLUGINS/" "$PLUGINS_DEST/"
 
-    # Rewrite @aiwatching/bastion-plugin-api dependency to point to installed package
+    # Rewrite @aion0/bastion-plugin-api dependency to point to installed package
     cd "$PLUGINS_DEST"
     PLUGIN_API_REL="$(node -e "const p=require('path'); console.log(p.relative('$PLUGINS_DEST','$INSTALL_DIR/packages/bastion-plugin-api'))")"
     # Replace any version spec (semver or file: path) with the correct relative file: path
     node -e "
       const fs=require('fs');
       const pkg=JSON.parse(fs.readFileSync('package.json','utf8'));
-      if(pkg.dependencies&&pkg.dependencies['@aiwatching/bastion-plugin-api']){
-        pkg.dependencies['@aiwatching/bastion-plugin-api']='file:${PLUGIN_API_REL}';
+      if(pkg.dependencies&&pkg.dependencies['@aion0/bastion-plugin-api']){
+        pkg.dependencies['@aion0/bastion-plugin-api']='file:${PLUGIN_API_REL}';
         fs.writeFileSync('package.json',JSON.stringify(pkg,null,2)+'\n');
       }
     "
@@ -198,8 +198,8 @@ if [ -n "$INSTALL_PLUGINS" ]; then
     # Auto-configure external plugin in config.yaml
     USER_CONFIG="$HOME/.bastion/config.yaml"
     if [ -f "$USER_CONFIG" ]; then
-      if ! grep -q 'bastion-pro' "$USER_CONFIG"; then
-        info "Adding @aiwatching/bastion-pro to config.yaml"
+      if ! grep -q '/plugins"' "$USER_CONFIG"; then
+        info "Adding @aion0/bastion-plugin-api to config.yaml"
         # Replace "external: []" with the actual plugin entry (must stay inside plugins: block)
         if grep -q 'external: \[\]' "$USER_CONFIG"; then
           sed -i.bak 's|  external: \[\]|  external:\n    - package: "'"$PLUGINS_DEST"'"\n      enabled: true\n      config: {}|' "$USER_CONFIG"

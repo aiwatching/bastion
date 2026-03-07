@@ -110,7 +110,7 @@ export function registerPluginsCommand(program: Command): void {
         process.exit(1);
       }
 
-      const pluginsDest = join(appDir, 'plugins', 'bastion-pro');
+      const pluginsDest = join(appDir, 'plugins');
       const pluginApiDir = join(appDir, 'packages', 'bastion-plugin-api');
 
       console.log(`Installing optional plugins from: ${pluginSource}`);
@@ -126,12 +126,18 @@ export function registerPluginsCommand(program: Command): void {
         cpSync(pluginSource, pluginsDest, { recursive: true, filter: (src) => !src.includes('node_modules') && !src.includes('.git') });
       }
 
-      // Rewrite @aiwatching/bastion-plugin-api to file: path
+      // Rewrite @aion0/bastion-plugin-api to file: path (in dependencies or devDependencies)
       const pkgPath = join(pluginsDest, 'package.json');
       const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
-      if (pkg.dependencies?.['@aiwatching/bastion-plugin-api']) {
-        const relPath = relative(pluginsDest, pluginApiDir);
-        pkg.dependencies['@aiwatching/bastion-plugin-api'] = `file:${relPath}`;
+      const relPath = relative(pluginsDest, pluginApiDir);
+      let rewrote = false;
+      for (const section of ['dependencies', 'devDependencies'] as const) {
+        if (pkg[section]?.['@aion0/bastion-plugin-api']) {
+          pkg[section]['@aion0/bastion-plugin-api'] = `file:${relPath}`;
+          rewrote = true;
+        }
+      }
+      if (rewrote) {
         writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
         console.log(`Rewrote plugin-api path to: file:${relPath}`);
       }
@@ -146,7 +152,7 @@ export function registerPluginsCommand(program: Command): void {
       const config = loadConfig();
       const plugins = (config.plugins ?? {}) as Record<string, unknown>;
       const entries = (plugins.external as ExternalEntry[] | undefined) ?? [];
-      const alreadyConfigured = entries.some(e => e.package.includes('bastion-pro'));
+      const alreadyConfigured = entries.some(e => e.package.endsWith('/plugins'));
       if (!alreadyConfigured) {
         entries.push({ package: pluginsDest, enabled: true });
         plugins.external = entries;
@@ -163,7 +169,7 @@ export function registerPluginsCommand(program: Command): void {
   cmd
     .command('uninstall')
     .description('Uninstall an optional plugin')
-    .argument('[name]', 'Plugin directory name (default: bastion-pro)', 'bastion-pro')
+    .argument('[name]', 'Plugin directory name (default: plugins)', 'plugins')
     .option('--all', 'Remove everything including downloaded models')
     .action(async (name: string, opts: { all?: boolean }) => {
       const config = loadConfig();
