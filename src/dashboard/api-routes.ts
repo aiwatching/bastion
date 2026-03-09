@@ -837,11 +837,13 @@ export function createApiRouter(
       }
       const l5aProvider = getPluginState?.('pi-classifier', 'classifierProvider') as { ready?: boolean; modelName?: string } | undefined;
       const l5bProv = getPluginState?.('pi-classifier', 'l5bProvider') as { ready?: boolean; modelName?: string } | undefined;
-      const piConfig = getPluginState?.('pi-classifier', 'piConfig') as { threshold?: number; grayZoneWidth?: number } | undefined;
+      const piConfig = getPluginState?.('pi-classifier', 'piConfig') as { action?: string; threshold?: number; indirectThreshold?: number; grayZoneWidth?: number } | undefined;
       sendJson(res, {
         l5a: { ready: !!l5aProvider?.ready, modelName: l5aProvider?.modelName ?? null },
         l5b: { ready: !!l5bProv?.ready, modelName: l5bProv?.modelName ?? null },
+        action: piConfig?.action ?? 'warn',
         threshold: piConfig?.threshold ?? 0.8,
+        indirectThreshold: piConfig?.indirectThreshold ?? 0.6,
         grayZoneWidth: piConfig?.grayZoneWidth ?? 0.2,
       });
       return true;
@@ -975,8 +977,9 @@ export function createApiRouter(
           // ── PI L5a/L5b ──
           type Classifier = { ready?: boolean; modelName?: string; classify?: (text: string) => Promise<{ label: string; score: number; latencyMs: number }> };
           const l5aProvider = getPluginState?.('pi-classifier', 'classifierProvider') as Classifier | undefined;
-          const piConfig = getPluginState?.('pi-classifier', 'piConfig') as { threshold?: number; grayZoneWidth?: number } | undefined;
+          const piConfig = getPluginState?.('pi-classifier', 'piConfig') as { threshold?: number; indirectThreshold?: number; grayZoneWidth?: number } | undefined;
           const threshold = piConfig?.threshold ?? 0.8;
+          const piIndirectThreshold = piConfig?.indirectThreshold ?? 0.6;
           const grayZoneWidth = piConfig?.grayZoneWidth ?? 0.2;
           const grayLower = threshold - grayZoneWidth;
 
@@ -993,7 +996,7 @@ export function createApiRouter(
             pi = {
               ready: true,
               l5a: { label: l5a.label, score: l5a.score, latencyMs: l5a.latencyMs, modelName: l5aProvider.modelName },
-              injectionScore, threshold, grayZone: [grayLower, threshold], zone,
+              injectionScore, threshold, indirectThreshold: piIndirectThreshold, grayZone: [grayLower, threshold], zone,
             };
 
             // L5b if gray

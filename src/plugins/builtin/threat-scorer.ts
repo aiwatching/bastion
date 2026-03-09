@@ -24,6 +24,7 @@ interface ThreatState {
 
 interface ScoringConfig {
   piWeight: number;
+  indirectPiWeight: number;
   dlpWeight: number;
   toolGuardWeights: { critical: number; high: number; medium: number; low: number };
   toolChainWeight: number;
@@ -49,6 +50,7 @@ function getDefaults(): ThreatIntelConfig {
     enabled: true,
     scoring: {
       piWeight: 30,
+      indirectPiWeight: 40,
       dlpWeight: 10,
       toolGuardWeights: { critical: 25, high: 15, medium: 5, low: 2 },
       toolChainWeight: 40,
@@ -68,6 +70,7 @@ function mergeConfig(config: BastionConfig): ThreatIntelConfig {
     enabled: ti.enabled ?? defaults.enabled,
     scoring: {
       piWeight: ti.scoring?.piWeight ?? defaults.scoring.piWeight,
+      indirectPiWeight: ti.scoring?.indirectPiWeight ?? defaults.scoring.indirectPiWeight,
       dlpWeight: ti.scoring?.dlpWeight ?? defaults.scoring.dlpWeight,
       toolGuardWeights: {
         critical: ti.scoring?.toolGuardWeights?.critical ?? defaults.scoring.toolGuardWeights.critical,
@@ -203,9 +206,20 @@ export function createThreatScorerPlugin(
   // ── Event listeners ──
 
   eventBus.on('pi:detected', (data: unknown) => {
-    const event = data as { sessionId?: string; severity?: string } | undefined;
+    const event = data as { sessionId?: string; severity?: string; directCount?: number; detections?: number } | undefined;
     if (!event?.sessionId) return;
-    addPoints(event.sessionId, tiConfig.scoring.piWeight, 'pi', `pi:detected severity=${event.severity ?? 'unknown'}`);
+    // Only score direct (user-input) detections; indirect detections scored via pi:indirect-injection
+    const directCount = event.directCount ?? event.detections ?? 1;
+    if (directCount > 0) {
+      addPoints(event.sessionId, tiConfig.scoring.piWeight, 'pi', `pi:detected severity=${event.severity ?? 'unknown'}`);
+    }
+  });
+
+  eventBus.on('pi:indirect-injection', (data: unknown) => {
+    const event = data as { sessionId?: string; detections?: number; maxScore?: number } | undefined;
+    if (!event?.sessionId) return;
+    addPoints(event.sessionId, tiConfig.scoring.indirectPiWeight, 'pi-indirect',
+      `pi:indirect-injection detections=${event.detections ?? 1}`);
   });
 
   eventBus.on('dlp:finding', (data: unknown) => {

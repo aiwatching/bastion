@@ -197,6 +197,12 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
   // Sync failMode changes at runtime
   configManager.onChange((c) => {
     pluginManager.setFailMode(c.server.failMode ?? 'open');
+    // Broadcast external plugin config changes for hot-reload
+    const ext = c.plugins.external;
+    if (ext?.length) {
+      const cfg = ext.find((e: { enabled?: boolean }) => e.enabled !== false) as { config?: Record<string, unknown> } | undefined;
+      if (cfg?.config) eventBus.emit('config:external-plugin', cfg.config);
+    }
   });
 
   // Create and start server

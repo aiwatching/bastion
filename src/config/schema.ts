@@ -75,6 +75,7 @@ export interface BastionConfig {
       enabled: boolean;
       scoring?: {
         piWeight?: number;
+        indirectPiWeight?: number;
         dlpWeight?: number;
         toolGuardWeights?: { critical?: number; high?: number; medium?: number; low?: number };
         toolChainWeight?: number;

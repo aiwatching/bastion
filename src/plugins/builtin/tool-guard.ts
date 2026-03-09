@@ -215,6 +215,42 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
         scope: piCfg.scope,
       });
     });
+
+    // Indirect injection always escalates (external data injection is inherently high risk)
+    eventBus.on('pi:indirect-injection', (data: unknown) => {
+      const ev = data as { sessionId?: string; maxScore?: number; detections?: number };
+      if (!ev.sessionId) return;
+
+      const entry: PiEscalationEntry = {
+        sessionId: ev.sessionId,
+        score: ev.maxScore ?? 0,
+        label: 'indirect-injection',
+        overrideSeverity: piCfg.overrideSeverity ?? 'medium',
+        escalatedAt: Date.now(),
+      };
+      piEscalationMap.set(ev.sessionId, entry);
+
+      log.warn('PI indirect-injection escalation triggered', { sessionId: ev.sessionId, score: ev.maxScore, detections: ev.detections });
+
+      try {
+        pluginEventsRepo.insertEvent('tool-guard', null, {
+          type: 'pi-indirect-escalation',
+          severity: entry.overrideSeverity,
+          rule: 'pi-indirect-escalation',
+          detail: `Indirect injection detected in tool_result (score ${(ev.maxScore ?? 0).toFixed(2)}, ${ev.detections ?? 1} detections) → blockMinSeverity override to ${entry.overrideSeverity}`,
+        });
+      } catch (err) {
+        log.warn('Failed to write PI indirect escalation audit', { error: (err as Error).message });
+      }
+
+      eventBus.emit('toolguard:pi-escalation', {
+        sessionId: ev.sessionId,
+        score: ev.maxScore,
+        label: 'indirect-injection',
+        overrideSeverity: entry.overrideSeverity,
+        scope: piCfg.scope,
+      });
+    });
   }
 
   // Live config readers — support hot-reload from Dashboard

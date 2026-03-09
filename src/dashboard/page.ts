@@ -49,6 +49,7 @@ body{font-family:"SF Mono","Fira Code","JetBrains Mono",Menlo,Consolas,monospace
 .row-tag.block{background:#330000;color:var(--red)}
 .row-tag.audit{background:#0a1a0a;color:var(--green)}
 .row-tag.warn{background:#1a1a00;color:var(--yellow)}
+.row-tag.indirect{background:#331a00;color:var(--orange)}
 .row-text{flex:1;color:#888;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .row-text b{color:#ccc;font-weight:600}
 .prov-row{display:flex;align-items:center;gap:6px;padding:4px 12px;font-size:11px}
@@ -298,6 +299,15 @@ const PAGE_SETTINGS = `
 <div class="section-body" id="set-optional" style="display:none;padding:12px">
   <div id="optional-features">
     <div class="toggle-row" data-opt="pi-classifier"><div><div class="toggle-label">AI Injection Detection</div><div class="toggle-desc">ML-based prompt injection detection (ONNX Runtime)</div></div><span class="row-tag" id="opt-tag-pi-classifier" style="background:#1a1a1a;color:var(--dim)">NOT INSTALLED</span></div>
+    <div id="pi-config-row" style="display:none;padding:8px 12px;background:var(--bg);border:1px solid var(--border);margin-top:-1px">
+      <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:6px"><span style="font-size:10px;color:var(--dim)">PI Action</span><select id="pi-action-select" class="cfg-select"><option value="warn">Warn</option><option value="block">Block</option></select></div>
+        <div style="display:flex;align-items:center;gap:6px"><span style="font-size:10px;color:var(--dim)">Threshold</span><input id="pi-threshold" class="cfg-input" style="width:60px;font-size:11px" type="number" step="0.05" min="0" max="1" value="0.8"></div>
+        <div style="display:flex;align-items:center;gap:6px"><span style="font-size:10px;color:var(--dim)">Indirect Threshold</span><input id="pi-indirect-threshold" class="cfg-input" style="width:60px;font-size:11px" type="number" step="0.05" min="0" max="1" value="0.6"></div>
+        <button id="pi-config-save" class="cfg-btn primary" style="font-size:10px">Save</button>
+        <span id="pi-config-status" style="display:none;font-size:10px;color:var(--green)"></span>
+      </div>
+    </div>
     <div class="toggle-row" data-opt="content-extractor"><div><div class="toggle-label">Content Extractor</div><div class="toggle-desc">PDF text extraction and image OCR for DLP scanning</div></div><span class="row-tag" id="opt-tag-content-extractor" style="background:#1a1a1a;color:var(--dim)">NOT INSTALLED</span></div>
   </div>
   <div style="margin-top:12px;padding:10px 12px;background:var(--bg);border:1px solid var(--border)">
@@ -711,7 +721,8 @@ async function refreshOverview(){
       combined.push({type:'guard',time:a.timestamp,text:'<b>'+esc(a.toolName)+'</b> \\u2192 '+esc(a.ruleName),tag:'guard'});
     });
     (piRecent||[]).forEach(function(p){
-      combined.push({type:'pi',time:p.created_at,text:'<b>'+esc(p.rule)+'</b> '+esc(p.detail),tag:'block'});
+      var isIndirect=(p.rule||'').indexOf('pi:indirect:')===0;
+      combined.push({type:'pi',time:p.created_at,text:'<b>'+esc(p.rule)+'</b> '+(isIndirect?'<span class="row-tag indirect" style="font-size:8px;margin-right:4px">INDIRECT</span>':'')+esc(p.detail),tag:isIndirect?'indirect':'block'});
     });
     combined.sort(function(a,b){return new Date(b.time)-new Date(a.time)});
     var alertCount=(alertsData.unacknowledged||0)+(dlpRecent||[]).length+(piRecent||[]).length;
@@ -936,12 +947,13 @@ async function refreshGuard(){
         var tsList=Array.isArray(sessions)?sessions:sessions.sessions||[];
         document.getElementById('ti-no-sessions').style.display=tsList.length?'none':'';
         document.getElementById('ti-sessions-list').innerHTML=tsList.map(function(s){
-          return '<tr><td class="mono" style="font-size:11px;color:#555">'+esc((s.session_id||s.sessionId||'').slice(0,12))+'</td>'+
+          var sid=s.session_id||s.sessionId||'';
+          return '<tr class="ti-session-row" data-sid="'+esc(sid)+'" style="cursor:pointer"><td class="mono" style="font-size:11px;color:#555">'+esc(sid.slice(0,12))+'</td>'+
             '<td style="font-weight:700;color:var(--bright)">'+Math.round(s.score||0)+'</td>'+
             '<td>'+threatLevelTag(s.level||s.threatLevel)+'</td>'+
             '<td>'+fmt(s.events||s.eventCount||0)+'</td>'+
             '<td>'+ago(s.last_event||s.lastEvent||s.updated_at||'')+'</td>'+
-            '<td><button class="ti-reset-btn" data-sid="'+esc(s.session_id||s.sessionId||'')+'">Reset</button></td></tr>';
+            '<td><button class="ti-reset-btn" data-sid="'+esc(sid)+'">Reset</button></td></tr>';
         }).join('');
       }
 
@@ -978,11 +990,43 @@ document.getElementById('gd-pi-list').addEventListener('click',async function(e)
   catch(ex){btn.textContent='RESET';btn.disabled=false}
 });
 document.getElementById('ti-sessions-list').addEventListener('click',async function(e){
-  var btn=e.target.closest('.ti-reset-btn');if(!btn)return;
-  var sid=btn.dataset.sid;if(!sid)return;
-  btn.textContent='...';btn.disabled=true;
-  try{await apiFetch('/api/threat/sessions/'+encodeURIComponent(sid)+'/reset',{method:'POST'});_lastJson={};refreshGuard()}
-  catch(ex){btn.textContent='Reset';btn.disabled=false}
+  var btn=e.target.closest('.ti-reset-btn');
+  if(btn){
+    var sid=btn.dataset.sid;if(!sid)return;
+    btn.textContent='...';btn.disabled=true;
+    try{await apiFetch('/api/threat/sessions/'+encodeURIComponent(sid)+'/reset',{method:'POST'});_lastJson={};refreshGuard()}
+    catch(ex){btn.textContent='Reset';btn.disabled=false}
+    return;
+  }
+  // Expand/collapse threat session detail row
+  var row=e.target.closest('.ti-session-row');if(!row)return;
+  var sid2=row.dataset.sid;if(!sid2)return;
+  var existing=row.nextElementSibling;
+  if(existing&&existing.classList.contains('ti-detail-row')){existing.remove();return}
+  document.querySelectorAll('.ti-detail-row').forEach(function(r){r.remove()});
+  var detailRow=document.createElement('tr');detailRow.className='ti-detail-row';
+  var td=document.createElement('td');td.colSpan=6;td.style.cssText='padding:0;border:none';
+  td.innerHTML='<div style="margin:4px 12px 12px;padding:12px;background:#0c0c0c;border:1px solid #1a1a1a"><span style="color:#555">Loading...</span></div>';
+  detailRow.appendChild(td);row.after(detailRow);
+  try{
+    var r=await apiFetch('/api/threat/sessions/'+encodeURIComponent(sid2));
+    var data=await r.json();
+    var evts=data.events||[];
+    if(evts.length===0){td.innerHTML='<div style="margin:4px 12px;padding:12px;background:#0c0c0c;border:1px solid #1a1a1a;color:var(--muted)">No score events</div>';return}
+    var evtHtml='<div style="margin:4px 12px 12px;padding:12px;background:#0c0c0c;border:1px solid #1a1a1a;max-height:250px;overflow:auto">';
+    evtHtml+='<div style="font-size:10px;color:var(--muted);margin-bottom:6px">Score Events ('+evts.length+')</div>';
+    evts.slice(0,30).forEach(function(ev){
+      var typeTag='<span class="row-tag '+(ev.event_type==='pi-indirect'?'indirect':ev.event_type==='pi'?'block':ev.event_type==='toolguard'?'guard':ev.event_type==='dlp'?'dlp':'warn')+'" style="font-size:8px">'+esc((ev.event_type||'?').toUpperCase())+'</span>';
+      evtHtml+='<div style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:11px;border-bottom:1px solid #111">'+
+        '<span style="color:#555;width:55px;flex-shrink:0">'+ago(ev.created_at||'')+'</span>'+
+        typeTag+
+        '<span style="color:var(--bright);font-weight:600;width:35px;flex-shrink:0">+'+Math.round(ev.points||0)+'</span>'+
+        '<span style="color:#555;width:40px;flex-shrink:0">='+Math.round(ev.score_after||0)+'</span>'+
+        '<span style="color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(ev.source_event||'')+'</span></div>';
+    });
+    evtHtml+='</div>';
+    td.innerHTML=evtHtml;
+  }catch(ex){td.innerHTML='<div style="margin:4px 12px;padding:12px;background:#0c0c0c;border:1px solid #1a1a1a;color:#ff4444">Failed to load</div>'}
 });
 // Click guard event → go to Log detail
 document.getElementById('gd-events').addEventListener('click',function(e){
@@ -1390,6 +1434,20 @@ async function refreshSettings(){
     document.getElementById('opt-install-hint').style.display=hasAnyOpt?'none':'';
     document.getElementById('opt-uninstall-row').style.display=hasAnyOpt?'':'none';
 
+    // PI Classifier config row — show when installed
+    var piInstalled=extNames.indexOf('pi-classifier')>=0;
+    var piRow=document.getElementById('pi-config-row');
+    if(piRow){
+      piRow.style.display=piInstalled?'':'none';
+      if(piInstalled){
+        var extCfg=(cfgData.config.plugins.external||[]).find(function(e){return e.package&&e.enabled!==false});
+        var piCfg=extCfg&&extCfg.config||{};
+        document.getElementById('pi-action-select').value=piCfg.action||'warn';
+        document.getElementById('pi-threshold').value=piCfg.threshold!=null?piCfg.threshold:0.8;
+        document.getElementById('pi-indirect-threshold').value=piCfg.indirectThreshold!=null?piCfg.indirectThreshold:0.6;
+      }
+    }
+
     // 3. DLP Config
     await loadDlpConfig(cfgData);
 
@@ -1428,6 +1486,28 @@ document.getElementById('opt-uninstall-btn').addEventListener('click',async func
     var d=await r.json();
     if(d.ok){refreshSettings()}else{alert(d.error||'Uninstall failed')}
   }catch(e){alert('Uninstall failed: '+e.message)}
+});
+
+// PI Classifier config save
+document.getElementById('pi-config-save').addEventListener('click',async function(){
+  var action=document.getElementById('pi-action-select').value;
+  var threshold=parseFloat(document.getElementById('pi-threshold').value);
+  var indirectThreshold=parseFloat(document.getElementById('pi-indirect-threshold').value);
+  if(isNaN(threshold)||threshold<0||threshold>1){alert('Invalid threshold');return}
+  if(isNaN(indirectThreshold)||indirectThreshold<0||indirectThreshold>1){alert('Invalid indirect threshold');return}
+  // Find the external plugin config entry and update it
+  try{
+    var cfgR=await apiFetch('/api/config');var cfgData=await cfgR.json();
+    var ext=(cfgData.config.plugins.external||[]).map(function(e){
+      if(e.package&&e.enabled!==false){
+        return Object.assign({},e,{config:Object.assign({},e.config||{},{action:action,threshold:threshold,indirectThreshold:indirectThreshold})});
+      }
+      return e;
+    });
+    await apiFetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({plugins:{external:ext}})});
+    var st=document.getElementById('pi-config-status');st.textContent='Saved';st.style.display='inline';
+    setTimeout(function(){st.style.display='none'},3000);
+  }catch(e){alert('Failed: '+e.message)}
 });
 
 // AI Validation config (in Optional Features)
@@ -1939,7 +2019,8 @@ function renderPipeResults(d){
     html+='<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:10px;color:var(--dim)">L5a ONNX — '+(pi.l5a.modelName||'?')+'</span><span style="font-size:10px;color:var(--muted)">'+pi.l5a.latencyMs+'ms</span></div>';
     html+='<div style="font-size:12px;color:var(--bright);margin-bottom:4px">Label: <b>'+esc(pi.l5a.label)+'</b> &nbsp; Score: <b>'+pct+'%</b></div>';
     html+='<div class="pg-score-bar"><div class="pg-score-fill" style="width:'+pct+'%;background:'+barColor+'"></div></div>';
-    html+='<div style="font-size:10px;color:var(--muted);margin-top:4px">Threshold: '+pi.threshold+' | Gray zone: ['+pi.grayZone[0].toFixed(2)+', '+pi.threshold+')</div>';
+    html+='<div style="font-size:10px;color:var(--muted);margin-top:4px">Threshold: '+pi.threshold+(pi.indirectThreshold?' | Indirect: '+pi.indirectThreshold:'')+' | Gray zone: ['+pi.grayZone[0].toFixed(2)+', '+pi.threshold+')</div>';
+    if(pi.sources&&pi.sources.length>0){html+='<div style="margin-top:6px;font-size:10px;color:var(--dim)">Sources: '+pi.sources.map(function(s){return '<span class="row-tag '+(s==='tool_result'?'indirect':'audit')+'" style="font-size:8px">'+esc(s)+'</span>'}).join(' ')+'</div>'}
     if(pi.l5b&&pi.l5b.label){
       var l5bSc=pi.l5bInjectionScore;var l5bPct=Math.round(l5bSc*100);
       var l5bColor=l5bSc>=pi.threshold?'var(--red)':'var(--green)';
