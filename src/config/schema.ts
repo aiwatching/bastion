@@ -29,9 +29,11 @@ export interface BastionConfig {
       };
       aiValidation: {
         enabled: boolean;
-        provider: 'anthropic' | 'openai' | 'local';
+        provider: 'anthropic' | 'openai' | 'deepseek' | 'ollama' | 'local';
         model: string;
         apiKey: string;
+        ollamaEndpoint: string;
+        ollamaModel: string;
         timeoutMs: number;
         cacheSize: number;
       };

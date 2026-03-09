@@ -1,3 +1,4 @@
+import http from 'node:http';
 import https from 'node:https';
 import { createLogger } from '../utils/logger.js';
 import type { DlpFinding } from './actions.js';
@@ -9,9 +10,11 @@ const SNIPPET_RADIUS = 200;
 
 export interface AiValidatorConfig {
   enabled: boolean;
-  provider: 'anthropic' | 'openai' | 'local';
+  provider: 'anthropic' | 'openai' | 'deepseek' | 'ollama' | 'local';
   model: string;
   apiKey: string;
+  ollamaEndpoint: string;
+  ollamaModel: string;
   timeoutMs: number;
   cacheSize: number;
   /** Lazy getter for local ClassifierProvider (set by bootstrap when pi-classifier is available) */
@@ -71,8 +74,8 @@ export class AiValidator {
   /** Returns true if the validator is ready (enabled + provider configured) */
   get ready(): boolean {
     if (!this.config.enabled) return false;
-    if (this.config.provider === 'local') {
-      return true; // heuristic validator is always available
+    if (this.config.provider === 'local' || this.config.provider === 'ollama') {
+      return true; // local heuristic and ollama don't need API keys
     }
     return this.config.apiKey.length > 0;
   }
@@ -82,11 +85,17 @@ export class AiValidator {
     Object.assign(this.config, config);
   }
 
+  /** Clear the LRU cache (useful for testing to get fresh results) */
+  clearCache(): void {
+    this.cache = new LRUCache(this.config.cacheSize);
+  }
+
   /**
    * Filter findings through AI validation.
    * Returns only findings that the AI confirms as real sensitive data.
    */
   async validate(findings: DlpFinding[], text: string): Promise<DlpFinding[]> {
+    this._lastDetails = [];
     if (!this.ready || findings.length === 0) return findings;
 
     const confirmed: DlpFinding[] = [];
@@ -98,6 +107,7 @@ export class AiValidator {
       // Check cache first
       const cached = this.cache.get(cacheKey);
       if (cached) {
+        this._lastDetails.push({ pattern: finding.patternName, verdict: cached.verdict, reason: cached.reason, cached: true });
         if (cached.verdict === 'sensitive') {
           confirmed.push(finding);
         } else {
@@ -112,6 +122,7 @@ export class AiValidator {
       try {
         const result = await this.callLLM(finding, firstMatch, context);
         this.cache.set(cacheKey, result);
+        this._lastDetails.push({ pattern: finding.patternName, verdict: result.verdict, reason: result.reason });
 
         if (result.verdict === 'sensitive') {
           confirmed.push(finding);
@@ -123,15 +134,23 @@ export class AiValidator {
         }
       } catch (err) {
         // On error, fail-closed: treat as real sensitive data
+        const errorMsg = (err as Error).message;
         log.warn('AI validation failed, treating as sensitive', {
           pattern: finding.patternName,
-          error: (err as Error).message,
+          error: errorMsg,
         });
+        this._lastDetails.push({ pattern: finding.patternName, verdict: 'error', reason: errorMsg });
         confirmed.push(finding);
       }
     }
 
     return confirmed;
+  }
+
+  /** Diagnostic details from the last validate() call */
+  private _lastDetails: Array<{ pattern: string; verdict: string; reason: string; cached?: boolean }> = [];
+  get lastDetails(): Array<{ pattern: string; verdict: string; reason: string; cached?: boolean }> {
+    return this._lastDetails;
   }
 
   private async callLLM(
@@ -147,6 +166,12 @@ export class AiValidator {
 
     if (this.config.provider === 'anthropic') {
       return this.callAnthropic(prompt);
+    }
+    if (this.config.provider === 'ollama') {
+      return this.callOllama(prompt);
+    }
+    if (this.config.provider === 'deepseek') {
+      return this.callDeepSeek(prompt);
     }
     return this.callOpenAI(prompt);
   }
@@ -205,6 +230,76 @@ export class AiValidator {
     ).then((raw) => {
       const res = JSON.parse(raw);
       const text = res.choices?.[0]?.message?.content ?? '';
+      return parseVerdict(text);
+    });
+  }
+
+  private callDeepSeek(prompt: string): Promise<CacheEntry> {
+    const body = JSON.stringify({
+      model: 'deepseek-chat',
+      max_tokens: 150,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: 'You are a security data classifier. Respond ONLY with the JSON format requested.' },
+        { role: 'user', content: prompt },
+      ],
+    });
+
+    return this.httpPost(
+      'api.deepseek.com',
+      '/chat/completions',
+      {
+        'content-type': 'application/json',
+        'authorization': `Bearer ${this.config.apiKey}`,
+      },
+      body,
+    ).then((raw) => {
+      const res = JSON.parse(raw);
+      const text = res.choices?.[0]?.message?.content ?? '';
+      return parseVerdict(text);
+    });
+  }
+
+  private callOllama(prompt: string): Promise<CacheEntry> {
+    const endpoint = this.config.ollamaEndpoint || 'http://localhost:11434';
+    const model = this.config.ollamaModel || 'llama3.2';
+    const body = JSON.stringify({
+      model,
+      messages: [
+        { role: 'system', content: 'You are a security data classifier. Respond ONLY with the JSON format requested.' },
+        { role: 'user', content: prompt },
+      ],
+      stream: false,
+      options: { temperature: 0.1, num_predict: 150 },
+    });
+
+    const url = new URL(endpoint);
+    return new Promise<string>((resolve, reject) => {
+      const headers: Record<string, string> = {
+        'content-type': 'application/json',
+        'content-length': Buffer.byteLength(body).toString(),
+      };
+      const req = http.request(
+        { hostname: url.hostname, port: url.port || 11434, path: '/api/chat', method: 'POST', headers },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (chunk: Buffer) => chunks.push(chunk));
+          res.on('end', () => {
+            const status = res.statusCode ?? 0;
+            const result = Buffer.concat(chunks).toString('utf-8');
+            if (status >= 200 && status < 300) resolve(result);
+            else reject(new Error(`Ollama HTTP ${status}: ${result.slice(0, 200)}`));
+          });
+        },
+      );
+      req.setTimeout(this.config.timeoutMs, () => {
+        req.destroy(new Error(`Ollama validation timed out (${this.config.timeoutMs}ms)`));
+      });
+      req.on('error', reject);
+      req.end(body);
+    }).then((raw) => {
+      const res = JSON.parse(raw);
+      const text: string = res?.message?.content ?? '';
       return parseVerdict(text);
     });
   }

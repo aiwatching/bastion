@@ -280,7 +280,7 @@ export class DlpMessageCache {
     }
 
     if (allFindings.length === 0) {
-      return { action: 'pass', findings: [], newFindings: [], cachedFindings: [] };
+      return { action: 'pass', findings: [], deferredFindings: [], newFindings: [], cachedFindings: [] };
     }
 
     // Apply redaction on the original body string
@@ -294,7 +294,7 @@ export class DlpMessageCache {
       }
     }
 
-    return { action, findings: allFindings, redactedBody, newFindings, cachedFindings };
+    return { action, findings: allFindings, deferredFindings: [], redactedBody, newFindings, cachedFindings };
   }
 
   /** Clear the cache (for testing or config changes) */

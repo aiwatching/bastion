@@ -33,6 +33,8 @@ plugins:
       provider: "anthropic"
       model: "claude-haiku-4-5-20241022"
       apiKey: ""
+      ollamaEndpoint: "http://localhost:11434"
+      ollamaModel: "llama3.2"
       timeoutMs: 5000
       cacheSize: 500
     semantics:
