@@ -856,18 +856,20 @@ document.getElementById('findings-list').addEventListener('click',async function
 async function refreshGuard(){
   try{
     var sp=sinceParam();
-    var [statsR,recentR,rulesR,alertsR,piEscR]=await Promise.all([
+    var [statsR,recentR,rulesR,alertsR,piEscR,piEventsR]=await Promise.all([
       apiFetch('/api/tool-guard/stats'),
       apiFetch('/api/tool-guard/recent?limit=50'+(sp?'&'+sp:'')),
       apiFetch('/api/tool-guard/rules'),
       apiFetch('/api/tool-guard/alerts'),
-      apiFetch('/api/tool-guard/pi-escalations').catch(function(){return{json:function(){return{escalations:[],count:0}}}})
+      apiFetch('/api/tool-guard/pi-escalations').catch(function(){return{json:function(){return{escalations:[],count:0}}}}),
+      apiFetch('/api/plugin-events/recent?limit=30&plugin=pi-classifier'+(sp?'&'+sp:''))
     ]);
     var stats=await statsR.json();
     var recent=await recentR.json();
     var rules=await rulesR.json();
     var alertsData=await alertsR.json();
     var piEscData=await piEscR.json();
+    var piEvents=await piEventsR.json();
 
     // Alert banner
     var unack=alertsData.unacknowledged||0;
@@ -909,16 +911,27 @@ async function refreshGuard(){
         gauge('High',fmt(bySev.high||0),'','yellow');
     }
 
-    // Events pane
-    if(!skipIfSame('gd-events',recent)){
-      document.getElementById('gd-events').innerHTML=recent.length?recent.slice(0,15).map(function(e){
-        var icon=e.action==='block'?'<span style="color:#ff4444">\\u2715</span>':'<span style="color:#00ccff">\\u25CB</span>';
-        var tag=e.action==='block'?'block':'audit';
-        return '<div class="row" data-rid="'+esc(e.request_id)+'">'+
-          '<span class="row-icon">'+icon+'</span>'+
-          '<span class="row-tag '+tag+'">'+esc(e.action||'audit').toUpperCase()+'</span>'+
-          '<span class="row-text"><b>'+esc(e.tool_name)+'</b> <span style="color:#444">\\u2014 '+esc(e.rule_name||'')+(e.severity?' ('+e.severity+')':'')+'</span></span>'+
-          '<span class="row-time">'+ago(e.created_at)+'</span></div>';
+    // Events pane — merge tool-guard + PI classifier events
+    var allEvents=[];
+    (recent||[]).forEach(function(e){
+      allEvents.push({src:'tg',time:e.created_at,rid:e.request_id,action:e.action||'audit',text:'<b>'+esc(e.tool_name)+'</b> <span style="color:#444">\\u2014 '+esc(e.rule_name||'')+(e.severity?' ('+e.severity+')':'')+'</span>'});
+    });
+    (piEvents||[]).forEach(function(p){
+      var isIndirect=(p.rule||'').indexOf('pi:indirect:')===0;
+      var tag=isIndirect?'indirect':'block';
+      allEvents.push({src:'pi',time:p.created_at,rid:p.request_id,tag:tag,isIndirect:isIndirect,text:'<b>'+esc(p.rule)+'</b> '+(isIndirect?'<span class="row-tag indirect" style="font-size:8px;margin-right:4px">INDIRECT</span>':'')+'<span style="color:#444">'+esc(p.detail).slice(0,120)+'</span>'});
+    });
+    allEvents.sort(function(a,b){return new Date(b.time)-new Date(a.time)});
+    if(!skipIfSame('gd-events',allEvents)){
+      document.getElementById('gd-events').innerHTML=allEvents.length?allEvents.slice(0,20).map(function(e){
+        if(e.src==='tg'){
+          var icon=e.action==='block'?'<span style="color:#ff4444">\\u2715</span>':'<span style="color:#00ccff">\\u25CB</span>';
+          var tag=e.action==='block'?'block':'audit';
+          return '<div class="row" data-rid="'+esc(e.rid)+'"><span class="row-icon">'+icon+'</span><span class="row-tag '+tag+'">'+esc(e.action).toUpperCase()+'</span><span class="row-text">'+e.text+'</span><span class="row-time">'+ago(e.time)+'</span></div>';
+        }else{
+          var piTag=e.isIndirect?'indirect':'block';
+          return '<div class="row" data-rid="'+esc(e.rid)+'"><span class="row-icon"><span style="color:var(--orange)">\\u26A0</span></span><span class="row-tag '+piTag+'">PI</span><span class="row-text">'+e.text+'</span><span class="row-time">'+ago(e.time)+'</span></div>';
+        }
       }).join(''):'<div class="empty">No events</div>';
     }
 
