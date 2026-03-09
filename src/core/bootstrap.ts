@@ -155,6 +155,13 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
     alertMinSeverity: config.plugins.toolGuard?.alertMinSeverity ?? 'high',
     alertDesktop: config.plugins.toolGuard?.alertDesktop ?? true,
     alertWebhookUrl: config.plugins.toolGuard?.alertWebhookUrl ?? '',
+    piEscalation: config.plugins.toolGuard?.piEscalation ?? {
+      enabled: true,
+      scoreThreshold: 0.8,
+      overrideSeverity: 'medium',
+      scope: 'session',
+      ttlMinutes: 30,
+    },
     getLiveConfig: () => {
       const tg = configManager.get().plugins.toolGuard;
       return {

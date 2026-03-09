@@ -61,6 +61,13 @@ export interface BastionConfig {
       alertMinSeverity: 'critical' | 'high' | 'medium' | 'low';
       alertDesktop: boolean;
       alertWebhookUrl: string;
+      piEscalation?: {
+        enabled: boolean;
+        scoreThreshold: number;
+        overrideSeverity: 'critical' | 'high' | 'medium' | 'low';
+        scope: 'session' | 'request';
+        ttlMinutes: number;
+      };
     };
     threatIntelligence?: {
       enabled: boolean;

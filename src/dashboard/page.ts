@@ -175,6 +175,13 @@ const PAGE_GUARD = `
   </div>
   <div id="gd-alert-list" style="margin-top:6px;font-size:11px;color:var(--dim);max-height:100px;overflow:auto"></div>
 </div>
+<div id="gd-pi-banner" style="display:none;background:#1a1200;border:1px solid var(--orange);padding:8px 12px;margin-bottom:8px">
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <div><span style="color:var(--orange);font-weight:700;font-size:12px" id="gd-pi-title"></span><span style="color:var(--bright);font-size:11px;margin-left:8px">blockMinSeverity escalated</span></div>
+    <button id="gd-pi-reset-all" class="cfg-btn" style="color:var(--orange);border-color:var(--orange)">RESET ALL</button>
+  </div>
+  <div id="gd-pi-list" style="margin-top:6px;font-size:11px;color:var(--dim);max-height:120px;overflow:auto"></div>
+</div>
 <div class="gauges" id="gd-gauges"></div>
 <div class="panes">
   <div class="section">
@@ -754,16 +761,18 @@ document.getElementById('findings-list').addEventListener('click',async function
 async function refreshGuard(){
   try{
     var sp=sinceParam();
-    var [statsR,recentR,rulesR,alertsR]=await Promise.all([
+    var [statsR,recentR,rulesR,alertsR,piEscR]=await Promise.all([
       apiFetch('/api/tool-guard/stats'),
       apiFetch('/api/tool-guard/recent?limit=50'+(sp?'&'+sp:'')),
       apiFetch('/api/tool-guard/rules'),
-      apiFetch('/api/tool-guard/alerts')
+      apiFetch('/api/tool-guard/alerts'),
+      apiFetch('/api/tool-guard/pi-escalations').catch(function(){return{json:function(){return{escalations:[],count:0}}}})
     ]);
     var stats=await statsR.json();
     var recent=await recentR.json();
     var rules=await rulesR.json();
     var alertsData=await alertsR.json();
+    var piEscData=await piEscR.json();
 
     // Alert banner
     var unack=alertsData.unacknowledged||0;
@@ -777,6 +786,22 @@ async function refreshGuard(){
         return '<div>'+severityTag(a.severity)+' <strong style="color:#ccc">'+esc(a.toolName)+'</strong> \\u2014 '+esc(a.ruleName)+' <span style="color:#444">'+ago(a.timestamp)+'</span></div>';
       }).join('');
     }else{banner.style.display='none'}
+
+    // PI Escalation banner
+    var piEsc=piEscData.escalations||[];
+    var piBanner=document.getElementById('gd-pi-banner');
+    if(piEsc.length>0){
+      piBanner.style.display='block';
+      document.getElementById('gd-pi-title').textContent=piEsc.length+' PI escalation'+(piEsc.length>1?'s':'');
+      document.getElementById('gd-pi-list').innerHTML=piEsc.map(function(e){
+        return '<div style="display:flex;align-items:center;gap:6px;padding:2px 0">'+
+          '<span class="row-tag block" style="font-size:9px">'+esc(e.overrideSeverity).toUpperCase()+'</span>'+
+          '<span style="color:#888">session '+esc((e.sessionId||'').slice(0,12))+'</span>'+
+          '<span style="color:#555">score='+((e.score||0).toFixed(2))+'</span>'+
+          '<span style="color:#444">'+ago(new Date(e.escalatedAt).toISOString())+'</span>'+
+          '<button class="pi-esc-reset" data-sid="'+esc(e.sessionId)+'" style="font-size:9px;cursor:pointer;color:var(--orange);background:none;border:1px solid var(--orange);padding:0 4px">RESET</button></div>';
+      }).join('');
+    }else{piBanner.style.display='none'}
 
     // Gauges
     var bySev=stats.bySeverity||{};
@@ -856,6 +881,17 @@ async function refreshGuard(){
 document.getElementById('gd-ack-btn').addEventListener('click',async function(){
   await apiFetch('/api/tool-guard/alerts/ack',{method:'POST'});
   refreshGuard();pollAlerts();
+});
+document.getElementById('gd-pi-reset-all').addEventListener('click',async function(){
+  await apiFetch('/api/tool-guard/pi-escalations/reset',{method:'POST'});
+  _lastJson={};refreshGuard();pollAlerts();
+});
+document.getElementById('gd-pi-list').addEventListener('click',async function(e){
+  var btn=e.target.closest('.pi-esc-reset');if(!btn)return;
+  var sid=btn.dataset.sid;if(!sid)return;
+  btn.textContent='...';btn.disabled=true;
+  try{await apiFetch('/api/tool-guard/pi-escalations/reset/'+encodeURIComponent(sid),{method:'POST'});_lastJson={};refreshGuard();pollAlerts()}
+  catch(ex){btn.textContent='RESET';btn.disabled=false}
 });
 document.getElementById('ti-sessions-list').addEventListener('click',async function(e){
   var btn=e.target.closest('.ti-reset-btn');if(!btn)return;
@@ -1644,8 +1680,9 @@ document.getElementById('scan-input').addEventListener('keydown',function(e){
 
 // ══ 9. BOOTSTRAP ══════════════════════════════════════════════════
 async function pollAlerts(){
-  try{var r=await apiFetch('/api/tool-guard/alerts');var data=await r.json();
-    var badge=document.getElementById('guard-badge');var unack=data.unacknowledged||0;
+  try{var [r,piR]=await Promise.all([apiFetch('/api/tool-guard/alerts'),apiFetch('/api/tool-guard/pi-escalations').catch(function(){return{json:function(){return{count:0}}}})]);
+    var data=await r.json();var piData=await piR.json();
+    var badge=document.getElementById('guard-badge');var unack=(data.unacknowledged||0)+(piData.count||0);
     if(unack>0){badge.textContent=unack>99?'99+':String(unack);badge.style.display='inline'}
     else{badge.style.display='none'}
   }catch(e){}

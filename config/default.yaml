@@ -57,6 +57,12 @@ plugins:
     alertMinSeverity: "high"
     alertDesktop: true
     alertWebhookUrl: ""
+    piEscalation:
+      enabled: true
+      scoreThreshold: 0.8
+      overrideSeverity: "medium"
+      scope: "session"
+      ttlMinutes: 30
   external: []
 
 retention:

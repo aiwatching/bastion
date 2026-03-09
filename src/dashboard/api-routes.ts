@@ -14,6 +14,7 @@ import { ToolCallsRepository } from '../storage/repositories/tool-calls.js';
 import { ToolGuardRulesRepository } from '../storage/repositories/tool-guard-rules.js';
 import { PluginEventsRepository } from '../storage/repositories/plugin-events.js';
 import { getRecentAlerts, getUnacknowledgedCount, acknowledgeAlerts } from '../tool-guard/alert.js';
+import { getPiEscalations, resetPiEscalation, resetAllPiEscalations } from '../plugins/builtin/tool-guard.js';
 import { ThreatScoresRepository } from '../storage/repositories/threat-scores.js';
 import { ThreatScoreEventsRepository } from '../storage/repositories/threat-score-events.js';
 import { ToolChainDetectionsRepository } from '../storage/repositories/tool-chain-detections.js';
@@ -756,6 +757,34 @@ export function createApiRouter(
     // GET /api/threat/chain-rules — tool chain rules list
     if (req.method === 'GET' && path === '/api/threat/chain-rules') {
       sendJson(res, BUILTIN_CHAIN_RULES);
+      return true;
+    }
+
+    // ── PI Escalation API ──
+
+    // GET /api/tool-guard/pi-escalations
+    if (req.method === 'GET' && path === '/api/tool-guard/pi-escalations') {
+      const escalations = getPiEscalations();
+      sendJson(res, { escalations, count: escalations.length });
+      return true;
+    }
+
+    // POST /api/tool-guard/pi-escalations/reset/:sessionId
+    if (req.method === 'POST' && path.startsWith('/api/tool-guard/pi-escalations/reset/')) {
+      const sessionId = decodeURIComponent(path.slice('/api/tool-guard/pi-escalations/reset/'.length));
+      if (!sessionId) {
+        sendJson(res, { error: 'Missing session ID' }, 400);
+        return true;
+      }
+      const removed = resetPiEscalation(sessionId);
+      sendJson(res, { ok: true, removed });
+      return true;
+    }
+
+    // POST /api/tool-guard/pi-escalations/reset
+    if (req.method === 'POST' && path === '/api/tool-guard/pi-escalations/reset') {
+      const count = resetAllPiEscalations();
+      sendJson(res, { ok: true, count });
       return true;
     }
 

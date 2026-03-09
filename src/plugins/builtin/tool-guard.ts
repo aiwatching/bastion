@@ -12,6 +12,7 @@ import { AuditLogRepository } from '../../storage/repositories/audit-log.js';
 import { extractToolCalls, extractToolCallsFromParsedEvents, type ExtractedToolCall } from '../../tool-guard/extractor.js';
 import { matchRules, BUILTIN_RULES, type ToolGuardRule, type RuleMatch } from '../../tool-guard/rules.js';
 import { dispatchAlert, shouldAlert, type AlertConfig } from '../../tool-guard/alert.js';
+import { PluginEventsRepository } from '../../storage/repositories/plugin-events.js';
 import { createLogger } from '../../utils/logger.js';
 import type Database from 'better-sqlite3';
 
@@ -25,8 +26,58 @@ export interface ToolGuardConfig {
   alertMinSeverity: string;
   alertDesktop: boolean;
   alertWebhookUrl: string;
+  piEscalation?: {
+    enabled: boolean;
+    scoreThreshold: number;
+    overrideSeverity: string;
+    scope: 'session' | 'request';
+    ttlMinutes: number;
+  };
   /** Live getter — when provided, overrides static fields for hot-reload */
   getLiveConfig?: () => { action: string; recordAll: boolean; blockMinSeverity: string; alertMinSeverity: string };
+}
+
+// ── PI Escalation state (module-level, exported for api-routes) ──
+
+export interface PiEscalationEntry {
+  sessionId: string;
+  score: number;
+  label: string;
+  overrideSeverity: string;
+  escalatedAt: number;
+}
+
+const piEscalationMap = new Map<string, PiEscalationEntry>();
+let piEscalationTtlMs = 30 * 60000;
+
+function cleanExpiredPiEscalations(): void {
+  if (piEscalationTtlMs <= 0) return;
+  const now = Date.now();
+  for (const [key, entry] of piEscalationMap) {
+    if (now - entry.escalatedAt > piEscalationTtlMs) {
+      piEscalationMap.delete(key);
+    }
+  }
+}
+
+export function getPiEscalations(): PiEscalationEntry[] {
+  cleanExpiredPiEscalations();
+  return Array.from(piEscalationMap.values());
+}
+
+export function resetPiEscalation(sessionId: string): boolean {
+  return piEscalationMap.delete(sessionId);
+}
+
+export function resetAllPiEscalations(): number {
+  const count = piEscalationMap.size;
+  piEscalationMap.clear();
+  return count;
+}
+
+export function getPiEscalationCount(): number {
+  cleanExpiredPiEscalations();
+  return piEscalationMap.size;
 }
 
 interface MatchedToolCall {
@@ -116,9 +167,55 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
   const repo = new ToolCallsRepository(db);
   const rulesRepo = new ToolGuardRulesRepository(db);
   const auditRepo = new AuditLogRepository(db);
+  const pluginEventsRepo = new PluginEventsRepository(db);
 
   // Seed built-in rules on first init (INSERT OR IGNORE preserves user toggles)
   rulesRepo.seedBuiltins(BUILTIN_RULES);
+
+  // ── PI Escalation setup ──
+  const piCfg = config.piEscalation;
+  if (piCfg) {
+    piEscalationTtlMs = (piCfg.ttlMinutes ?? 30) * 60000;
+  }
+
+  if (piCfg?.enabled && eventBus) {
+    eventBus.on('pi:detected', (data: unknown) => {
+      const ev = data as { score?: number; label?: string; sessionId?: string; requestId?: string };
+      if (!ev.sessionId) return;
+      if ((ev.score ?? 0) < (piCfg.scoreThreshold ?? 0.8)) return;
+
+      const entry: PiEscalationEntry = {
+        sessionId: ev.sessionId,
+        score: ev.score ?? 0,
+        label: ev.label ?? 'injection',
+        overrideSeverity: piCfg.overrideSeverity ?? 'medium',
+        escalatedAt: Date.now(),
+      };
+      piEscalationMap.set(ev.sessionId, entry);
+
+      log.warn('PI escalation triggered', { sessionId: ev.sessionId, score: ev.score, override: entry.overrideSeverity });
+
+      // Audit log to plugin_events table
+      try {
+        pluginEventsRepo.insertEvent('tool-guard', ev.requestId ?? null, {
+          type: 'pi-escalation',
+          severity: entry.overrideSeverity,
+          rule: 'pi-escalation',
+          detail: `PI score ${ev.score?.toFixed(2)} >= ${piCfg.scoreThreshold} → blockMinSeverity override to ${entry.overrideSeverity} (scope=${piCfg.scope})`,
+        });
+      } catch (err) {
+        log.warn('Failed to write PI escalation audit', { error: (err as Error).message });
+      }
+
+      eventBus.emit('toolguard:pi-escalation', {
+        sessionId: ev.sessionId,
+        score: ev.score,
+        label: ev.label,
+        overrideSeverity: entry.overrideSeverity,
+        scope: piCfg.scope,
+      });
+    });
+  }
 
   // Live config readers — support hot-reload from Dashboard
   const getAction = () => config.getLiveConfig ? config.getLiveConfig().action : config.action;
@@ -126,13 +223,40 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
   const getBlockMinSeverity = () => config.getLiveConfig ? config.getLiveConfig().blockMinSeverity : config.blockMinSeverity;
   const getAlertMinSeverity = () => config.getLiveConfig ? config.getLiveConfig().alertMinSeverity : config.alertMinSeverity;
 
-  /** Get effective blockMinSeverity for a request context (uses threat-scorer's _threatLevel) */
+  // Severity rank for comparison (lower rank = more strict)
+  const SEVERITY_RANK: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
+
+  /** Get effective blockMinSeverity for a request context.
+   *  Combines threat-scorer path and PI escalation path, taking the stricter (lower rank) of the two. */
   function getEffectiveBlockMinSeverity(context: RequestContext): string {
+    // Path 1: threat-level based escalation
+    let threatSeverity: string;
     const threatLevel = context._threatLevel;
-    if (threatLevel === 'critical') return 'low';       // Block all severities
-    if (threatLevel === 'high') return 'medium';        // Block medium+
-    if (threatLevel === 'elevated') return 'high';      // Block high+
-    return getBlockMinSeverity();
+    if (threatLevel === 'critical') threatSeverity = 'low';
+    else if (threatLevel === 'high') threatSeverity = 'medium';
+    else if (threatLevel === 'elevated') threatSeverity = 'high';
+    else threatSeverity = getBlockMinSeverity();
+
+    // Path 2: PI escalation
+    if (piCfg?.enabled && context.sessionId) {
+      cleanExpiredPiEscalations();
+      const piEntry = piEscalationMap.get(context.sessionId);
+      if (piEntry) {
+        const piSeverity = piEntry.overrideSeverity;
+        const piRank = SEVERITY_RANK[piSeverity] ?? 99;
+        const threatRank = SEVERITY_RANK[threatSeverity] ?? 99;
+        if (piRank < threatRank) {
+          context._piEscalated = true;
+          context._piEscalationOverride = piSeverity;
+          return piSeverity;
+        }
+        // Even if threat path is stricter, mark PI escalation as active
+        context._piEscalated = true;
+        context._piEscalationOverride = piSeverity;
+      }
+    }
+
+    return threatSeverity;
   }
 
   function getAlertConfig(): AlertConfig {
@@ -228,7 +352,7 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
       const rules = rulesRepo.getEnabled();
       context._toolGuardRules = rules;
       const effectiveBlockMin = getEffectiveBlockMinSeverity(context);
-      log.debug('onRequest', { action: getAction(), recordAll: getRecordAll(), isStreaming: context.isStreaming, effectiveBlockMin, threatLevel: context._threatLevel });
+      log.debug('onRequest', { action: getAction(), recordAll: getRecordAll(), isStreaming: context.isStreaming, effectiveBlockMin, threatLevel: context._threatLevel, piEscalated: context._piEscalated });
       if (getAction() === 'block' && context.isStreaming) {
         context._toolGuardStreamBlock = effectiveBlockMin;
       }
@@ -334,6 +458,11 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
         });
       } catch (err) {
         log.warn('Tool guard processing failed', { error: (err as Error).message });
+      } finally {
+        // Request-scope PI escalation: remove after this request completes
+        if (piCfg?.enabled && piCfg.scope === 'request' && context.request.sessionId && context.request._piEscalated) {
+          piEscalationMap.delete(context.request.sessionId);
+        }
       }
     },
   };
