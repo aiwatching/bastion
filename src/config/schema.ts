@@ -71,6 +71,16 @@ export interface BastionConfig {
         ttlMinutes: number;
       };
     };
+    rateLimiter?: {
+      enabled: boolean;
+      requestsPerMinute: number;
+      tokensPerHour: number;
+      maxCostPerHour: number;
+      maxCostPerDay: number;
+      maxCostPerMonth: number;
+      action: 'block' | 'warn';
+      warningThreshold: number;
+    };
     threatIntelligence?: {
       enabled: boolean;
       scoring?: {

@@ -51,6 +51,15 @@ plugins:
     rawData: true
     rawMaxBytes: 524288
     summaryMaxBytes: 1024
+  rateLimiter:
+    enabled: true
+    requestsPerMinute: 0
+    tokensPerHour: 0
+    maxCostPerHour: 0
+    maxCostPerDay: 0
+    maxCostPerMonth: 0
+    action: "block"
+    warningThreshold: 0.8
   toolGuard:
     enabled: true
     action: "audit"

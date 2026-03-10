@@ -50,6 +50,13 @@ body{font-family:"SF Mono","Fira Code","JetBrains Mono",Menlo,Consolas,monospace
 .row-tag.audit{background:#0a1a0a;color:var(--green)}
 .row-tag.warn{background:#1a1a00;color:var(--yellow)}
 .row-tag.indirect{background:#331a00;color:var(--orange)}
+.row-tag.rate{background:#001a33;color:#4488ff}
+.budget-row{display:flex;align-items:center;gap:8px;padding:6px 12px;font-size:11px}
+.budget-label{width:100px;color:var(--dim);text-transform:uppercase;font-size:10px;letter-spacing:.5px}
+.budget-bar{flex:1;height:6px;background:var(--border);border-radius:3px;overflow:hidden}
+.budget-bar-fill{height:100%;border-radius:3px;transition:width .3s}
+.budget-value{width:140px;text-align:right;color:var(--bright);font-size:11px}
+.budget-pct{width:45px;text-align:right;font-size:10px;font-weight:700}
 .row-text{flex:1;color:#888;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .row-text b{color:#ccc;font-weight:600}
 .prov-row{display:flex;align-items:center;gap:6px;padding:4px 12px;font-size:11px}
@@ -148,6 +155,10 @@ const PAGE_OVERVIEW = `
     <div class="section-head"><span class="section-title">Traffic</span></div>
     <div class="section-body" id="ov-traffic"></div>
   </div>
+</div>
+<div id="ov-budget-section" class="section" style="display:none;margin-bottom:2px">
+  <div class="section-head"><span class="section-title">Budget</span><span class="section-count" id="ov-budget-action"></span></div>
+  <div class="section-body" id="ov-budget"></div>
 </div>
 <div class="section">
   <div class="section-head"><span class="section-title">Request Log</span></div>
@@ -471,6 +482,27 @@ const PAGE_SETTINGS = `
   </div>
 </div></div>
 
+<!-- 10. Rate Limiter -->
+<div class="section"><div class="section-head setting-toggle" data-target="set-rate-limiter"><span class="section-title"><span class="sect-arrow">&#9656;</span> RATE LIMITER / BUDGET</span></div>
+<div class="section-body" id="set-rate-limiter" style="display:none;padding:12px">
+  <div class="toggle-row" style="margin-bottom:8px"><div><div class="toggle-label">Rate Limiter</div><div class="toggle-desc">Limit requests per minute and spending per hour/day/month</div></div><label class="switch"><input type="checkbox" id="rl-enabled"><span class="slider"></span></label></div>
+  <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px">
+    <span style="font-size:11px;color:var(--dim)">Exceed Action</span>
+    <select id="rl-action" class="cfg-select"><option value="block">Block (429)</option><option value="warn">Warn (allow)</option></select>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px">
+    <div class="toggle-row" style="flex-direction:column;align-items:flex-start;gap:4px;padding:8px"><div class="toggle-label" style="font-size:11px">RPM (req/min)</div><div class="toggle-desc">0 = unlimited</div><input type="number" id="rl-rpm" min="0" class="cfg-input" style="margin-top:4px"></div>
+    <div class="toggle-row" style="flex-direction:column;align-items:flex-start;gap:4px;padding:8px"><div class="toggle-label" style="font-size:11px">Tokens / hour</div><div class="toggle-desc">0 = unlimited</div><input type="number" id="rl-tph" min="0" class="cfg-input" style="margin-top:4px"></div>
+    <div class="toggle-row" style="flex-direction:column;align-items:flex-start;gap:4px;padding:8px"><div class="toggle-label" style="font-size:11px">Warning %</div><div class="toggle-desc">0.0 - 1.0</div><input type="number" id="rl-warn-pct" min="0" max="1" step="0.05" class="cfg-input" style="margin-top:4px"></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px">
+    <div class="toggle-row" style="flex-direction:column;align-items:flex-start;gap:4px;padding:8px"><div class="toggle-label" style="font-size:11px">Max $ / hour</div><div class="toggle-desc">0 = unlimited</div><input type="number" id="rl-cost-hour" min="0" step="0.01" class="cfg-input" style="margin-top:4px"></div>
+    <div class="toggle-row" style="flex-direction:column;align-items:flex-start;gap:4px;padding:8px"><div class="toggle-label" style="font-size:11px">Max $ / day</div><div class="toggle-desc">0 = unlimited</div><input type="number" id="rl-cost-day" min="0" step="0.1" class="cfg-input" style="margin-top:4px"></div>
+    <div class="toggle-row" style="flex-direction:column;align-items:flex-start;gap:4px;padding:8px"><div class="toggle-label" style="font-size:11px">Max $ / month</div><div class="toggle-desc">0 = unlimited</div><input type="number" id="rl-cost-month" min="0" step="1" class="cfg-input" style="margin-top:4px"></div>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center"><button id="rl-save-btn" class="cfg-btn primary">Save</button><span id="rl-status" style="font-size:11px;color:var(--green);display:none">Saved!</span></div>
+</div></div>
+
 </div>`;
 
 // ── PAGE: PLAYGROUND (test mode only) ────────────────────────────
@@ -777,6 +809,38 @@ async function refreshOverview(){
     // Header status
     if(statsData.version)document.getElementById('hdr-ver').textContent='v'+statsData.version;
     document.getElementById('hdr-uptime').textContent=uptimeFmt(statsData.uptime||0);
+
+    // Budget card
+    try{
+      var rlR=await apiFetch('/api/rate-limits/status');
+      var rl=await rlR.json();
+      var lims=rl.limits||{};
+      var keys=Object.keys(lims);
+      var budgetSec=document.getElementById('ov-budget-section');
+      if(keys.length>0){
+        budgetSec.style.display='';
+        var actionEl=document.getElementById('ov-budget-action');
+        actionEl.textContent=rl.action==='warn'?'WARN':'BLOCK';
+        actionEl.style.color=rl.action==='warn'?'var(--yellow)':'var(--red)';
+        var labels={requestsPerMinute:'RPM',tokensPerHour:'Tokens/hr',maxCostPerHour:'Cost/hr',maxCostPerDay:'Cost/day',maxCostPerMonth:'Cost/month'};
+        if(!skipIfSame('ov-budget',rl)){
+          document.getElementById('ov-budget').innerHTML=keys.map(function(k){
+            var l=lims[k];
+            var pct=Math.min(l.percentage*100,100);
+            var barColor=pct>=100?'var(--red)':pct>=rl.warningThreshold*100?'var(--yellow)':'var(--green)';
+            if(pct>=80)barColor=pct>=100?'var(--red)':'var(--yellow)';
+            var isCost=k.indexOf('Cost')!==-1;
+            var valStr=isCost?('$'+l.current.toFixed(2)+' / $'+l.limit.toFixed(2)):fmt(l.current)+' / '+fmt(l.limit);
+            var pctColor=pct>=100?'color:var(--red)':pct>=80?'color:var(--yellow)':'color:var(--green)';
+            return '<div class="budget-row"><span class="budget-label">'+(labels[k]||k)+'</span>'+
+              '<div class="budget-bar"><div class="budget-bar-fill" style="width:'+pct+'%;background:'+barColor+'"></div></div>'+
+              '<span class="budget-value">'+valStr+'</span>'+
+              '<span class="budget-pct" style="'+pctColor+'">'+Math.round(pct)+'%</span></div>';
+          }).join('');
+        }
+      }else{budgetSec.style.display='none'}
+    }catch(e){/* budget fetch optional */}
+
   }catch(e){console.error('Overview refresh error',e)}
 }
 
@@ -1487,6 +1551,17 @@ async function refreshSettings(){
     // 9. Pipeline
     var srv=cfgData.config&&cfgData.config.server?cfgData.config.server:{};
     document.getElementById('fail-mode-select').value=srv.failMode||'open';
+
+    // 10. Rate Limiter
+    var rlCfg=cfgData.config&&cfgData.config.plugins?cfgData.config.plugins.rateLimiter||{}:{};
+    document.getElementById('rl-enabled').checked=rlCfg.enabled!==false;
+    document.getElementById('rl-action').value=rlCfg.action||'block';
+    document.getElementById('rl-rpm').value=rlCfg.requestsPerMinute||0;
+    document.getElementById('rl-tph').value=rlCfg.tokensPerHour||0;
+    document.getElementById('rl-warn-pct').value=rlCfg.warningThreshold!=null?rlCfg.warningThreshold:0.8;
+    document.getElementById('rl-cost-hour').value=rlCfg.maxCostPerHour||0;
+    document.getElementById('rl-cost-day').value=rlCfg.maxCostPerDay||0;
+    document.getElementById('rl-cost-month').value=rlCfg.maxCostPerMonth||0;
   }catch(e){console.error('Settings refresh error',e)}
 }
 
@@ -1832,6 +1907,28 @@ document.getElementById('fail-mode-select').addEventListener('change',async func
   var val=document.getElementById('fail-mode-select').value;
   await apiFetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({server:{failMode:val}})});
   var st=document.getElementById('fail-mode-status');st.style.display='inline';setTimeout(function(){st.style.display='none'},2000);
+});
+
+// Rate Limiter save
+document.getElementById('rl-save-btn').addEventListener('click',async function(){
+  var enabled=document.getElementById('rl-enabled').checked;
+  var payload={plugins:{rateLimiter:{
+    enabled:enabled,
+    action:document.getElementById('rl-action').value,
+    requestsPerMinute:parseInt(document.getElementById('rl-rpm').value)||0,
+    tokensPerHour:parseInt(document.getElementById('rl-tph').value)||0,
+    warningThreshold:parseFloat(document.getElementById('rl-warn-pct').value)||0.8,
+    maxCostPerHour:parseFloat(document.getElementById('rl-cost-hour').value)||0,
+    maxCostPerDay:parseFloat(document.getElementById('rl-cost-day').value)||0,
+    maxCostPerMonth:parseFloat(document.getElementById('rl-cost-month').value)||0
+  }},pluginStatus:{'rate-limiter':enabled}};
+  await apiFetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+  var st=document.getElementById('rl-status');st.style.display='inline';st.textContent='Saved!';setTimeout(function(){st.style.display='none'},2000);
+});
+// Rate Limiter enable/disable toggle — auto-save immediately
+document.getElementById('rl-enabled').addEventListener('change',async function(){
+  var enabled=this.checked;
+  await apiFetch('/api/config',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({pluginStatus:{'rate-limiter':enabled},plugins:{rateLimiter:{enabled:enabled}}})});
 });
 
 // ══ Pipeline helpers ═════════════════════════════════════════════

@@ -28,6 +28,7 @@ import { getLocalSignatureMeta, checkForUpdates, syncRemotePatterns } from '../d
 import type { ConfigManager } from '../config/manager.js';
 import type { PluginManager } from '../plugins/index.js';
 import { getVersion } from '../version.js';
+import type { RateLimiterState } from '../plugins/builtin/rate-limiter.js';
 import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('api-routes');
@@ -749,6 +750,18 @@ export function createApiRouter(
           sendJson(res, { error: (err as Error).message }, 400);
         }
       }).catch((err) => sendJson(res, { error: (err as Error).message }, 500));
+      return true;
+    }
+
+    // GET /api/rate-limits/status — current rate limiter usage vs limits
+    if (req.method === 'GET' && path === '/api/rate-limits/status') {
+      const rlPlugin = pluginManager.getPlugins().find(p => p.name === 'rate-limiter') as
+        { getState?: () => RateLimiterState } | undefined;
+      if (rlPlugin?.getState) {
+        sendJson(res, rlPlugin.getState());
+      } else {
+        sendJson(res, { limits: {}, action: 'block', recentBlocks: 0 });
+      }
       return true;
     }
 
