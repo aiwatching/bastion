@@ -184,10 +184,14 @@ if [ -n "$INSTALL_PLUGINS" ]; then
     node -e "
       const fs=require('fs');
       const pkg=JSON.parse(fs.readFileSync('package.json','utf8'));
-      if(pkg.dependencies&&pkg.dependencies['@aion0/bastion-plugin-api']){
-        pkg.dependencies['@aion0/bastion-plugin-api']='file:${PLUGIN_API_REL}';
-        fs.writeFileSync('package.json',JSON.stringify(pkg,null,2)+'\n');
+      let changed=false;
+      for(const key of ['dependencies','devDependencies']){
+        if(pkg[key]&&pkg[key]['@aion0/bastion-plugin-api']){
+          pkg[key]['@aion0/bastion-plugin-api']='file:${PLUGIN_API_REL}';
+          changed=true;
+        }
       }
+      if(changed) fs.writeFileSync('package.json',JSON.stringify(pkg,null,2)+'\n');
     "
     info "Rewrote plugin-api path to: file:${PLUGIN_API_REL}"
     # Install plugin deps (including onnxruntime-node)
@@ -195,10 +199,24 @@ if [ -n "$INSTALL_PLUGINS" ]; then
     npm run build 2>&1 | tail -1
     cd "$INSTALL_DIR"
 
+    # Check for Ollama (required for L5b LLM-based prompt injection verification)
+    if command -v ollama &>/dev/null; then
+      info "Ollama detected: $(ollama --version 2>&1 | head -1)"
+    else
+      echo ""
+      echo "  ⚠  Ollama not found. L5b semantic analysis requires Ollama."
+      echo "     Install:  brew install ollama     (macOS)"
+      echo "               curl -fsSL https://ollama.com/install.sh | sh  (Linux)"
+      echo "     Then:     ollama serve"
+      echo "     Bastion will auto-pull the model on first start."
+      echo "     Without Ollama, L5a (ONNX) still works independently."
+      echo ""
+    fi
+
     # Auto-configure external plugin in config.yaml
     USER_CONFIG="$HOME/.bastion/config.yaml"
     if [ -f "$USER_CONFIG" ]; then
-      if ! grep -q '/plugins"' "$USER_CONFIG"; then
+      if ! grep -q '/plugins' "$USER_CONFIG"; then
         info "Adding @aion0/bastion-plugin-api to config.yaml"
         # Replace "external: []" with the actual plugin entry (must stay inside plugins: block)
         if grep -q 'external: \[\]' "$USER_CONFIG"; then

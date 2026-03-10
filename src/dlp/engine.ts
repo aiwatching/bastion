@@ -172,8 +172,14 @@ export function getPatterns(categories: string[]): DlpPattern[] {
   return all;
 }
 
-export function scanText(text: string, patterns: DlpPattern[], action: DlpAction, trace?: DlpTrace): DlpResult {
+export interface ScanTextOptions {
+  /** When true, confirmPatterns-rejected matches are collected as deferredFindings instead of discarded */
+  deferContextVerify?: boolean;
+}
+
+export function scanText(text: string, patterns: DlpPattern[], action: DlpAction, trace?: DlpTrace, options?: ScanTextOptions): DlpResult {
   const findings: DlpFinding[] = [];
+  const deferredFindings: DlpFinding[] = [];
   let redactedBody = text;
   const t0 = trace ? performance.now() : 0;
 
@@ -255,6 +261,7 @@ export function scanText(text: string, patterns: DlpPattern[], action: DlpAction
 
     // Context verification (free tier — always runs when contextVerify is defined)
     let verifiedMatches = validatedMatches;
+    const deferredMatches: string[] = [];
     if (pattern.contextVerify && posMatches) {
       // Build verified list from posMatches to preserve per-occurrence position info
       // (avoids find-first-match bug when same string appears at multiple positions)
@@ -264,13 +271,28 @@ export function scanText(text: string, patterns: DlpPattern[], action: DlpAction
         if (!validatedSet.has(pos.match)) continue; // filtered by validator
         if (contextVerifyMatch(text, pos.match, pos.index, pattern.contextVerify)) {
           verifiedMatches.push(pos.match);
-        } else if (trace) {
-          trace.entries.push({
-            layer: 2, layerName: 'regex', step: 'context-verify-reject',
-            detail: `[${pattern.name}] match "${pos.match.length > 30 ? pos.match.slice(0, 30) + '...' : pos.match}" rejected by context verification`,
-          });
+        } else {
+          // When deferContextVerify is on, collect for L4 instead of discarding
+          if (options?.deferContextVerify) {
+            deferredMatches.push(pos.match);
+          }
+          if (trace) {
+            trace.entries.push({
+              layer: 2, layerName: 'regex', step: 'context-verify-reject',
+              detail: `[${pattern.name}] match "${pos.match.length > 30 ? pos.match.slice(0, 30) + '...' : pos.match}"${options?.deferContextVerify ? ' deferred to L4' : ' rejected by context verification'}`,
+            });
+          }
         }
       }
+    }
+    // Collect deferred findings for L4
+    if (deferredMatches.length > 0) {
+      deferredFindings.push({
+        patternName: pattern.name,
+        patternCategory: pattern.category,
+        matchCount: deferredMatches.length,
+        matches: deferredMatches,
+      });
     }
     if (verifiedMatches.length === 0) continue;
 
@@ -391,12 +413,13 @@ export function scanText(text: string, patterns: DlpPattern[], action: DlpAction
   }
 
   if (findings.length === 0) {
-    return { action: 'pass', findings: [] };
+    return { action: 'pass', findings: [], deferredFindings };
   }
 
   return {
     action,
     findings,
+    deferredFindings,
     redactedBody: action === 'redact' ? redactedBody : undefined,
   };
 }

@@ -14,6 +14,7 @@ import { createTokenOptimizerPlugin } from '../plugins/builtin/token-optimizer.j
 import { createAuditLoggerPlugin } from '../plugins/builtin/audit-logger.js';
 import { createToolGuardPlugin } from '../plugins/builtin/tool-guard.js';
 import { createThreatScorerPlugin } from '../plugins/builtin/threat-scorer.js';
+import { createRateLimiterPlugin } from '../plugins/builtin/rate-limiter.js';
 import { registerAnthropicProvider } from '../proxy/providers/anthropic.js';
 import { registerOpenAIProvider } from '../proxy/providers/openai.js';
 import { registerGeminiProvider } from '../proxy/providers/gemini.js';
@@ -118,6 +119,21 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
   pluginManager.register(createMetricsCollectorPlugin(db));
   if (!config.plugins.metrics.enabled) pluginManager.disable('metrics-collector');
 
+  pluginManager.register(createRateLimiterPlugin(db, () => {
+    const rl = configManager.get().plugins.rateLimiter;
+    return {
+      enabled: rl?.enabled ?? true,
+      requestsPerMinute: rl?.requestsPerMinute ?? 0,
+      tokensPerHour: rl?.tokensPerHour ?? 0,
+      maxCostPerHour: rl?.maxCostPerHour ?? 0,
+      maxCostPerDay: rl?.maxCostPerDay ?? 0,
+      maxCostPerMonth: rl?.maxCostPerMonth ?? 0,
+      action: rl?.action ?? 'block',
+      warningThreshold: rl?.warningThreshold ?? 0.8,
+    };
+  }, eventBus));
+  if (!config.plugins.rateLimiter?.enabled) pluginManager.disable('rate-limiter');
+
   pluginManager.register(createDlpScannerPlugin(db, {
     action: config.plugins.dlp.action,
     patterns: config.plugins.dlp.patterns,
@@ -155,6 +171,13 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
     alertMinSeverity: config.plugins.toolGuard?.alertMinSeverity ?? 'high',
     alertDesktop: config.plugins.toolGuard?.alertDesktop ?? true,
     alertWebhookUrl: config.plugins.toolGuard?.alertWebhookUrl ?? '',
+    piEscalation: config.plugins.toolGuard?.piEscalation ?? {
+      enabled: true,
+      scoreThreshold: 0.8,
+      overrideSeverity: 'medium',
+      scope: 'session',
+      ttlMinutes: 30,
+    },
     getLiveConfig: () => {
       const tg = configManager.get().plugins.toolGuard;
       return {
@@ -190,6 +213,12 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
   // Sync failMode changes at runtime
   configManager.onChange((c) => {
     pluginManager.setFailMode(c.server.failMode ?? 'open');
+    // Broadcast external plugin config changes for hot-reload
+    const ext = c.plugins.external;
+    if (ext?.length) {
+      const cfg = ext.find((e: { enabled?: boolean }) => e.enabled !== false) as { config?: Record<string, unknown> } | undefined;
+      if (cfg?.config) eventBus.emit('config:external-plugin', cfg.config);
+    }
   });
 
   // Create and start server

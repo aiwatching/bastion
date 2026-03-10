@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { rmSync, existsSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { paths } from '../config/paths.js';
@@ -14,17 +15,21 @@ import { ToolCallsRepository } from '../storage/repositories/tool-calls.js';
 import { ToolGuardRulesRepository } from '../storage/repositories/tool-guard-rules.js';
 import { PluginEventsRepository } from '../storage/repositories/plugin-events.js';
 import { getRecentAlerts, getUnacknowledgedCount, acknowledgeAlerts } from '../tool-guard/alert.js';
+import { getPiEscalations, resetPiEscalation, resetAllPiEscalations } from '../plugins/builtin/tool-guard.js';
 import { ThreatScoresRepository } from '../storage/repositories/threat-scores.js';
 import { ThreatScoreEventsRepository } from '../storage/repositories/threat-score-events.js';
 import { ToolChainDetectionsRepository } from '../storage/repositories/tool-chain-detections.js';
 import { BUILTIN_CHAIN_RULES } from '../tool-guard/chain-rules.js';
+import { matchRules } from '../tool-guard/rules.js';
 import { scanText, type DlpTrace } from '../dlp/engine.js';
+import { AiValidator } from '../dlp/ai-validator.js';
 import type { DlpAction } from '../dlp/actions.js';
 import { getBuiltinSensitivePatterns, getBuiltinNonSensitiveNames } from '../dlp/semantics.js';
 import { getLocalSignatureMeta, checkForUpdates, syncRemotePatterns } from '../dlp/remote-sync.js';
 import type { ConfigManager } from '../config/manager.js';
 import type { PluginManager } from '../plugins/index.js';
 import { getVersion } from '../version.js';
+import type { RateLimiterState } from '../plugins/builtin/rate-limiter.js';
 import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('api-routes');
@@ -66,6 +71,10 @@ export function createApiRouter(
   const pluginEventsRepo = new PluginEventsRepository(db);
   const threatScoresRepo = new ThreatScoresRepository(db);
   const threatScoreEventsRepo = new ThreatScoreEventsRepository(db);
+
+  // AI Validator for full-pipeline DLP testing
+  const dlpAiConfig = configManager.get().plugins.dlp.aiValidation;
+  const aiValidator = new AiValidator({ ...dlpAiConfig, getLocalProvider: () => getPluginState?.('pi-classifier', 'classifierProvider') as import('../plugin-api/types.js').ClassifierProvider | undefined });
   const chainDetectionsRepo = new ToolChainDetectionsRepository(db);
 
   return (req: IncomingMessage, res: ServerResponse): boolean => {
@@ -114,8 +123,9 @@ export function createApiRouter(
     }
 
     // POST /api/dlp/scan — standalone DLP scan for testing and external integration
+    // Optional: validate=true to run L4 AI validation on findings
     if (req.method === 'POST' && path === '/api/dlp/scan') {
-      bufferBody(req).then((body) => {
+      bufferBody(req).then(async (body) => {
         try {
           const data = JSON.parse(body);
           const text = data.text;
@@ -126,16 +136,48 @@ export function createApiRouter(
           const action = (data.action ?? configManager.get().plugins.dlp.action ?? 'warn') as DlpAction;
           const patterns = dlpPatternsRepo.getEnabled();
           const enableTrace = Boolean(data.trace);
+          const enableValidate = Boolean(data.validate);
           const trace: DlpTrace | undefined = enableTrace ? { entries: [], totalDurationMs: 0 } : undefined;
           const result = scanText(text, patterns, action, trace);
+
+          const mapFinding = (f: { patternName: string; patternCategory: string; matchCount: number; matches: string[] }) => ({
+            patternName: f.patternName,
+            patternCategory: f.patternCategory,
+            matchCount: f.matchCount,
+            matches: f.matches,
+          });
+
+          // L4 AI validation — filter false positives
+          let validation: { enabled: boolean; ready: boolean; provider?: string; originalCount: number; confirmedCount: number; filteredOut: string[] } | null = null;
+          let finalFindings = result.findings;
+          if (enableValidate) {
+            // Refresh config in case it changed
+            const freshConfig = configManager.get().plugins.dlp.aiValidation;
+            aiValidator.updateConfig(freshConfig);
+            validation = {
+              enabled: freshConfig.enabled,
+              ready: aiValidator.ready,
+              provider: freshConfig.provider,
+              originalCount: result.findings.length,
+              confirmedCount: result.findings.length,
+              filteredOut: [],
+            };
+            if (aiValidator.ready && result.findings.length > 0) {
+              const confirmed = await aiValidator.validate(result.findings, text);
+              const confirmedNames = new Set(confirmed.map(f => f.patternName + ':' + f.matches[0]));
+              validation.confirmedCount = confirmed.length;
+              validation.filteredOut = result.findings
+                .filter(f => !confirmedNames.has(f.patternName + ':' + f.matches[0]))
+                .map(f => f.patternName);
+              finalFindings = confirmed;
+            }
+          }
+
           sendJson(res, {
-            action: result.action,
-            findings: result.findings.map((f) => ({
-              patternName: f.patternName,
-              patternCategory: f.patternCategory,
-              matchCount: f.matchCount,
-              matches: f.matches,
-            })),
+            action: finalFindings.length === 0 ? 'pass' : result.action,
+            findings: finalFindings.map(mapFinding),
+            allFindings: enableValidate ? result.findings.map(mapFinding) : undefined,
+            validation: validation,
             redactedText: result.redactedBody ?? null,
             trace: trace ?? null,
           });
@@ -712,6 +754,18 @@ export function createApiRouter(
       return true;
     }
 
+    // GET /api/rate-limits/status — current rate limiter usage vs limits
+    if (req.method === 'GET' && path === '/api/rate-limits/status') {
+      const rlPlugin = pluginManager.getPlugins().find(p => p.name === 'rate-limiter') as
+        { getState?: () => RateLimiterState } | undefined;
+      if (rlPlugin?.getState) {
+        sendJson(res, rlPlugin.getState());
+      } else {
+        sendJson(res, { limits: {}, action: 'block', recentBlocks: 0 });
+      }
+      return true;
+    }
+
     // ── Threat Intelligence API ──
 
     // GET /api/threat/sessions — all elevated+ sessions
@@ -756,6 +810,379 @@ export function createApiRouter(
     // GET /api/threat/chain-rules — tool chain rules list
     if (req.method === 'GET' && path === '/api/threat/chain-rules') {
       sendJson(res, BUILTIN_CHAIN_RULES);
+      return true;
+    }
+
+    // ── PI Escalation API ──
+
+    // GET /api/tool-guard/pi-escalations
+    if (req.method === 'GET' && path === '/api/tool-guard/pi-escalations') {
+      const escalations = getPiEscalations();
+      sendJson(res, { escalations, count: escalations.length });
+      return true;
+    }
+
+    // POST /api/tool-guard/pi-escalations/reset/:sessionId
+    if (req.method === 'POST' && path.startsWith('/api/tool-guard/pi-escalations/reset/')) {
+      const sessionId = decodeURIComponent(path.slice('/api/tool-guard/pi-escalations/reset/'.length));
+      if (!sessionId) {
+        sendJson(res, { error: 'Missing session ID' }, 400);
+        return true;
+      }
+      const removed = resetPiEscalation(sessionId);
+      sendJson(res, { ok: true, removed });
+      return true;
+    }
+
+    // POST /api/tool-guard/pi-escalations/reset
+    if (req.method === 'POST' && path === '/api/tool-guard/pi-escalations/reset') {
+      const count = resetAllPiEscalations();
+      sendJson(res, { ok: true, count });
+      return true;
+    }
+
+    // ── PI Detection Playground (test mode only) ──
+
+    // GET /api/test/pi-status — L5a/L5b readiness and config
+    if (req.method === 'GET' && path === '/api/test/pi-status') {
+      if (process.env.BASTION_TEST_MODE !== '1') {
+        sendJson(res, { error: 'Not found' }, 404);
+        return true;
+      }
+      const l5aProvider = getPluginState?.('pi-classifier', 'classifierProvider') as { ready?: boolean; modelName?: string } | undefined;
+      const l5bProv = getPluginState?.('pi-classifier', 'l5bProvider') as { ready?: boolean; modelName?: string } | undefined;
+      const piConfig = getPluginState?.('pi-classifier', 'piConfig') as { action?: string; threshold?: number; indirectThreshold?: number; grayZoneWidth?: number } | undefined;
+      sendJson(res, {
+        l5a: { ready: !!l5aProvider?.ready, modelName: l5aProvider?.modelName ?? null },
+        l5b: { ready: !!l5bProv?.ready, modelName: l5bProv?.modelName ?? null },
+        action: piConfig?.action ?? 'warn',
+        threshold: piConfig?.threshold ?? 0.8,
+        indirectThreshold: piConfig?.indirectThreshold ?? 0.6,
+        grayZoneWidth: piConfig?.grayZoneWidth ?? 0.2,
+      });
+      return true;
+    }
+
+    // POST /api/test/pi-classify — run PI classification on arbitrary text
+    if (req.method === 'POST' && path === '/api/test/pi-classify') {
+      if (process.env.BASTION_TEST_MODE !== '1') {
+        sendJson(res, { error: 'Not found' }, 404);
+        return true;
+      }
+      bufferBody(req).then(async (body) => {
+        try {
+          const data = JSON.parse(body);
+          const text = data.text;
+          if (typeof text !== 'string' || text.length === 0) {
+            sendJson(res, { error: 'text field is required' }, 400);
+            return;
+          }
+          const l5aProvider = getPluginState?.('pi-classifier', 'classifierProvider') as { ready?: boolean; modelName?: string; classify?: (text: string) => Promise<{ label: string; score: number; latencyMs: number }> } | undefined;
+          if (!l5aProvider?.ready || !l5aProvider.classify) {
+            sendJson(res, { error: 'L5a classifier not ready' }, 503);
+            return;
+          }
+          const piConfig = getPluginState?.('pi-classifier', 'piConfig') as { threshold?: number; grayZoneWidth?: number } | undefined;
+          const threshold = piConfig?.threshold ?? 0.8;
+          const grayZoneWidth = piConfig?.grayZoneWidth ?? 0.2;
+          const grayLower = threshold - grayZoneWidth;
+
+          // L5a classification
+          const l5a = await l5aProvider.classify(text);
+          const isSafe = l5a.label === 'BENIGN' || l5a.label === 'SAFE';
+          const injectionScore = isSafe ? 1 - l5a.score : l5a.score;
+
+          // Determine zone
+          let zone: 'safe' | 'gray' | 'detected';
+          if (injectionScore >= threshold) zone = 'detected';
+          else if (injectionScore >= grayLower) zone = 'gray';
+          else zone = 'safe';
+
+          const result: Record<string, unknown> = {
+            l5a: { label: l5a.label, score: l5a.score, latencyMs: l5a.latencyMs, modelName: l5aProvider.modelName },
+            injectionScore,
+            threshold,
+            grayZone: [grayLower, threshold],
+            zone,
+          };
+
+          // L5b escalation if gray zone
+          if (zone === 'gray') {
+            const l5bProv = getPluginState?.('pi-classifier', 'l5bProvider') as { ready?: boolean; modelName?: string; classify?: (text: string) => Promise<{ label: string; score: number; latencyMs: number }> } | undefined;
+            if (l5bProv?.ready && l5bProv.classify) {
+              try {
+                const l5b = await l5bProv.classify(text);
+                const l5bIsSafe = l5b.label === 'BENIGN' || l5b.label === 'SAFE';
+                const l5bInjectionScore = l5bIsSafe ? 1 - l5b.score : l5b.score;
+                result.l5b = { label: l5b.label, score: l5b.score, latencyMs: l5b.latencyMs, modelName: l5bProv.modelName };
+                result.l5bInjectionScore = l5bInjectionScore;
+                // L5b verdict overrides gray zone
+                result.zone = l5bInjectionScore >= threshold ? 'detected' : 'safe';
+              } catch (err) {
+                result.l5b = { error: (err as Error).message };
+              }
+            } else {
+              result.l5b = { ready: false };
+            }
+          }
+
+          result.verdict = result.zone === 'safe' ? 'SAFE' : 'INJECTION';
+          sendJson(res, result);
+        } catch (err) {
+          sendJson(res, { error: (err as Error).message }, 400);
+        }
+      }).catch((err) => {
+        sendJson(res, { error: (err as Error).message }, 500);
+      });
+      return true;
+    }
+
+    // POST /api/test/pipeline — unified full-pipeline test (DLP L0-L4 + PI L5a/L5b)
+    if (req.method === 'POST' && path === '/api/test/pipeline') {
+      if (process.env.BASTION_TEST_MODE !== '1') {
+        sendJson(res, { error: 'Not found' }, 404);
+        return true;
+      }
+      bufferBody(req).then(async (body) => {
+        try {
+          const data = JSON.parse(body);
+          const text = data.text;
+          if (typeof text !== 'string' || text.length === 0) {
+            sendJson(res, { error: 'text field is required' }, 400);
+            return;
+          }
+          const action = (data.action ?? configManager.get().plugins.dlp.action ?? 'warn') as DlpAction;
+
+          // ── DLP L4 AI Validation ──
+          const freshAiConfig = configManager.get().plugins.dlp.aiValidation;
+          aiValidator.updateConfig(freshAiConfig);
+          const l4Ready = aiValidator.ready;
+
+          // ── DLP L0-L3 ──
+          const dlpTrace: DlpTrace = { entries: [], totalDurationMs: 0 };
+          const dlpResult = scanText(text, dlpPatternsRepo.getEnabled(), action, dlpTrace, { deferContextVerify: l4Ready });
+          const mapF = (f: { patternName: string; patternCategory: string; matchCount: number; matches: string[] }) => ({
+            patternName: f.patternName, patternCategory: f.patternCategory, matchCount: f.matchCount, matches: f.matches,
+          });
+
+          let l4: Record<string, unknown> = { ready: l4Ready, provider: freshAiConfig.provider, enabled: freshAiConfig.enabled };
+          let confirmedFindings = dlpResult.findings;
+          const allCandidates = [...dlpResult.findings, ...dlpResult.deferredFindings];
+          // Clear L4 cache for fresh results in test mode
+          aiValidator.clearCache();
+          if (l4Ready && allCandidates.length > 0) {
+            const confirmed = await aiValidator.validate(allCandidates, text);
+            const confirmedSet = new Set(confirmed.map(f => f.patternName + ':' + f.matches[0]));
+            const promotedFromDeferred = dlpResult.deferredFindings.filter(f => confirmedSet.has(f.patternName + ':' + f.matches[0]));
+            l4 = {
+              ...l4,
+              originalCount: allCandidates.length,
+              confirmedCount: confirmed.length,
+              filteredOut: allCandidates.filter(f => !confirmedSet.has(f.patternName + ':' + f.matches[0])).map(f => f.patternName),
+              deferredCount: dlpResult.deferredFindings.length,
+              promotedCount: promotedFromDeferred.length,
+              details: aiValidator.lastDetails,
+            };
+            confirmedFindings = confirmed;
+          } else {
+            l4 = { ...l4, originalCount: dlpResult.findings.length, confirmedCount: dlpResult.findings.length, filteredOut: [], deferredCount: dlpResult.deferredFindings.length };
+          }
+
+          // ── PI L5a/L5b ──
+          type Classifier = { ready?: boolean; modelName?: string; classify?: (text: string) => Promise<{ label: string; score: number; latencyMs: number }> };
+          const l5aProvider = getPluginState?.('pi-classifier', 'classifierProvider') as Classifier | undefined;
+          const piConfig = getPluginState?.('pi-classifier', 'piConfig') as { threshold?: number; indirectThreshold?: number; grayZoneWidth?: number } | undefined;
+          const threshold = piConfig?.threshold ?? 0.8;
+          const piIndirectThreshold = piConfig?.indirectThreshold ?? 0.6;
+          const grayZoneWidth = piConfig?.grayZoneWidth ?? 0.2;
+          const grayLower = threshold - grayZoneWidth;
+
+          let pi: Record<string, unknown> = { ready: false };
+          if (l5aProvider?.ready && l5aProvider.classify) {
+            const l5a = await l5aProvider.classify(text);
+            const isSafe = l5a.label === 'BENIGN' || l5a.label === 'SAFE';
+            const injectionScore = isSafe ? 1 - l5a.score : l5a.score;
+            let zone: string;
+            if (injectionScore >= threshold) zone = 'detected';
+            else if (injectionScore >= grayLower) zone = 'gray';
+            else zone = 'safe';
+
+            pi = {
+              ready: true,
+              l5a: { label: l5a.label, score: l5a.score, latencyMs: l5a.latencyMs, modelName: l5aProvider.modelName },
+              injectionScore, threshold, indirectThreshold: piIndirectThreshold, grayZone: [grayLower, threshold], zone,
+            };
+
+            // L5b if gray
+            if (zone === 'gray') {
+              const l5bProv = getPluginState?.('pi-classifier', 'l5bProvider') as Classifier | undefined;
+              if (l5bProv?.ready && l5bProv.classify) {
+                try {
+                  const l5b = await l5bProv.classify(text);
+                  const l5bSafe = l5b.label === 'BENIGN' || l5b.label === 'SAFE';
+                  const l5bScore = l5bSafe ? 1 - l5b.score : l5b.score;
+                  pi.l5b = { label: l5b.label, score: l5b.score, latencyMs: l5b.latencyMs, modelName: l5bProv.modelName };
+                  pi.l5bInjectionScore = l5bScore;
+                  pi.zone = l5bScore >= threshold ? 'detected' : 'safe';
+                } catch (err) { pi.l5b = { error: (err as Error).message }; }
+              } else { pi.l5b = { ready: false }; }
+            }
+            pi.verdict = (pi.zone === 'safe') ? 'SAFE' : 'INJECTION';
+          }
+
+          // ── Combined verdict ──
+          const dlpBlocked = confirmedFindings.length > 0 && (action === 'block' || action === 'redact');
+          const piBlocked = pi.verdict === 'INJECTION';
+          sendJson(res, {
+            verdict: (dlpBlocked || piBlocked) ? 'BLOCKED' : 'PASS',
+            dlp: {
+              action: confirmedFindings.length === 0 ? 'pass' : dlpResult.action,
+              findings: confirmedFindings.map(mapF),
+              allFindings: [...dlpResult.findings, ...dlpResult.deferredFindings].map(mapF),
+              deferredFindings: dlpResult.deferredFindings.map(mapF),
+              redactedText: dlpResult.redactedBody ?? null,
+              trace: dlpTrace,
+            },
+            l4,
+            pi,
+          });
+        } catch (err) {
+          sendJson(res, { error: (err as Error).message }, 400);
+        }
+      }).catch((err) => {
+        sendJson(res, { error: (err as Error).message }, 500);
+      });
+      return true;
+    }
+
+    // POST /api/test/tool-guard-scan — test tool call against rules
+    if (req.method === 'POST' && path === '/api/test/tool-guard-scan') {
+      if (process.env.BASTION_TEST_MODE !== '1') {
+        sendJson(res, { error: 'Not found' }, 404);
+        return true;
+      }
+      bufferBody(req).then((body) => {
+        try {
+          const data = JSON.parse(body);
+          const toolName = data.toolName;
+          const toolInput = data.toolInput;
+          if (typeof toolName !== 'string' || toolName.length === 0) {
+            sendJson(res, { error: 'toolName is required' }, 400);
+            return;
+          }
+          if (toolInput === undefined || toolInput === null) {
+            sendJson(res, { error: 'toolInput is required' }, 400);
+            return;
+          }
+          // Use DB rules (builtin + custom, compiled to ToolGuardRule[])
+          const rules = toolGuardRulesRepo.getEnabled();
+          const result = matchRules(toolName, toolInput, rules);
+          if (result) {
+            sendJson(res, {
+              matched: true,
+              rule: {
+                id: result.rule.id,
+                name: result.rule.name,
+                description: result.rule.description,
+                severity: result.rule.severity,
+                category: result.rule.category,
+              },
+              matchedText: result.matchedText,
+            });
+          } else {
+            sendJson(res, { matched: false });
+          }
+        } catch (err) {
+          sendJson(res, { error: (err as Error).message }, 400);
+        }
+      }).catch((err) => {
+        sendJson(res, { error: (err as Error).message }, 500);
+      });
+      return true;
+    }
+
+    // ── Rate Limiter Playground (test mode only) ──
+
+    // POST /api/test/rate-limiter/simulate — inject fake usage into rate-limiter counters
+    if (req.method === 'POST' && path === '/api/test/rate-limiter/simulate') {
+      if (process.env.BASTION_TEST_MODE !== '1') {
+        sendJson(res, { error: 'Not found' }, 404);
+        return true;
+      }
+      bufferBody(req).then((body) => {
+        try {
+          const data = JSON.parse(body);
+          const rlPlugin = pluginManager.getPlugins().find(p => p.name === 'rate-limiter') as
+            { simulateUsage?: (opts: { cost?: number; tokens?: number; requests?: number }) => void; getState?: () => RateLimiterState } | undefined;
+          if (!rlPlugin?.simulateUsage) {
+            sendJson(res, { error: 'Rate limiter plugin not available' }, 503);
+            return;
+          }
+          rlPlugin.simulateUsage({
+            cost: typeof data.cost === 'number' ? data.cost : undefined,
+            tokens: typeof data.tokens === 'number' ? data.tokens : undefined,
+            requests: typeof data.requests === 'number' ? data.requests : undefined,
+          });
+          sendJson(res, { ok: true, state: rlPlugin.getState?.() });
+        } catch (err) {
+          sendJson(res, { error: (err as Error).message }, 400);
+        }
+      }).catch((err) => {
+        sendJson(res, { error: (err as Error).message }, 500);
+      });
+      return true;
+    }
+
+    // POST /api/test/rate-limiter/reset — reset all rate-limiter counters
+    if (req.method === 'POST' && path === '/api/test/rate-limiter/reset') {
+      if (process.env.BASTION_TEST_MODE !== '1') {
+        sendJson(res, { error: 'Not found' }, 404);
+        return true;
+      }
+      const rlPlugin = pluginManager.getPlugins().find(p => p.name === 'rate-limiter') as
+        { resetCounters?: () => void; getState?: () => RateLimiterState } | undefined;
+      if (!rlPlugin?.resetCounters) {
+        sendJson(res, { error: 'Rate limiter plugin not available' }, 503);
+        return true;
+      }
+      rlPlugin.resetCounters();
+      sendJson(res, { ok: true, state: rlPlugin.getState?.() });
+      return true;
+    }
+
+    // POST /api/test/rate-limiter/fire — simulate an actual onRequest call to test blocking
+    if (req.method === 'POST' && path === '/api/test/rate-limiter/fire') {
+      if (process.env.BASTION_TEST_MODE !== '1') {
+        sendJson(res, { error: 'Not found' }, 404);
+        return true;
+      }
+      const rlPlugin = pluginManager.getPlugins().find(p => p.name === 'rate-limiter') as
+        { onRequest?: (ctx: unknown) => Promise<{ blocked?: { reason: string } } | void>; getState?: () => RateLimiterState } | undefined;
+      if (!rlPlugin?.onRequest) {
+        sendJson(res, { error: 'Rate limiter plugin not available' }, 503);
+        return true;
+      }
+      const fakeCtx = {
+        id: crypto.randomUUID(),
+        provider: 'test',
+        model: 'test-model',
+        method: 'POST',
+        path: '/v1/test',
+        headers: {},
+        body: '{}',
+        parsedBody: {},
+        isStreaming: false,
+        startTime: Date.now(),
+      };
+      rlPlugin.onRequest(fakeCtx).then((result) => {
+        sendJson(res, {
+          blocked: !!result?.blocked,
+          reason: result?.blocked?.reason ?? null,
+          state: rlPlugin.getState?.(),
+        });
+      }).catch((err) => {
+        sendJson(res, { error: (err as Error).message }, 500);
+      });
       return true;
     }
 

@@ -7,10 +7,14 @@ export function registerStartCommand(program: Command): void {
     .command('start')
     .description('Start the Bastion AI Gateway')
     .option('--foreground', 'Run in foreground (no daemon)')
+    .option('--test', 'Enable test mode (PI detection playground)')
     .option('-p, --port <port>', 'Override port')
     .action(async (options) => {
       if (options.port) {
         process.env.BASTION_PORT = options.port;
+      }
+      if (options.test) {
+        process.env.BASTION_TEST_MODE = '1';
       }
 
       if (options.foreground) {

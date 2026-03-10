@@ -29,9 +29,11 @@ export interface BastionConfig {
       };
       aiValidation: {
         enabled: boolean;
-        provider: 'anthropic' | 'openai' | 'local';
+        provider: 'anthropic' | 'openai' | 'deepseek' | 'ollama' | 'local';
         model: string;
         apiKey: string;
+        ollamaEndpoint: string;
+        ollamaModel: string;
         timeoutMs: number;
         cacheSize: number;
       };
@@ -61,11 +63,29 @@ export interface BastionConfig {
       alertMinSeverity: 'critical' | 'high' | 'medium' | 'low';
       alertDesktop: boolean;
       alertWebhookUrl: string;
+      piEscalation?: {
+        enabled: boolean;
+        scoreThreshold: number;
+        overrideSeverity: 'critical' | 'high' | 'medium' | 'low';
+        scope: 'session' | 'request';
+        ttlMinutes: number;
+      };
+    };
+    rateLimiter?: {
+      enabled: boolean;
+      requestsPerMinute: number;
+      tokensPerHour: number;
+      maxCostPerHour: number;
+      maxCostPerDay: number;
+      maxCostPerMonth: number;
+      action: 'block' | 'warn';
+      warningThreshold: number;
     };
     threatIntelligence?: {
       enabled: boolean;
       scoring?: {
         piWeight?: number;
+        indirectPiWeight?: number;
         dlpWeight?: number;
         toolGuardWeights?: { critical?: number; high?: number; medium?: number; low?: number };
         toolChainWeight?: number;

@@ -29,6 +29,9 @@ export interface RequestContext {
   /** Internal: set by threat-scorer for tool-guard to read */
   _threatLevel?: 'normal' | 'elevated' | 'high' | 'critical';
   _threatScore?: number;
+  /** Internal: set by tool-guard PI escalation listener */
+  _piEscalated?: boolean;
+  _piEscalationOverride?: string;
 }
 
 export interface ResponseCompleteContext {
