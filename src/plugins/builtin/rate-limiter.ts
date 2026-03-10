@@ -191,8 +191,37 @@ export function createRateLimiterPlugin(
     return { limits, action: cfg.action, recentBlocks: state.recentBlocks };
   }
 
+  function simulateUsage(opts: { cost?: number; tokens?: number; requests?: number }): void {
+    if (opts.cost) {
+      state.costHour += opts.cost;
+      state.costDay += opts.cost;
+      state.costMonth += opts.cost;
+    }
+    if (opts.tokens) {
+      state.tokensHour += opts.tokens;
+    }
+    if (opts.requests) {
+      const now = Date.now();
+      for (let i = 0; i < opts.requests; i++) {
+        state.requestTimestamps.push(now);
+      }
+    }
+  }
+
+  function resetCounters(): void {
+    state.requestTimestamps = [];
+    state.costHour = 0;
+    state.tokensHour = 0;
+    state.hourStart = getHourStart(Date.now());
+    state.costDay = 0;
+    state.dayStart = getDayStart(Date.now());
+    state.costMonth = 0;
+    state.monthStart = getMonthStart(Date.now());
+    state.recentBlocks = 0;
+  }
+
   // Expose state via a property on the plugin object
-  const plugin: Plugin & { getState: () => RateLimiterState } = {
+  const plugin: Plugin & { getState: () => RateLimiterState; simulateUsage: typeof simulateUsage; resetCounters: typeof resetCounters } = {
     name: 'rate-limiter',
     priority: 2, // After metrics-collector (1), before DLP (3) and threat-scorer (4)
     version: '1.0.0',
@@ -200,6 +229,8 @@ export function createRateLimiterPlugin(
     source: 'builtin',
 
     getState,
+    simulateUsage,
+    resetCounters,
 
     async onRequest(_context: RequestContext): Promise<PluginRequestResult | void> {
       rollPeriods();

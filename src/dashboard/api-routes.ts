@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { rmSync, existsSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { paths } from '../config/paths.js';
@@ -1094,6 +1095,91 @@ export function createApiRouter(
         } catch (err) {
           sendJson(res, { error: (err as Error).message }, 400);
         }
+      }).catch((err) => {
+        sendJson(res, { error: (err as Error).message }, 500);
+      });
+      return true;
+    }
+
+    // ── Rate Limiter Playground (test mode only) ──
+
+    // POST /api/test/rate-limiter/simulate — inject fake usage into rate-limiter counters
+    if (req.method === 'POST' && path === '/api/test/rate-limiter/simulate') {
+      if (process.env.BASTION_TEST_MODE !== '1') {
+        sendJson(res, { error: 'Not found' }, 404);
+        return true;
+      }
+      bufferBody(req).then((body) => {
+        try {
+          const data = JSON.parse(body);
+          const rlPlugin = pluginManager.getPlugins().find(p => p.name === 'rate-limiter') as
+            { simulateUsage?: (opts: { cost?: number; tokens?: number; requests?: number }) => void; getState?: () => RateLimiterState } | undefined;
+          if (!rlPlugin?.simulateUsage) {
+            sendJson(res, { error: 'Rate limiter plugin not available' }, 503);
+            return;
+          }
+          rlPlugin.simulateUsage({
+            cost: typeof data.cost === 'number' ? data.cost : undefined,
+            tokens: typeof data.tokens === 'number' ? data.tokens : undefined,
+            requests: typeof data.requests === 'number' ? data.requests : undefined,
+          });
+          sendJson(res, { ok: true, state: rlPlugin.getState?.() });
+        } catch (err) {
+          sendJson(res, { error: (err as Error).message }, 400);
+        }
+      }).catch((err) => {
+        sendJson(res, { error: (err as Error).message }, 500);
+      });
+      return true;
+    }
+
+    // POST /api/test/rate-limiter/reset — reset all rate-limiter counters
+    if (req.method === 'POST' && path === '/api/test/rate-limiter/reset') {
+      if (process.env.BASTION_TEST_MODE !== '1') {
+        sendJson(res, { error: 'Not found' }, 404);
+        return true;
+      }
+      const rlPlugin = pluginManager.getPlugins().find(p => p.name === 'rate-limiter') as
+        { resetCounters?: () => void; getState?: () => RateLimiterState } | undefined;
+      if (!rlPlugin?.resetCounters) {
+        sendJson(res, { error: 'Rate limiter plugin not available' }, 503);
+        return true;
+      }
+      rlPlugin.resetCounters();
+      sendJson(res, { ok: true, state: rlPlugin.getState?.() });
+      return true;
+    }
+
+    // POST /api/test/rate-limiter/fire — simulate an actual onRequest call to test blocking
+    if (req.method === 'POST' && path === '/api/test/rate-limiter/fire') {
+      if (process.env.BASTION_TEST_MODE !== '1') {
+        sendJson(res, { error: 'Not found' }, 404);
+        return true;
+      }
+      const rlPlugin = pluginManager.getPlugins().find(p => p.name === 'rate-limiter') as
+        { onRequest?: (ctx: unknown) => Promise<{ blocked?: { reason: string } } | void>; getState?: () => RateLimiterState } | undefined;
+      if (!rlPlugin?.onRequest) {
+        sendJson(res, { error: 'Rate limiter plugin not available' }, 503);
+        return true;
+      }
+      const fakeCtx = {
+        id: crypto.randomUUID(),
+        provider: 'test',
+        model: 'test-model',
+        method: 'POST',
+        path: '/v1/test',
+        headers: {},
+        body: '{}',
+        parsedBody: {},
+        isStreaming: false,
+        startTime: Date.now(),
+      };
+      rlPlugin.onRequest(fakeCtx).then((result) => {
+        sendJson(res, {
+          blocked: !!result?.blocked,
+          reason: result?.blocked?.reason ?? null,
+          state: rlPlugin.getState?.(),
+        });
       }).catch((err) => {
         sendJson(res, { error: (err as Error).message }, 500);
       });

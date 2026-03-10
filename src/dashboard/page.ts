@@ -596,6 +596,41 @@ const PAGE_PLAYGROUND = process.env.BASTION_TEST_MODE === '1' ? `
   </div>
 </div></div>
 
+<!-- 3. Rate Limiter Tester -->
+<div class="section"><div class="section-head setting-toggle" data-target="pg-rl-body"><span class="section-title"><span class="sect-arrow">&#9656;</span> RATE LIMITER TESTER</span></div>
+<div class="section-body" id="pg-rl-body" style="display:none;padding:12px">
+  <!-- Live status -->
+  <div id="rl-live-status" style="margin-bottom:12px"></div>
+
+  <!-- Simulate usage -->
+  <div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap">
+    <div>
+      <div style="font-size:10px;color:var(--dim);margin-bottom:4px">Simulate Cost ($)</div>
+      <input id="rl-sim-cost" class="cfg-input" style="width:120px" type="number" step="0.01" value="0.50" placeholder="0.50">
+    </div>
+    <div>
+      <div style="font-size:10px;color:var(--dim);margin-bottom:4px">Simulate Tokens</div>
+      <input id="rl-sim-tokens" class="cfg-input" style="width:120px" type="number" step="100" value="5000" placeholder="5000">
+    </div>
+    <div>
+      <div style="font-size:10px;color:var(--dim);margin-bottom:4px">Simulate Requests</div>
+      <input id="rl-sim-requests" class="cfg-input" style="width:120px" type="number" step="1" value="10" placeholder="10">
+    </div>
+  </div>
+
+  <!-- Action buttons -->
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+    <button id="rl-inject-btn" class="cfg-btn primary" onclick="rlInject()">Inject Usage</button>
+    <button id="rl-fire-btn" class="cfg-btn primary" onclick="rlFire()" style="background:#1a1a00;border-color:var(--yellow);color:var(--yellow)">Fire Request</button>
+    <button id="rl-burst-btn" class="cfg-btn secondary" onclick="rlBurst()" style="color:var(--red)">Burst (10x Fire)</button>
+    <button id="rl-reset-btn" class="cfg-btn danger" onclick="rlReset()">Reset Counters</button>
+    <button class="cfg-btn secondary" onclick="rlRefresh()">Refresh</button>
+  </div>
+
+  <!-- Result log -->
+  <div id="rl-result-log" style="background:var(--bg);border:1px solid var(--border);padding:10px;font-size:10px;line-height:1.7;max-height:300px;overflow:auto;white-space:pre-wrap;word-break:break-all"></div>
+</div></div>
+
 </div>` : '';
 
 // ── FOOTER ────────────────────────────────────────────────────────
@@ -2215,6 +2250,77 @@ if(document.getElementById('tg-scan-btn')){
     if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){e.preventDefault();tgScan()}
   });
 }
+// ── Rate Limiter Tester ──
+var _rlLogLines=[];
+function rlLog(msg,color){
+  var t=new Date().toLocaleTimeString();
+  _rlLogLines.push('<span style="color:var(--muted)">'+t+'</span> <span style="color:'+(color||'var(--text)')+'">'+msg+'</span>');
+  if(_rlLogLines.length>200)_rlLogLines=_rlLogLines.slice(-100);
+  var el=document.getElementById('rl-result-log');if(el){el.innerHTML=_rlLogLines.join('\\n');el.scrollTop=el.scrollHeight}
+}
+function rlRenderStatus(st){
+  if(!st)return;
+  var el=document.getElementById('rl-live-status');if(!el)return;
+  var keys=Object.keys(st.limits||{});
+  if(keys.length===0){el.innerHTML='<span style="color:var(--muted);font-size:11px">No active limits configured. Set limits in Settings > Rate Limiter.</span>';return}
+  var labels={requestsPerMinute:'RPM',tokensPerHour:'Tokens/hr',maxCostPerHour:'Cost/hr',maxCostPerDay:'Cost/day',maxCostPerMonth:'Cost/month'};
+  el.innerHTML=keys.map(function(k){
+    var l=st.limits[k];var pct=Math.min(l.percentage*100,100);
+    var barColor=pct>=100?'var(--red)':pct>=80?'var(--yellow)':'var(--green)';
+    var valTxt=k.startsWith('max')?('$'+l.current.toFixed(4)+' / $'+l.limit):l.current+' / '+l.limit;
+    return '<div class="budget-row"><span class="budget-label">'+(labels[k]||k)+'</span><div class="budget-bar"><div class="budget-bar-fill" style="width:'+pct+'%;background:'+barColor+'"></div></div><span class="budget-value">'+valTxt+'</span><span class="budget-pct" style="color:'+barColor+'">'+Math.round(pct)+'%</span></div>';
+  }).join('')+'<div style="font-size:10px;color:var(--dim);padding:4px 12px">Action: <b style="color:'+(st.action==='block'?'var(--red)':'var(--yellow)')+'">'+st.action.toUpperCase()+'</b> &nbsp; Recent blocks: <b style="color:'+(st.recentBlocks>0?'var(--red)':'var(--green)')+'">'+st.recentBlocks+'</b></div>';
+}
+function rlRefresh(){
+  apiFetch('/api/rate-limits/status').then(function(r){return r.json()}).then(function(d){rlRenderStatus(d)}).catch(function(){});
+}
+function rlInject(){
+  var cost=parseFloat(document.getElementById('rl-sim-cost').value)||0;
+  var tokens=parseInt(document.getElementById('rl-sim-tokens').value)||0;
+  var requests=parseInt(document.getElementById('rl-sim-requests').value)||0;
+  var payload={};if(cost>0)payload.cost=cost;if(tokens>0)payload.tokens=tokens;if(requests>0)payload.requests=requests;
+  if(!Object.keys(payload).length){rlLog('Nothing to inject — enter values first','var(--yellow)');return}
+  apiFetch('/api/test/rate-limiter/simulate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)})
+    .then(function(r){return r.json()}).then(function(d){
+      if(d.error){rlLog('ERROR: '+d.error,'var(--red)');return}
+      var parts=[];if(cost>0)parts.push('$'+cost.toFixed(2));if(tokens>0)parts.push(tokens+' tokens');if(requests>0)parts.push(requests+' req timestamps');
+      rlLog('Injected: '+parts.join(', '),'var(--cyan)');
+      rlRenderStatus(d.state);
+    }).catch(function(e){rlLog('Error: '+e.message,'var(--red)')});
+}
+function rlFire(){
+  apiFetch('/api/test/rate-limiter/fire',{method:'POST',headers:{'content-type':'application/json'},body:'{}'})
+    .then(function(r){return r.json()}).then(function(d){
+      if(d.error){rlLog('ERROR: '+d.error,'var(--red)');return}
+      if(d.blocked){rlLog('BLOCKED — '+d.reason,'var(--red)');}
+      else{rlLog('PASS — request allowed','var(--green)');}
+      rlRenderStatus(d.state);
+    }).catch(function(e){rlLog('Error: '+e.message,'var(--red)')});
+}
+function rlBurst(){
+  rlLog('Firing 10 requests...','var(--yellow)');
+  var chain=Promise.resolve();
+  for(var i=0;i<10;i++){(function(idx){
+    chain=chain.then(function(){
+      return apiFetch('/api/test/rate-limiter/fire',{method:'POST',headers:{'content-type':'application/json'},body:'{}'})
+        .then(function(r){return r.json()}).then(function(d){
+          if(d.error){rlLog('#'+(idx+1)+' ERROR: '+d.error,'var(--red)');return}
+          if(d.blocked){rlLog('#'+(idx+1)+' BLOCKED — '+d.reason,'var(--red)');}
+          else{rlLog('#'+(idx+1)+' PASS','var(--green)');}
+          rlRenderStatus(d.state);
+        });
+    });
+  })(i)}
+}
+function rlReset(){
+  apiFetch('/api/test/rate-limiter/reset',{method:'POST'})
+    .then(function(r){return r.json()}).then(function(d){
+      if(d.error){rlLog('ERROR: '+d.error,'var(--red)');return}
+      rlLog('Counters reset','var(--green)');
+      rlRenderStatus(d.state);
+    }).catch(function(e){rlLog('Error: '+e.message,'var(--red)')});
+}
+if(document.getElementById('rl-reset-btn')){rlRefresh()}
 </script>`;
 
 const HTML = HEAD + '<body><div class="container">' +
