@@ -105,6 +105,19 @@ export interface BastionConfig {
         ttlMinutes?: number;
       };
     };
+    agentIdentity?: {
+      enabled: boolean;
+      mode: 'auto' | 'strict';
+      defaultTrustLevel: 'untrusted' | 'standard' | 'trusted' | 'privileged';
+      hmacRequired: boolean;
+      agents: Array<{
+        name: string;
+        description?: string;
+        owner?: string;
+        trustLevel?: 'untrusted' | 'standard' | 'trusted' | 'privileged';
+        toolScope?: string[];
+      }>;
+    };
     external?: Array<{
       package: string;
       enabled: boolean;

@@ -74,6 +74,12 @@ plugins:
       overrideSeverity: "medium"
       scope: "session"
       ttlMinutes: 30
+  agentIdentity:
+    enabled: true
+    mode: "auto"
+    defaultTrustLevel: "standard"
+    hmacRequired: false
+    agents: []
   external: []
 
 retention:

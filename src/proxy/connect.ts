@@ -21,7 +21,7 @@ const INTERCEPT_HOSTS = new Set([
   'api.openai.com',
   'generativelanguage.googleapis.com',
   'claude.ai',
-  'chatgpt.com',              // ChatGPT Web (OpenAI OAuth mode)
+  'chatgpt.com',
   // Messaging platforms
   'api.telegram.org',
   'discord.com',
@@ -32,11 +32,16 @@ const INTERCEPT_HOSTS = new Set([
   'api.line.me',
 ]);
 
-// Map socket → session ID for session tracking across CONNECT tunnels
+// Map socket → session ID / agent ID for tracking across CONNECT tunnels
 const socketSessionMap = new WeakMap<net.Socket, string>();
+const socketAgentMap = new WeakMap<net.Socket, string>();
 
 export function getSessionForSocket(socket: net.Socket): string | undefined {
   return socketSessionMap.get(socket);
+}
+
+export function getAgentForSocket(socket: net.Socket): string | undefined {
+  return socketAgentMap.get(socket);
 }
 
 /**
@@ -44,25 +49,27 @@ export function getSessionForSocket(socket: net.Socket): string | undefined {
  * When wrap.ts sets HTTPS_PROXY=http://<uuid>@host:port, Node.js sends
  * a Proxy-Authorization: Basic <base64(uuid:)> header in the CONNECT request.
  */
-function parseSessionFromProxy(req: IncomingMessage): string | undefined {
+function parseSessionFromProxy(req: IncomingMessage): { sessionId?: string; agentId?: string } {
   const authHeader = req.headers['proxy-authorization'];
-  if (!authHeader) return undefined;
+  if (!authHeader) return {};
 
   const match = authHeader.match(/^Basic\s+(.+)$/i);
-  if (!match) return undefined;
+  if (!match) return {};
 
   try {
     const decoded = Buffer.from(match[1], 'base64').toString('utf-8');
-    // Format is "username:password" — session UUID is the username
-    const username = decoded.split(':')[0];
+    // Format is "username:password" — session UUID is the username, agentId is the password
+    const colonIdx = decoded.indexOf(':');
+    const username = colonIdx >= 0 ? decoded.slice(0, colonIdx) : decoded;
+    const password = colonIdx >= 0 ? decoded.slice(colonIdx + 1) : '';
     // Validate it looks like a UUID
     if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(username)) {
-      return username;
+      return { sessionId: username, agentId: password || undefined };
     }
   } catch {
     // Invalid base64
   }
-  return undefined;
+  return {};
 }
 
 /**
@@ -81,8 +88,10 @@ export function setupConnectHandler(
     const [hostname, portStr] = (req.url ?? '').split(':');
     const port = parseInt(portStr, 10) || 443;
 
-    // Extract session ID from proxy auth header, or auto-generate for intercepted hosts
-    let sessionId = parseSessionFromProxy(req);
+    // Extract session ID + agent ID from proxy auth header, or auto-generate for intercepted hosts
+    const parsed = parseSessionFromProxy(req);
+    let sessionId = parsed.sessionId;
+    const agentId = parsed.agentId;
     const source = sessionId ? 'wrap' : 'auto';
     if (!sessionId && INTERCEPT_HOSTS.has(hostname)) {
       sessionId = crypto.randomUUID();
@@ -90,6 +99,10 @@ export function setupConnectHandler(
     if (sessionId) {
       socketSessionMap.set(clientSocket, sessionId);
       log.debug('Session mapped', { sessionId, hostname, source });
+    }
+    if (agentId) {
+      socketAgentMap.set(clientSocket, agentId);
+      log.debug('Agent mapped', { agentId, hostname });
     }
 
     if (INTERCEPT_HOSTS.has(hostname)) {
@@ -99,7 +112,7 @@ export function setupConnectHandler(
     }
 
     if (INTERCEPT_HOSTS.has(hostname)) {
-      handleMITM(hostname, port, clientSocket, head, ca, config, pluginManager, sessionId, source);
+      handleMITM(hostname, port, clientSocket, head, ca, config, pluginManager, sessionId, source, agentId);
     } else {
       handleTunnel(hostname, port, clientSocket, head);
     }
@@ -154,6 +167,7 @@ function handleMITM(
   pluginManager: PluginManager,
   sessionId?: string,
   sessionSource?: string,
+  agentId?: string,
 ): void {
   const hostCert = getHostCert(hostname);
 
@@ -161,15 +175,36 @@ function handleMITM(
   clientSocket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
 
   // Wrap client socket with TLS (we act as the target server)
+  // Advertise http/1.1 via ALPN — without this, clients that negotiate h2
+  // (e.g. Rust reqwest/hyper) would speak HTTP/2 which our fake HTTP server
+  // cannot parse, causing silent request loss.
   const tlsSocket = new tls.TLSSocket(clientSocket, {
     isServer: true,
     key: hostCert.key,
     cert: hostCert.cert,
+    ALPNProtocols: ['http/1.1'],
+  });
+
+  tlsSocket.on('secure', () => {
+    log.info('MITM TLS established', {
+      hostname,
+      alpn: (tlsSocket as unknown as { alpnProtocol?: string }).alpnProtocol,
+    });
   });
 
   // Create a per-connection HTTP server to parse the decrypted request
-  const handler = createMITMRequestHandler(hostname, config, pluginManager, sessionId, sessionSource);
+  const handler = createMITMRequestHandler(hostname, config, pluginManager, sessionId, sessionSource, agentId);
   const fakeServer = createHttpServer(handler);
+
+  // Default keepAliveTimeout is 5s — way too short for AI tool-use flows
+  // where the client executes tools locally between requests (may take minutes).
+  fakeServer.keepAliveTimeout = 10 * 60_000; // 10 minutes
+
+  // Log HTTP parser errors (e.g. malformed requests, protocol mismatch)
+  fakeServer.on('clientError', (err, socket) => {
+    log.warn('MITM clientError', { hostname, error: err.message, code: (err as NodeJS.ErrnoException).code });
+    socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
+  });
 
   // Inject the TLS socket as a "connection" to the HTTP server
   fakeServer.emit('connection', tlsSocket);
@@ -179,8 +214,9 @@ function handleMITM(
   }
 
   tlsSocket.on('error', (err) => {
-    log.debug('MITM TLS error', { hostname, error: err.message });
+    log.info('MITM TLS error', { hostname, error: err.message });
   });
+
 
   clientSocket.on('error', () => {
     tlsSocket.destroy();
@@ -209,7 +245,7 @@ function createFallbackProvider(hostname: string): ProviderConfig {
       const result: Record<string, string> = {};
       for (const [key, value] of Object.entries(headers)) {
         const lower = key.toLowerCase();
-        if (lower !== 'host' && lower !== 'connection' && lower !== 'transfer-encoding') {
+        if (lower !== 'host' && lower !== 'connection' && lower !== 'transfer-encoding' && lower !== 'accept-encoding') {
           result[key] = value;
         }
       }
@@ -228,11 +264,17 @@ function createMITMRequestHandler(
   pluginManager: PluginManager,
   sessionId?: string,
   sessionSource?: string,
+  agentId?: string,
 ) {
   return async (req: IncomingMessage, res: ServerResponse) => {
     // Redact secrets from logged paths (e.g., Telegram bot tokens)
     const safePath = (req.url ?? '/').replace(/\/bot[^/]+\//, '/bot****/');
-    log.debug('MITM request', { method: req.method, hostname, path: safePath, sessionId });
+    log.info('MITM request', { method: req.method, hostname, path: safePath, sessionId });
+
+    // Inject agent identity header from wrap --agent
+    if (agentId && !req.headers['x-bastion-agent-id']) {
+      req.headers['x-bastion-agent-id'] = agentId;
+    }
 
     // Try to match a known provider route
     const route = resolveRoute(req);

@@ -1,6 +1,7 @@
 import { request as httpsRequest } from 'node:https';
 import { request as httpRequest } from 'node:http';
 import { createHash } from 'node:crypto';
+import { gunzipSync, inflateSync, brotliDecompressSync } from 'node:zlib';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { ProviderConfig } from './providers/index.js';
 import type { PluginManager } from '../plugins/index.js';
@@ -37,6 +38,28 @@ function bufferBody(req: IncomingMessage): Promise<Buffer> {
   });
 }
 
+/**
+ * Decompress a request body based on Content-Encoding header.
+ * Some clients (e.g. Codex CLI) send compressed request bodies (gzip, br, zstd).
+ * Returns { buf, decompressed } — when decompressed is false, the raw bytes must
+ * be forwarded with the original Content-Encoding header intact.
+ */
+function decompressBody(buf: Buffer, encoding: string | undefined): { buf: Buffer; decompressed: boolean } {
+  if (!encoding || buf.length === 0) return { buf, decompressed: false };
+  const enc = encoding.trim().toLowerCase();
+  try {
+    if (enc === 'gzip' || enc === 'x-gzip') return { buf: gunzipSync(buf), decompressed: true };
+    if (enc === 'br') return { buf: brotliDecompressSync(buf), decompressed: true };
+    if (enc === 'deflate') return { buf: inflateSync(buf), decompressed: true };
+    // Unsupported encoding (e.g. zstd) — passthrough raw bytes
+    log.warn('Unsupported Content-Encoding, passing through raw body', { encoding: enc, bodyLen: buf.length });
+    return { buf, decompressed: false };
+  } catch (err) {
+    log.error('Request body decompression failed', { encoding: enc, error: (err as Error).message });
+    return { buf, decompressed: false };
+  }
+}
+
 export async function forwardRequest(
   req: IncomingMessage,
   res: ServerResponse,
@@ -46,15 +69,34 @@ export async function forwardRequest(
   const startTime = Date.now();
   const requestId = crypto.randomUUID();
 
-  // Buffer the request body
+  // Buffer the request body, decompressing if Content-Encoding is set.
+  // When decompression succeeds we inspect the plain-text body and forward it
+  // uncompressed (stripping Content-Encoding).  When the encoding is unsupported
+  // (e.g. zstd) we pass through the raw bytes with the original header intact.
   const rawBody = await bufferBody(req);
-  let bodyStr = rawBody.toString('utf-8');
+  const contentEncoding = req.headers['content-encoding'] as string | undefined;
+  const { buf: bodyBuf, decompressed } = decompressBody(rawBody, contentEncoding);
+  const bodyReadable = decompressed || !contentEncoding;
+
+  let bodyStr = bodyReadable ? bodyBuf.toString('utf-8') : '';
   let parsedBody: Record<string, unknown> = {};
-  try {
-    parsedBody = JSON.parse(bodyStr);
-  } catch {
-    // Not JSON, use as-is
+  if (bodyReadable) {
+    try {
+      parsedBody = JSON.parse(bodyStr);
+    } catch {
+      // Not JSON, use as-is
+    }
   }
+
+  log.info('Request buffered', {
+    provider: provider.name,
+    method: req.method,
+    path: req.url,
+    bodyLen: bodyBuf.length,
+    contentType: req.headers['content-type'],
+    contentEncoding: contentEncoding ?? 'none',
+    decompressed,
+  });
 
   const model = provider.extractModel(parsedBody);
   const isStreaming = Boolean(parsedBody.stream);
@@ -126,8 +168,21 @@ export async function forwardRequest(
   const outgoingHeaders = provider.transformHeaders(req.headers as Record<string, string>);
   outgoingHeaders['host'] = url.host;
   const hasBody = req.method !== 'GET' && req.method !== 'HEAD';
+
+  // Determine what bytes to send upstream
+  let outgoingBody: Buffer | string;
+  if (!hasBody) {
+    outgoingBody = '';
+  } else if (bodyReadable) {
+    // Body was decompressed (or was never compressed) — send plain text
+    delete outgoingHeaders['content-encoding'];
+    outgoingBody = bodyStr;
+  } else {
+    // Unsupported encoding — forward original compressed bytes with original header
+    outgoingBody = rawBody;
+  }
   if (hasBody) {
-    outgoingHeaders['content-length'] = Buffer.byteLength(bodyStr).toString();
+    outgoingHeaders['content-length'] = Buffer.byteLength(outgoingBody).toString();
   }
 
   const makeRequest = isHttps ? httpsRequest : httpRequest;
@@ -145,20 +200,50 @@ export async function forwardRequest(
       (upstreamRes) => {
         const statusCode = upstreamRes.statusCode ?? 500;
 
-        // Copy upstream response headers
+        // Copy upstream response headers.
+        // Strip hop-by-hop headers (they describe the upstream connection, not the client one).
+        // Preserve set-cookie as a separate array (comma-joining breaks cookie values
+        // that contain dates like "expires=Thu, 01 Jan 2099 00:00:00 GMT").
+        const HOP_BY_HOP = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'upgrade']);
         const responseHeaders: Record<string, string> = {};
+        const setCookieHeaders: string[] = [];
         for (const [key, value] of Object.entries(upstreamRes.headers)) {
-          if (value) responseHeaders[key] = Array.isArray(value) ? value.join(', ') : value;
+          if (!value || HOP_BY_HOP.has(key)) continue;
+          if (key === 'set-cookie') {
+            setCookieHeaders.push(...(Array.isArray(value) ? value : [value]));
+          } else {
+            responseHeaders[key] = Array.isArray(value) ? value.join(', ') : value;
+          }
         }
 
-        if (isStreaming) {
+        // Also detect streaming from response content-type (e.g. Codex sends SSE
+        // without setting stream:true in the request body)
+        const responseContentType = (upstreamRes.headers['content-type'] ?? '').toLowerCase();
+        const effectiveStreaming = isStreaming || responseContentType.includes('text/event-stream');
+        if (effectiveStreaming && !isStreaming) {
+          requestContext.isStreaming = true;
+        }
+
+        const responseContentEncoding = (upstreamRes.headers['content-encoding'] ?? '').toLowerCase();
+
+        log.info('Upstream response', {
+          provider: provider.name,
+          statusCode,
+          contentType: responseContentType,
+          contentEncoding: responseContentEncoding || 'none',
+          isStreaming,
+          effectiveStreaming,
+        });
+
+        if (effectiveStreaming) {
           // Streaming: send headers immediately, forward chunks in real-time
+          if (setCookieHeaders.length > 0) responseHeaders['set-cookie'] = setCookieHeaders as unknown as string;
           res.writeHead(statusCode, responseHeaders);
           handleStreamingResponse(upstreamRes, res, requestContext, pluginManager, provider, startTime)
             .then(() => resolve(requestContext));
         } else {
           // Non-streaming: buffer response, run onResponse hook, then send
-          handleBufferedResponse(upstreamRes, res, statusCode, responseHeaders, requestContext, pluginManager, provider, startTime)
+          handleBufferedResponse(upstreamRes, res, statusCode, responseHeaders, requestContext, pluginManager, provider, startTime, setCookieHeaders)
             .then(() => resolve(requestContext));
         }
       },
@@ -187,7 +272,7 @@ export async function forwardRequest(
     });
 
     if (hasBody) {
-      upstreamReq.write(bodyStr);
+      upstreamReq.write(outgoingBody);
     }
     upstreamReq.end();
   });
@@ -284,6 +369,14 @@ async function handleStreamingResponse(
         if ((extracted.cacheReadTokens ?? 0) > usage.cacheReadTokens) usage.cacheReadTokens = extracted.cacheReadTokens ?? 0;
       }
 
+      log.info('Streaming response complete', {
+        provider: provider.name,
+        sseEventCount: sseEvents.length,
+        responseBodyLen: fullResponseData.length,
+        usage,
+        latencyMs,
+      });
+
       const completeContext: ResponseCompleteContext = {
         request: context,
         statusCode: upstreamRes.statusCode ?? 200,
@@ -316,6 +409,7 @@ async function handleBufferedResponse(
   pluginManager: PluginManager,
   provider: ProviderConfig,
   startTime: number,
+  setCookieHeaders: string[] = [],
 ): Promise<void> {
   return new Promise<void>((resolve) => {
     const chunks: Buffer[] = [];
@@ -375,7 +469,10 @@ async function handleBufferedResponse(
         // We buffered the response, so set exact content-length and remove chunked encoding
         delete responseHeaders['transfer-encoding'];
         responseHeaders['content-length'] = Buffer.byteLength(bodyStr).toString();
-        clientRes.writeHead(statusCode, responseHeaders);
+        // Attach set-cookie as array so Node sends separate headers per cookie
+        const finalHeaders: Record<string, string | string[]> = { ...responseHeaders };
+        if (setCookieHeaders.length > 0) finalHeaders['set-cookie'] = setCookieHeaders;
+        clientRes.writeHead(statusCode, finalHeaders);
         clientRes.write(bodyStr);
         clientRes.end();
       }

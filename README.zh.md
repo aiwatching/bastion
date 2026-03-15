@@ -36,7 +36,7 @@ bastion start
 bastion wrap claude
 bastion wrap python my_app.py
 
-# 方式 B：全局代理（所有终端、所有新进程、GUI 应用）
+# 方式 B：全局代理（legacy MITM 模式，所有终端）
 eval $(bastion proxy on)          # bash/zsh
 bastion proxy on | Invoke-Expression  # PowerShell
 ```
@@ -91,7 +91,7 @@ bastion openclaw docker attach <container-name>
 openclaw skill install @aion0/bastion-skills
 ```
 
-Docker 环境下，skill 内置的 setup 脚本会自动 patch `docker-compose.yml`，通过 `HTTPS_PROXY` 将所有 LLM 流量路由经 Bastion：
+Docker 环境下，skill 内置的 setup 脚本会自动 patch `docker-compose.yml`，通过 `*_BASE_URL` 环境变量将所有 LLM 流量路由经 Bastion：
 
 ```bash
 bash ~/.openclaw/skills/bastion/scripts/docker-setup.sh
@@ -164,7 +164,7 @@ bastion wrap node server.js
 ```
 
 选项：
-- `--base-url` — 使用 `ANTHROPIC_BASE_URL` 模式代替 `HTTPS_PROXY`（更简单但会影响 OAuth）
+- `--mode proxy` — 使用 legacy MITM 代理模式（`HTTPS_PROXY`）代替默认的 `*_BASE_URL` 模式
 - `--label <name>` — 用于 Dashboard 追踪的可读会话标签
 
 ### `bastion env`
@@ -216,12 +216,13 @@ bastion trust-ca
 
 ## 工作原理
 
-Bastion 作为 HTTPS 代理运行，对特定域名进行选择性 MITM（中间人）拦截：
+Bastion 作为本地反向代理（API 网关）运行：
 
-- **API 域名**（`api.anthropic.com`、`api.openai.com`、`generativelanguage.googleapis.com`、`claude.ai`、`api.telegram.org`、`discord.com`、`api.slack.com` 等）——流量被解密，通过 plugin 管线处理（DLP、指标、缓存），然后转发至真实上游。
-- **其他所有域名**——纯 TCP 隧道，不做任何检查。OAuth 流程、浏览器流量等原样通过。
+- AI Agent 将请求发送到 Bastion（`http://localhost:8420`），而不是直接发送到 LLM 提供商
+- Bastion 通过安全管线处理每个请求（DLP → Prompt Injection → Tool Guard → Audit）
+- 安全的请求被转发到实际的提供商（Anthropic、OpenAI、Google AI 等）
 
-本地 CA 证书（`~/.bastion/ca.crt`）会自动生成。Node.js 工具通过 `NODE_EXTRA_CA_CERTS` 信任该证书。
+`bastion wrap` 自动注入正确的 `*_BASE_URL` 环境变量——无需手动配置。所有数据都在本地处理。
 
 ## Plugins
 
@@ -484,9 +485,9 @@ bastion plugins uninstall        # 卸载（会提示是否同时删除模型文
 ~/.bastion/
   bastion.db    # SQLite database (metrics, cache, DLP events, audit log)
   config.yaml   # User config overrides (created by bastion proxy on / dashboard settings)
-  ca.key        # CA private key
-  ca.crt        # CA certificate
-  certs/        # Generated host certificates
+  ca.key        # CA private key (legacy MITM mode only)
+  ca.crt        # CA certificate (legacy MITM mode only)
+  certs/        # Generated host certificates (legacy MITM mode only)
   .key          # AES encryption key for cache & audit
   bastion.pid   # Daemon PID file
   bastion.log   # Daemon log file

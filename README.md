@@ -52,7 +52,7 @@ open http://127.0.0.1:8420/dashboard   # Real-time security dashboard
 
 Three commands. Your agent traffic is now monitored.
 
-For global proxy mode (all terminals, all apps):
+For legacy global proxy mode (MITM, all terminals):
 
 ```bash
 eval $(bastion proxy on)                    # bash/zsh
@@ -133,12 +133,13 @@ Real-time security dashboard at `http://127.0.0.1:8420/dashboard`:
 
 ## How It Works
 
-Bastion runs as a local HTTPS proxy with selective interception:
+Bastion runs as a local reverse proxy (API gateway):
 
-- **AI provider domains** (Anthropic, OpenAI, Google AI, etc.) → decrypted and processed through the security pipeline (DLP → Prompt Injection → Tool Guard → Audit), then forwarded upstream
-- **Everything else** → plain TCP tunnel, zero inspection. OAuth, browser traffic, etc. pass through untouched
+- Your AI agent sends requests to Bastion (`http://localhost:8420`) instead of directly to the LLM provider
+- Bastion processes every request through the security pipeline (DLP → Prompt Injection → Tool Guard → Audit)
+- Clean requests are forwarded upstream to the actual provider (Anthropic, OpenAI, Google AI, etc.)
 
-A local CA certificate is generated automatically. No data leaves your machine.
+`bastion wrap` automatically injects the correct `*_BASE_URL` environment variables — no manual configuration needed. No data leaves your machine.
 
 ## Works With Any AI Agent
 
@@ -169,7 +170,7 @@ Install [`@aion0/bastion-skills`](https://www.npmjs.com/package/@aion0/bastion-s
 openclaw skill install @aion0/bastion-skills
 ```
 
-For Docker environments, the skill includes a setup script that automatically patches `docker-compose.yml` to route all LLM traffic through Bastion via `HTTPS_PROXY`:
+For Docker environments, the skill includes a setup script that automatically patches `docker-compose.yml` to route all LLM traffic through Bastion via `*_BASE_URL` environment variables:
 
 ```bash
 bash ~/.openclaw/skills/bastion/scripts/docker-setup.sh
@@ -212,7 +213,7 @@ Everything stays on your machine in `~/.bastion/`:
 ~/.bastion/
   bastion.db    # SQLite (metrics, DLP events, tool guard, audit)
   config.yaml   # Your config overrides
-  ca.key / ca.crt / certs/   # Local CA & certificates
+  ca.key / ca.crt / certs/   # Local CA & certificates (legacy MITM mode only)
   .key          # AES encryption key for audit data
   models/       # ML models (optional, ~436 MB if plugins installed)
 ```

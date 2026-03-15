@@ -18,6 +18,8 @@ import { getRecentAlerts, getUnacknowledgedCount, acknowledgeAlerts } from '../t
 import { getPiEscalations, resetPiEscalation, resetAllPiEscalations } from '../plugins/builtin/tool-guard.js';
 import { ThreatScoresRepository } from '../storage/repositories/threat-scores.js';
 import { ThreatScoreEventsRepository } from '../storage/repositories/threat-score-events.js';
+import { AgentsRepository } from '../storage/repositories/agents.js';
+import { generateAgentSecret } from '../plugins/builtin/agent-identity.js';
 import { ToolChainDetectionsRepository } from '../storage/repositories/tool-chain-detections.js';
 import { BUILTIN_CHAIN_RULES } from '../tool-guard/chain-rules.js';
 import { matchRules } from '../tool-guard/rules.js';
@@ -71,6 +73,7 @@ export function createApiRouter(
   const pluginEventsRepo = new PluginEventsRepository(db);
   const threatScoresRepo = new ThreatScoresRepository(db);
   const threatScoreEventsRepo = new ThreatScoreEventsRepository(db);
+  const agentsRepoApi = new AgentsRepository(db);
 
   // AI Validator for full-pipeline DLP testing
   const dlpAiConfig = configManager.get().plugins.dlp.aiValidation;
@@ -1183,6 +1186,150 @@ export function createApiRouter(
       }).catch((err) => {
         sendJson(res, { error: (err as Error).message }, 500);
       });
+      return true;
+    }
+
+    // ── Agent Identity API ──
+
+    // GET /api/agents — list all agents
+    if (req.method === 'GET' && path === '/api/agents') {
+      sendJson(res, agentsRepoApi.getAll());
+      return true;
+    }
+
+    // GET /api/agents/:id — agent detail + threat score
+    if (req.method === 'GET' && path.startsWith('/api/agents/') && !path.includes('/requests') && !path.includes('/threat')) {
+      const id = decodeURIComponent(path.slice('/api/agents/'.length));
+      if (!id) { sendJson(res, { error: 'Missing agent ID' }, 400); return true; }
+      const agent = agentsRepoApi.get(id);
+      if (!agent) { sendJson(res, { error: 'Agent not found' }, 404); return true; }
+      const threatScore = threatScoresRepo.get(`agent:${id}`);
+      sendJson(res, { ...agent, threatScore });
+      return true;
+    }
+
+    // POST /api/agents — register new agent
+    if (req.method === 'POST' && path === '/api/agents') {
+      bufferBody(req).then((body) => {
+        try {
+          const data = JSON.parse(body);
+          if (!data.name || typeof data.name !== 'string') {
+            sendJson(res, { error: 'name is required' }, 400);
+            return;
+          }
+          const existing = agentsRepoApi.getByName(data.name);
+          if (existing) {
+            sendJson(res, { error: 'Agent name already exists' }, 409);
+            return;
+          }
+          const id = crypto.randomUUID();
+          const { secret, hash, encrypted } = generateAgentSecret();
+          agentsRepoApi.insert({
+            id,
+            name: data.name,
+            description: data.description,
+            owner: data.owner,
+            trust_level: data.trustLevel ?? 'standard',
+            tool_scope: data.toolScope,
+            secret_hash: hash,
+            encrypted_secret: encrypted,
+          });
+          sendJson(res, { id, name: data.name, secret }, 201);
+        } catch (err) {
+          sendJson(res, { error: (err as Error).message }, 400);
+        }
+      }).catch((err) => sendJson(res, { error: (err as Error).message }, 500));
+      return true;
+    }
+
+    // PUT /api/agents/:id — update agent
+    if (req.method === 'PUT' && path.startsWith('/api/agents/')) {
+      const id = decodeURIComponent(path.slice('/api/agents/'.length));
+      if (!id) { sendJson(res, { error: 'Missing agent ID' }, 400); return true; }
+      bufferBody(req).then((body) => {
+        try {
+          const data = JSON.parse(body);
+          const updated = agentsRepoApi.update(id, {
+            name: data.name,
+            description: data.description,
+            owner: data.owner,
+            trust_level: data.trustLevel,
+            tool_scope: data.toolScope,
+            metadata: data.metadata,
+          });
+          if (!updated) { sendJson(res, { error: 'Agent not found' }, 404); return; }
+          sendJson(res, { ok: true });
+        } catch (err) {
+          sendJson(res, { error: (err as Error).message }, 400);
+        }
+      }).catch((err) => sendJson(res, { error: (err as Error).message }, 500));
+      return true;
+    }
+
+    // POST /api/agents/:id/suspend
+    if (req.method === 'POST' && path.match(/^\/api\/agents\/[^/]+\/suspend$/)) {
+      const id = decodeURIComponent(path.slice('/api/agents/'.length, path.lastIndexOf('/suspend')));
+      if (!agentsRepoApi.setStatus(id, 'suspended')) {
+        sendJson(res, { error: 'Agent not found' }, 404);
+        return true;
+      }
+      sendJson(res, { ok: true, status: 'suspended' });
+      return true;
+    }
+
+    // POST /api/agents/:id/activate
+    if (req.method === 'POST' && path.match(/^\/api\/agents\/[^/]+\/activate$/)) {
+      const id = decodeURIComponent(path.slice('/api/agents/'.length, path.lastIndexOf('/activate')));
+      if (!agentsRepoApi.setStatus(id, 'active')) {
+        sendJson(res, { error: 'Agent not found' }, 404);
+        return true;
+      }
+      sendJson(res, { ok: true, status: 'active' });
+      return true;
+    }
+
+    // POST /api/agents/:id/revoke
+    if (req.method === 'POST' && path.match(/^\/api\/agents\/[^/]+\/revoke$/)) {
+      const id = decodeURIComponent(path.slice('/api/agents/'.length, path.lastIndexOf('/revoke')));
+      if (!agentsRepoApi.setStatus(id, 'revoked')) {
+        sendJson(res, { error: 'Agent not found' }, 404);
+        return true;
+      }
+      sendJson(res, { ok: true, status: 'revoked' });
+      return true;
+    }
+
+    // POST /api/agents/:id/rotate-secret
+    if (req.method === 'POST' && path.match(/^\/api\/agents\/[^/]+\/rotate-secret$/)) {
+      const id = decodeURIComponent(path.slice('/api/agents/'.length, path.lastIndexOf('/rotate-secret')));
+      const agent = agentsRepoApi.get(id);
+      if (!agent) { sendJson(res, { error: 'Agent not found' }, 404); return true; }
+      const { secret, hash, encrypted } = generateAgentSecret();
+      agentsRepoApi.update(id, { secret_hash: hash, encrypted_secret: encrypted });
+      sendJson(res, { ok: true, secret });
+      return true;
+    }
+
+    // GET /api/agents/:id/requests — agent request history
+    if (req.method === 'GET' && path.match(/^\/api\/agents\/[^/]+\/requests$/)) {
+      const id = decodeURIComponent(path.slice('/api/agents/'.length, path.lastIndexOf('/requests')));
+      const limit = parseInt(url.searchParams.get('limit') ?? '50', 10);
+      const hours = url.searchParams.get('hours');
+      const sinceHours = hours ? parseInt(hours, 10) : undefined;
+      const stats = requestsRepo.getStats({ agentId: id, sinceHours });
+      const recent = requestsRepo.getRecent(limit, sinceHours);
+      // Filter by agent_id manually since getRecent doesn't support agent filter
+      const filtered = recent.filter(r => r.agent_id === id);
+      sendJson(res, { stats, recent: filtered });
+      return true;
+    }
+
+    // GET /api/agents/:id/threat — agent threat events
+    if (req.method === 'GET' && path.match(/^\/api\/agents\/[^/]+\/threat$/)) {
+      const id = decodeURIComponent(path.slice('/api/agents/'.length, path.lastIndexOf('/threat')));
+      const score = threatScoresRepo.get(`agent:${id}`);
+      const events = threatScoreEventsRepo.getBySession(`agent:${id}`);
+      sendJson(res, { score, events });
       return true;
     }
 

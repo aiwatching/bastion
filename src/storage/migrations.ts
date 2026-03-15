@@ -282,6 +282,35 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX IF NOT EXISTS idx_taint_session ON taint_marks(session_id);
   `,
+
+  // Migration 18: Agent Identity & Isolation
+  `
+  CREATE TABLE IF NOT EXISTS agents (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    description TEXT,
+    owner TEXT,
+    trust_level TEXT NOT NULL DEFAULT 'standard',
+    status TEXT NOT NULL DEFAULT 'active',
+    secret_hash TEXT,
+    encrypted_secret TEXT,
+    tool_scope TEXT,
+    metadata TEXT,
+    request_count INTEGER DEFAULT 0,
+    total_tokens INTEGER DEFAULT 0,
+    total_cost_usd REAL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    last_seen_at TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status);
+
+  ALTER TABLE requests ADD COLUMN agent_id TEXT;
+  CREATE INDEX IF NOT EXISTS idx_requests_agent ON requests(agent_id);
+
+  ALTER TABLE threat_scores ADD COLUMN agent_id TEXT;
+  ALTER TABLE threat_score_events ADD COLUMN agent_id TEXT;
+  `,
 ];
 
 export function runMigrations(db: Database.Database): void {

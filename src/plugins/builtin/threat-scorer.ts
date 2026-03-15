@@ -152,7 +152,7 @@ export function createThreatScorerPlugin(
     if (state.score < 0.1) state.score = 0;
   }
 
-  function addPoints(sessionId: string, points: number, eventType: string, sourceEvent: string): void {
+  function addPoints(sessionId: string, points: number, eventType: string, sourceEvent: string, agentId?: string): void {
     const state = getOrCreateState(sessionId);
     applyDecay(state);
 
@@ -186,6 +186,40 @@ export function createThreatScorerPlugin(
       log.warn('Failed to persist threat score', { error: (err as Error).message });
     }
 
+    // Per-agent threat scoring — accumulates across sessions
+    if (agentId) {
+      const agentKey = `agent:${agentId}`;
+      const agentState = getOrCreateState(agentKey);
+      applyDecay(agentState);
+      agentState.score += points;
+      agentState.eventCount++;
+      agentState.lastEventAt = Date.now();
+      agentState.level = computeLevel(agentState.score, tiConfig.thresholds);
+      sessions.set(agentKey, agentState);
+
+      try {
+        scoresRepo.upsert({
+          session_id: agentKey,
+          score: agentState.score,
+          level: agentState.level,
+          event_count: agentState.eventCount,
+          last_event_at: new Date(agentState.lastEventAt).toISOString(),
+        });
+
+        eventsRepo.insert({
+          id: crypto.randomUUID(),
+          session_id: agentKey,
+          event_type: eventType,
+          source_event: sourceEvent,
+          points,
+          score_after: agentState.score,
+          level_after: agentState.level,
+        });
+      } catch (err) {
+        log.warn('Failed to persist agent threat score', { error: (err as Error).message });
+      }
+    }
+
     if (state.level !== 'normal') {
       log.warn('Session threat level changed', {
         sessionId,
@@ -196,6 +230,7 @@ export function createThreatScorerPlugin(
 
       eventBus.emit('threat:level-change', {
         sessionId,
+        agentId,
         level: state.level,
         score: state.score,
         eventType,
@@ -206,26 +241,26 @@ export function createThreatScorerPlugin(
   // ── Event listeners ──
 
   eventBus.on('pi:detected', (data: unknown) => {
-    const event = data as { sessionId?: string; severity?: string; directCount?: number; detections?: number } | undefined;
+    const event = data as { sessionId?: string; agentId?: string; severity?: string; directCount?: number; detections?: number } | undefined;
     if (!event?.sessionId) return;
     // Only score direct (user-input) detections; indirect detections scored via pi:indirect-injection
     const directCount = event.directCount ?? event.detections ?? 1;
     if (directCount > 0) {
-      addPoints(event.sessionId, tiConfig.scoring.piWeight, 'pi', `pi:detected severity=${event.severity ?? 'unknown'}`);
+      addPoints(event.sessionId, tiConfig.scoring.piWeight, 'pi', `pi:detected severity=${event.severity ?? 'unknown'}`, event.agentId);
     }
   });
 
   eventBus.on('pi:indirect-injection', (data: unknown) => {
-    const event = data as { sessionId?: string; detections?: number; maxScore?: number } | undefined;
+    const event = data as { sessionId?: string; agentId?: string; detections?: number; maxScore?: number } | undefined;
     if (!event?.sessionId) return;
     addPoints(event.sessionId, tiConfig.scoring.indirectPiWeight, 'pi-indirect',
-      `pi:indirect-injection detections=${event.detections ?? 1}`);
+      `pi:indirect-injection detections=${event.detections ?? 1}`, event.agentId);
   });
 
   eventBus.on('dlp:finding', (data: unknown) => {
-    const event = data as { requestId?: string; sessionId?: string; patternName?: string; direction?: string; matchCount?: number } | undefined;
+    const event = data as { requestId?: string; sessionId?: string; agentId?: string; patternName?: string; direction?: string; matchCount?: number } | undefined;
     if (!event?.sessionId) return;
-    addPoints(event.sessionId, tiConfig.scoring.dlpWeight, 'dlp', `dlp:finding pattern=${event.patternName ?? 'unknown'}`);
+    addPoints(event.sessionId, tiConfig.scoring.dlpWeight, 'dlp', `dlp:finding pattern=${event.patternName ?? 'unknown'}`, event.agentId);
 
     // Taint tracking: mark DLP findings for later tool input checks
     if (tiConfig.taintTracking.enabled && event.patternName && event.requestId) {
@@ -250,7 +285,7 @@ export function createThreatScorerPlugin(
 
   eventBus.on('toolguard:alert', (data: unknown) => {
     const event = data as {
-      requestId?: string; sessionId?: string;
+      requestId?: string; sessionId?: string; agentId?: string;
       severity?: string; category?: string;
       ruleName?: string; action?: string;
     } | undefined;
@@ -259,7 +294,7 @@ export function createThreatScorerPlugin(
     const severity = event.severity ?? 'medium';
     const weights = tiConfig.scoring.toolGuardWeights;
     const points = (weights as Record<string, number>)[severity] ?? weights.medium;
-    addPoints(event.sessionId, points, 'toolguard', `toolguard:alert rule=${event.ruleName ?? 'unknown'} severity=${severity}`);
+    addPoints(event.sessionId, points, 'toolguard', `toolguard:alert rule=${event.ruleName ?? 'unknown'} severity=${severity}`, event.agentId);
 
     // Tool chain detection: record the category and check chains
     if (tiConfig.toolChain.enabled && event.category) {
@@ -309,9 +344,26 @@ export function createThreatScorerPlugin(
       state.level = computeLevel(state.score, tiConfig.thresholds);
       sessions.set(context.sessionId, state);
 
+      // If agent has a threat state, use the higher level
+      let effectiveLevel = state.level;
+      let effectiveScore = state.score;
+      if (context.agentId) {
+        const agentKey = `agent:${context.agentId}`;
+        const agentState = getOrCreateState(agentKey);
+        applyDecay(agentState);
+        agentState.level = computeLevel(agentState.score, tiConfig.thresholds);
+        sessions.set(agentKey, agentState);
+        // Use the higher threat level between session and agent
+        const levels: ThreatLevel[] = ['normal', 'elevated', 'high', 'critical'];
+        if (levels.indexOf(agentState.level) > levels.indexOf(effectiveLevel)) {
+          effectiveLevel = agentState.level;
+          effectiveScore = agentState.score;
+        }
+      }
+
       // Set threat level on context for downstream plugins (tool-guard reads this)
-      context._threatLevel = state.level;
-      context._threatScore = state.score;
+      context._threatLevel = effectiveLevel;
+      context._threatScore = effectiveScore;
 
       if (state.level !== 'normal') {
         log.debug('Request threat context', {

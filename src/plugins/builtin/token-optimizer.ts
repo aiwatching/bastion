@@ -62,7 +62,7 @@ export function createTokenOptimizerPlugin(db: Database.Database, config: TokenO
 
       // Check cache first
       if (cache && !skipCache) {
-        const cached = cache.get(context.provider, context.model, context.body);
+        const cached = cache.get(context.provider, context.model, context.body, context.path);
         if (cached) {
           log.info('Serving cached response', { requestId: context.id, model: context.model });
 
@@ -124,13 +124,16 @@ export function createTokenOptimizerPlugin(db: Database.Database, config: TokenO
     },
 
     async onResponseComplete(context: ResponseCompleteContext): Promise<void> {
-      // Cache successful non-streaming, non-agentic responses
+      // Cache successful non-streaming, non-agentic POST responses only.
+      // GET/HEAD are skipped in onRequest and must not populate the cache.
       if (
         cache &&
+        context.request.method === 'POST' &&
         isLLMProvider(context.request.provider) &&
         !context.isStreaming &&
         context.statusCode === 200 &&
         context.body &&
+        context.request.body.length > 0 &&
         !isAgenticRequest(context.request.parsedBody)
       ) {
         cache.set(
@@ -140,6 +143,7 @@ export function createTokenOptimizerPlugin(db: Database.Database, config: TokenO
           context.body,
           context.usage.inputTokens,
           context.usage.outputTokens,
+          context.request.path,
         );
       }
     },

@@ -26,8 +26,8 @@ describe('Data Retention', () => {
       db = createTestDatabase();
       const repo = new RequestsRepository(db);
 
-      repo.insert({ id: 'r1', provider: 'anthropic', model: 'm', method: 'POST', path: '/', status_code: 200, input_tokens: 0, output_tokens: 0, cache_creation_tokens: 0, cache_read_tokens: 0, cost_usd: 0, latency_ms: 0, cached: 0, dlp_action: null, dlp_findings: 0, session_id: null, api_key_hash: null });
-      repo.insert({ id: 'r2', provider: 'anthropic', model: 'm', method: 'POST', path: '/', status_code: 200, input_tokens: 0, output_tokens: 0, cache_creation_tokens: 0, cache_read_tokens: 0, cost_usd: 0, latency_ms: 0, cached: 0, dlp_action: null, dlp_findings: 0, session_id: null, api_key_hash: null });
+      repo.insert({ id: 'r1', provider: 'anthropic', model: 'm', method: 'POST', path: '/', status_code: 200, input_tokens: 0, output_tokens: 0, cache_creation_tokens: 0, cache_read_tokens: 0, cost_usd: 0, latency_ms: 0, cached: 0, dlp_action: null, dlp_findings: 0, session_id: null, api_key_hash: null, agent_id: null });
+      repo.insert({ id: 'r2', provider: 'anthropic', model: 'm', method: 'POST', path: '/', status_code: 200, input_tokens: 0, output_tokens: 0, cache_creation_tokens: 0, cache_read_tokens: 0, cost_usd: 0, latency_ms: 0, cached: 0, dlp_action: null, dlp_findings: 0, session_id: null, api_key_hash: null, agent_id: null });
 
       // Make r1 48 hours old
       insertAt(db, 'requests', 'r1', 48);
@@ -42,8 +42,8 @@ describe('Data Retention', () => {
       db = createTestDatabase();
       const repo = new RequestsRepository(db);
 
-      repo.insert({ id: 'r1', provider: 'anthropic', model: 'm', method: 'POST', path: '/', status_code: 200, input_tokens: 0, output_tokens: 0, cache_creation_tokens: 0, cache_read_tokens: 0, cost_usd: 0, latency_ms: 0, cached: 0, dlp_action: null, dlp_findings: 0, session_id: null, api_key_hash: null });
-      repo.insert({ id: 'r2', provider: 'anthropic', model: 'm', method: 'POST', path: '/', status_code: 200, input_tokens: 0, output_tokens: 0, cache_creation_tokens: 0, cache_read_tokens: 0, cost_usd: 0, latency_ms: 0, cached: 0, dlp_action: null, dlp_findings: 0, session_id: null, api_key_hash: null });
+      repo.insert({ id: 'r1', provider: 'anthropic', model: 'm', method: 'POST', path: '/', status_code: 200, input_tokens: 0, output_tokens: 0, cache_creation_tokens: 0, cache_read_tokens: 0, cost_usd: 0, latency_ms: 0, cached: 0, dlp_action: null, dlp_findings: 0, session_id: null, api_key_hash: null, agent_id: null });
+      repo.insert({ id: 'r2', provider: 'anthropic', model: 'm', method: 'POST', path: '/', status_code: 200, input_tokens: 0, output_tokens: 0, cache_creation_tokens: 0, cache_read_tokens: 0, cost_usd: 0, latency_ms: 0, cached: 0, dlp_action: null, dlp_findings: 0, session_id: null, api_key_hash: null, agent_id: null });
 
       insertAt(db, 'requests', 'r1', 48);
 

@@ -2,6 +2,7 @@ import type { Plugin, ResponseCompleteContext } from '../types.js';
 import { extractMetrics } from '../../metrics/collector.js';
 import { RequestsRepository } from '../../storage/repositories/requests.js';
 import { SessionsRepository } from '../../storage/repositories/sessions.js';
+import { AgentsRepository } from '../../storage/repositories/agents.js';
 import { isPollingRequest } from '../../proxy/providers/classify.js';
 import { createLogger } from '../../utils/logger.js';
 import type Database from 'better-sqlite3';
@@ -48,6 +49,7 @@ function extractProjectPath(parsedBody: Record<string, unknown>): string | null 
 export function createMetricsCollectorPlugin(db: Database.Database): Plugin {
   const requestsRepo = new RequestsRepository(db);
   const sessionsRepo = new SessionsRepository(db);
+  const agentsRepo = new AgentsRepository(db);
 
   return {
     name: 'metrics-collector',
@@ -61,6 +63,8 @@ export function createMetricsCollectorPlugin(db: Database.Database): Plugin {
 
       const metrics = extractMetrics(context);
       const sessionId = context.request.sessionId ?? null;
+
+      const agentId = context.request.agentId ?? null;
 
       requestsRepo.insert({
         id: context.request.id,
@@ -80,7 +84,18 @@ export function createMetricsCollectorPlugin(db: Database.Database): Plugin {
         dlp_findings: context.request.dlpFindings ?? 0,
         session_id: sessionId,
         api_key_hash: context.request.apiKeyHash ?? null,
+        agent_id: agentId,
       });
+
+      // Update per-agent aggregate stats
+      if (agentId) {
+        try {
+          agentsRepo.updateStats(agentId, {
+            tokens: metrics.inputTokens + metrics.outputTokens,
+            cost: metrics.costUsd,
+          });
+        } catch { /* agent stats update is best-effort */ }
+      }
 
       // Persist session metadata with client info
       if (sessionId) {

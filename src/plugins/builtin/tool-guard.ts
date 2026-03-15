@@ -398,6 +398,35 @@ export function createToolGuardPlugin(db: Database.Database, config: ToolGuardCo
     async onResponse(context: ResponseInterceptContext): Promise<PluginResponseResult | void> {
       const currentAction = getAction();
       log.debug('onResponse', { action: currentAction, isStreaming: context.isStreaming });
+
+      // Agent tool scope isolation — structural block BEFORE rule matching
+      const agentScope = context.request._agentToolScope;
+      if (agentScope) {
+        const toolCalls = extractToolCalls(context.body, context.isStreaming);
+        const denied = toolCalls.filter(tc => !agentScope.includes(tc.toolName));
+        if (denied.length > 0) {
+          for (const tc of denied) {
+            log.warn('Agent tool scope denied', { agentId: context.request.agentId, tool: tc.toolName });
+            eventBus?.emit('agent:tool-denied', {
+              agentId: context.request.agentId,
+              toolName: tc.toolName,
+              requestId: context.request.id,
+            });
+          }
+          // Build blocked tool call entries for replacement
+          const blockedMatches: MatchedToolCall[] = denied.map(tc => ({
+            tc,
+            ruleMatch: {
+              rule: { id: 'agent-scope', name: 'Agent Tool Scope', description: 'Tool not in agent scope', severity: 'critical', category: 'agent-isolation' } as import('../../tool-guard/rules.js').ToolGuardRule,
+              matchedText: tc.toolName,
+            },
+          }));
+          const modified = replaceBlockedToolCalls(context.parsedBody, blockedMatches);
+          context.request._toolGuardRecorded = true;
+          return { modifiedBody: modified };
+        }
+      }
+
       if (currentAction !== 'block') return;
       if (context.isStreaming) return; // streaming handled in onResponseComplete (post-send audit only)
 

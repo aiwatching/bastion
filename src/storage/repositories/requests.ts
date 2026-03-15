@@ -18,6 +18,7 @@ export interface RequestRecord {
   dlp_findings: number;
   session_id: string | null;
   api_key_hash: string | null;
+  agent_id: string | null;
   created_at: string;
 }
 
@@ -36,6 +37,7 @@ export interface StatsFilter {
   sinceHours?: number;
   sessionId?: string;
   apiKeyHash?: string;
+  agentId?: string;
 }
 
 export interface SessionInfo {
@@ -58,10 +60,10 @@ export class RequestsRepository {
     this.insertStmt = db.prepare(`
       INSERT INTO requests (id, provider, model, method, path, status_code,
         input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
-        cost_usd, latency_ms, cached, dlp_action, dlp_findings, session_id, api_key_hash)
+        cost_usd, latency_ms, cached, dlp_action, dlp_findings, session_id, api_key_hash, agent_id)
       VALUES (@id, @provider, @model, @method, @path, @status_code,
         @input_tokens, @output_tokens, @cache_creation_tokens, @cache_read_tokens,
-        @cost_usd, @latency_ms, @cached, @dlp_action, @dlp_findings, @session_id, @api_key_hash)
+        @cost_usd, @latency_ms, @cached, @dlp_action, @dlp_findings, @session_id, @api_key_hash, @agent_id)
     `);
   }
 
@@ -84,6 +86,10 @@ export class RequestsRepository {
     if (filter?.apiKeyHash) {
       conditions.push('api_key_hash = ?');
       params.push(filter.apiKeyHash);
+    }
+    if (filter?.agentId) {
+      conditions.push('agent_id = ?');
+      params.push(filter.agentId);
     }
 
     const whereClause = conditions.length > 0

@@ -32,6 +32,11 @@ export interface RequestContext {
   /** Internal: set by tool-guard PI escalation listener */
   _piEscalated?: boolean;
   _piEscalationOverride?: string;
+  /** Agent identity — set by agent-identity plugin */
+  agentId?: string;
+  agentTrustLevel?: 'untrusted' | 'standard' | 'trusted' | 'privileged';
+  /** Internal: set by agent-identity, read by tool-guard for structural tool isolation */
+  _agentToolScope?: string[] | null;
 }
 
 export interface ResponseCompleteContext {

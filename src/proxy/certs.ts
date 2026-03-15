@@ -17,6 +17,45 @@ export function getCACertPath(): string {
   return CA_CERT_PATH;
 }
 
+/**
+ * Get path to a combined CA bundle (system roots + bastion CA).
+ * Used for SSL_CERT_FILE so non-Node.js TLS stacks (Rust, Go, Python)
+ * can trust both public CAs and bastion's MITM CA.
+ */
+const CA_BUNDLE_PATH = join(paths.bastionDir, 'ca-bundle.pem');
+
+export function getCABundlePath(): string {
+  if (existsSync(CA_BUNDLE_PATH)) return CA_BUNDLE_PATH;
+  buildCABundle();
+  return CA_BUNDLE_PATH;
+}
+
+export function buildCABundle(): void {
+  // macOS: export system root certificates
+  let systemCerts = '';
+  try {
+    const { execSync } = require('node:child_process');
+    if (platform() === 'darwin') {
+      systemCerts = execSync(
+        'security find-certificate -a -p /System/Library/Keychains/SystemRootCertificates.keychain',
+        { encoding: 'utf-8', timeout: 10000 },
+      );
+    } else if (platform() === 'linux') {
+      // Common Linux CA bundle paths
+      const linuxPaths = ['/etc/ssl/certs/ca-certificates.crt', '/etc/pki/tls/certs/ca-bundle.crt', '/etc/ssl/ca-bundle.pem'];
+      for (const p of linuxPaths) {
+        if (existsSync(p)) { systemCerts = readFileSync(p, 'utf-8'); break; }
+      }
+    }
+  } catch {
+    log.warn('Could not export system root certificates for CA bundle');
+  }
+
+  const bastionCA = existsSync(CA_CERT_PATH) ? readFileSync(CA_CERT_PATH, 'utf-8') : '';
+  writeFileSync(CA_BUNDLE_PATH, systemCerts + '\n' + bastionCA);
+  log.info('CA bundle created', { path: CA_BUNDLE_PATH });
+}
+
 export function ensureCA(): { key: string; cert: string } {
   mkdirSync(paths.bastionDir, { recursive: true });
 
@@ -68,6 +107,9 @@ export function ensureCA(): { key: string; cert: string } {
   writeFileSync(CA_CERT_PATH, certPem);
 
   log.info('CA certificate created', { path: CA_CERT_PATH });
+
+  // Rebuild CA bundle with new cert
+  buildCABundle();
 
   return { key: keyPem, cert: certPem };
 }

@@ -15,12 +15,12 @@ export class ResponseCache {
     this.ttlSeconds = ttlSeconds;
   }
 
-  getCacheKey(provider: string, model: string, body: string): string {
-    return sha256(`${provider}:${model}:${body}`);
+  getCacheKey(provider: string, model: string, body: string, path?: string): string {
+    return sha256(`${provider}:${model}:${path ?? ''}:${body}`);
   }
 
-  get(provider: string, model: string, body: string): string | null {
-    const key = this.getCacheKey(provider, model, body);
+  get(provider: string, model: string, body: string, path?: string): string | null {
+    const key = this.getCacheKey(provider, model, body, path);
     const record = this.repo.get(key, this.ttlSeconds);
     if (!record) return null;
 
@@ -45,8 +45,9 @@ export class ResponseCache {
     response: string,
     inputTokens: number,
     outputTokens: number,
+    path?: string,
   ): void {
-    const key = this.getCacheKey(provider, model, body);
+    const key = this.getCacheKey(provider, model, body, path);
     const { encrypted, iv, authTag } = encrypt(response);
 
     this.repo.set({

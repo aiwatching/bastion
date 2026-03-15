@@ -3,7 +3,7 @@
  * Used by plugins to decide how to handle different provider types.
  */
 
-const LLM_PROVIDERS = new Set(['anthropic', 'openai', 'gemini', 'claude-web']);
+const LLM_PROVIDERS = new Set(['anthropic', 'openai', 'gemini', 'claude-web', 'chatgpt']);
 
 const MESSAGING_PROVIDERS = new Set(['telegram', 'discord', 'slack', 'whatsapp', 'line']);
 

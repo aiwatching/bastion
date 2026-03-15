@@ -137,6 +137,7 @@ const TITLEBAR = `
     <span class="tab" data-page="dlp">DLP</span>
     <span class="tab" data-page="guard">GUARD <span id="guard-badge" class="badge"></span></span>
     <span class="tab" data-page="log">LOG</span>
+    <span class="tab" data-page="agents">AGENTS</span>
     <span class="tab" data-page="settings">SETTINGS</span>
     ${process.env.BASTION_TEST_MODE === '1' ? '<span class="tab" data-page="playground">PLAYGROUND</span>' : ''}
   </div>
@@ -505,6 +506,36 @@ const PAGE_SETTINGS = `
 
 </div>`;
 
+// ── PAGE: AGENTS ─────────────────────────────────────────────────
+const PAGE_AGENTS = `
+<div class="page" id="page-agents">
+<div class="gauges" id="ag-gauges"></div>
+<div class="section" style="margin-bottom:8px">
+  <div class="section-head"><span class="section-title">Register Agent</span></div>
+  <div class="section-body" style="padding:10px 12px">
+    <div style="display:flex;gap:6px;align-items:end;flex-wrap:wrap">
+      <div><label style="font-size:10px;color:var(--dim)">Name*</label><br><input id="ag-name" style="background:var(--bg);border:1px solid var(--border);color:var(--bright);padding:3px 8px;font-family:inherit;font-size:12px;width:140px"></div>
+      <div><label style="font-size:10px;color:var(--dim)">Owner</label><br><input id="ag-owner" style="background:var(--bg);border:1px solid var(--border);color:var(--bright);padding:3px 8px;font-family:inherit;font-size:12px;width:100px"></div>
+      <div><label style="font-size:10px;color:var(--dim)">Trust</label><br><select id="ag-trust" class="cfg-select"><option value="standard">standard</option><option value="untrusted">untrusted</option><option value="trusted">trusted</option><option value="privileged">privileged</option></select></div>
+      <div><label style="font-size:10px;color:var(--dim)">Tool Scope (comma-sep)</label><br><input id="ag-scope" style="background:var(--bg);border:1px solid var(--border);color:var(--bright);padding:3px 8px;font-family:inherit;font-size:12px;width:200px" placeholder="leave empty = all"></div>
+      <button id="ag-register-btn" class="cfg-btn" style="color:var(--green);border-color:var(--green)">REGISTER</button>
+    </div>
+    <div id="ag-register-result" style="font-size:11px;color:var(--green);margin-top:6px;display:none"></div>
+  </div>
+</div>
+<div class="section">
+  <div class="section-head"><span class="section-title">Agents</span><span class="section-count" id="ag-count"></span></div>
+  <div class="section-body">
+    <table><thead><tr><th>Name</th><th>Status</th><th>Trust</th><th>Requests</th><th>Cost</th><th>Threat</th><th>Last Seen</th><th>Actions</th></tr></thead><tbody id="ag-list"></tbody></table>
+    <p class="empty" id="ag-empty">No agents registered.</p>
+  </div>
+</div>
+<div id="ag-detail" class="section" style="display:none;margin-top:8px">
+  <div class="section-head"><span class="section-title" id="ag-detail-title">Agent Detail</span><button id="ag-detail-close" class="cfg-btn" style="font-size:10px">CLOSE</button></div>
+  <div class="section-body" id="ag-detail-body" style="padding:10px 12px;font-size:12px"></div>
+</div>
+</div>`;
+
 // ── PAGE: PLAYGROUND (test mode only) ────────────────────────────
 const PAGE_PLAYGROUND = process.env.BASTION_TEST_MODE === '1' ? `
 <div class="page" id="page-playground">
@@ -688,6 +719,7 @@ function refreshActivePage(){
   else if(activePage==='guard')refreshGuard();
   else if(activePage==='log')refreshLog();
   else if(activePage==='settings')refreshSettings();
+  else if(activePage==='agents')refreshAgents();
   else if(activePage==='playground')refreshPlayground();
 }
 document.querySelectorAll('.tab').forEach(function(t){
@@ -699,8 +731,9 @@ document.addEventListener('keydown',function(e){
   else if(e.key==='2')showPage('dlp');
   else if(e.key==='3')showPage('guard');
   else if(e.key==='4')showPage('log');
-  else if(e.key==='5')showPage('settings');
-  else if(e.key==='6')showPage('playground');
+  else if(e.key==='5')showPage('agents');
+  else if(e.key==='6')showPage('settings');
+  else if(e.key==='7')showPage('playground');
 });
 
 // ══ 3. RENDER HELPERS ═════════════════════════════════════════════
@@ -745,12 +778,13 @@ async function refreshOverview(){
   try{
     var sp=sinceParam();
     var qp=sp?'?'+sp:'';
-    var [statsR,alertsR,dlpRecentR,piRecentR,threatOvR]=await Promise.all([
+    var [statsR,alertsR,dlpRecentR,piRecentR,threatOvR,agentsR]=await Promise.all([
       apiFetch('/api/stats'+qp),
       apiFetch('/api/tool-guard/alerts'),
       apiFetch('/api/dlp/recent?limit=5'+(sp?'&'+sp:'')),
       apiFetch('/api/plugin-events/recent?limit=5&plugin=pi-classifier'+(sp?'&'+sp:'')),
-      apiFetch('/api/threat/sessions').catch(function(){return{json:function(){return[]}}})
+      apiFetch('/api/threat/sessions').catch(function(){return{json:function(){return[]}}}),
+      apiFetch('/api/agents').catch(function(){return{json:function(){return[]}}})
     ]);
     var statsData=await statsR.json();
     var alertsData=await alertsR.json();
@@ -759,6 +793,10 @@ async function refreshOverview(){
     var threatOvData=await threatOvR.json();
     var threatSessions=Array.isArray(threatOvData)?threatOvData:threatOvData.sessions||[];
     var threatCount=threatSessions.length;
+    var agentsData=await agentsR.json();
+    var agentsList=Array.isArray(agentsData)?agentsData:[];
+    var agentsActive=agentsList.filter(function(a){return a.status==='active'}).length;
+    var agentsSuspended=agentsList.filter(function(a){return a.status==='suspended'}).length;
     var s=statsData.stats;
     var dlp=statsData.dlp||{};
     var ba=dlp.by_action||{};
@@ -776,6 +814,7 @@ async function refreshOverview(){
         gauge('DLP Hits',fmt(dlpTotal),(ba.redact||0)+' redact, '+(ba.block||0)+' block',dlpTotal>0?'red':'')+
         gauge('PI Detections',fmt(piTotal),'ML injection','red')+
         gauge('Threats',fmt(threatCount),'elevated+ sessions',threatCount>0?'red':'green')+
+        gauge('Agents',fmt(agentsList.length),agentsActive+' active'+(agentsSuspended?' / '+agentsSuspended+' suspended':''),agentsList.length>0?'cyan':'')+
         gauge('Avg Latency',Math.round(latAvg)+'ms','','cyan');
     }
 
@@ -2025,6 +2064,134 @@ async function checkAuth(){
 })();
 
 // ══ PLAYGROUND (test mode) ═══════════════════════════════════════
+// ══ AGENTS TAB ════════════════════════════════════════════════════
+function refreshAgents(){
+  apiFetch('/api/agents').then(function(r){return r.json()}).then(function(agents){
+    var el=document.getElementById('ag-list');
+    var empty=document.getElementById('ag-empty');
+    var countEl=document.getElementById('ag-count');
+    var gaugesEl=document.getElementById('ag-gauges');
+    if(!agents||!agents.length){
+      el.innerHTML='';empty.style.display='';
+      countEl.textContent='0';
+      gaugesEl.innerHTML=gauge('TOTAL','0','','',null)+gauge('ACTIVE','0','','green',null)+gauge('SUSPENDED','0','','yellow',null);
+      return;
+    }
+    empty.style.display='none';
+    countEl.textContent=agents.length;
+    var active=agents.filter(function(a){return a.status==='active'}).length;
+    var suspended=agents.filter(function(a){return a.status==='suspended'}).length;
+    var revoked=agents.filter(function(a){return a.status==='revoked'}).length;
+    var totalCost=agents.reduce(function(s,a){return s+a.total_cost_usd},0);
+    gaugesEl.innerHTML=gauge('TOTAL',agents.length,'','',null)+
+      gauge('ACTIVE',active,'','green',null)+
+      gauge('SUSPENDED',suspended,'','yellow',null)+
+      gauge('COST','$'+totalCost.toFixed(4),'','cyan',null);
+    var rows='';
+    agents.forEach(function(a){
+      var statusCls=a.status==='active'?'green':a.status==='suspended'?'yellow':'red';
+      var trustCls=a.trust_level==='privileged'?'purple':a.trust_level==='trusted'?'cyan':a.trust_level==='untrusted'?'red':'';
+      var lastSeen=a.last_seen_at?ago(a.last_seen_at):'never';
+      rows+='<tr data-agent-id="'+esc(a.id)+'">'+
+        '<td style="color:var(--bright);cursor:pointer" class="ag-name-cell">'+esc(a.name)+'</td>'+
+        '<td><span class="row-tag" style="color:var(--'+statusCls+')">'+esc(a.status)+'</span></td>'+
+        '<td style="color:var(--'+(trustCls||'dim')+')">'+esc(a.trust_level)+'</td>'+
+        '<td>'+a.request_count+'</td>'+
+        '<td class="cost-c">$'+a.total_cost_usd.toFixed(4)+'</td>'+
+        '<td>-</td>'+
+        '<td style="color:var(--dim)">'+lastSeen+'</td>'+
+        '<td>'+
+        (a.status==='active'?'<button class="cfg-btn ag-act" data-action="suspend" data-id="'+esc(a.id)+'" style="font-size:9px;color:var(--yellow);border-color:var(--yellow)">SUSPEND</button> ':'')+
+        (a.status==='suspended'?'<button class="cfg-btn ag-act" data-action="activate" data-id="'+esc(a.id)+'" style="font-size:9px;color:var(--green);border-color:var(--green)">ACTIVATE</button> ':'')+
+        (a.status!=='revoked'?'<button class="cfg-btn ag-act" data-action="revoke" data-id="'+esc(a.id)+'" style="font-size:9px;color:var(--red);border-color:var(--red)">REVOKE</button>':'')+
+        '</td></tr>';
+    });
+    el.innerHTML=rows;
+    // Action buttons
+    el.querySelectorAll('.ag-act').forEach(function(btn){
+      btn.addEventListener('click',function(e){
+        e.stopPropagation();
+        var action=btn.dataset.action;
+        var id=btn.dataset.id;
+        apiFetch('/api/agents/'+encodeURIComponent(id)+'/'+action,{method:'POST'}).then(function(){return refreshAgents()});
+      });
+    });
+    // Click name to show detail
+    el.querySelectorAll('.ag-name-cell').forEach(function(cell){
+      cell.addEventListener('click',function(){
+        var id=cell.parentElement.dataset.agentId;
+        showAgentDetail(id);
+      });
+    });
+  });
+}
+function showAgentDetail(id){
+  var detailEl=document.getElementById('ag-detail');
+  var bodyEl=document.getElementById('ag-detail-body');
+  var titleEl=document.getElementById('ag-detail-title');
+  detailEl.style.display='';
+  bodyEl.innerHTML='<div class="empty">Loading...</div>';
+  apiFetch('/api/agents/'+encodeURIComponent(id)).then(function(r){return r.json()}).then(function(agent){
+    if(!agent||agent.error){bodyEl.innerHTML='<div class="empty">Not found</div>';return}
+    titleEl.textContent='Agent: '+agent.name;
+    var scope=agent.tool_scope?JSON.parse(agent.tool_scope).join(', '):'(all tools)';
+    var threat=agent.threatScore?agent.threatScore.level+' ('+Math.round(agent.threatScore.score*100)/100+')':'normal';
+    var threatCls=agent.threatScore&&agent.threatScore.level!=='normal'?'color:var(--red)':'color:var(--dim)';
+    bodyEl.innerHTML='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'+
+      '<div><span style="color:var(--dim)">ID:</span> <span style="color:var(--bright)">'+esc(agent.id)+'</span></div>'+
+      '<div><span style="color:var(--dim)">Status:</span> <span style="color:var(--bright)">'+esc(agent.status)+'</span></div>'+
+      '<div><span style="color:var(--dim)">Trust:</span> <span style="color:var(--bright)">'+esc(agent.trust_level)+'</span></div>'+
+      '<div><span style="color:var(--dim)">Owner:</span> <span style="color:var(--bright)">'+(agent.owner||'-')+'</span></div>'+
+      '<div><span style="color:var(--dim)">Tool Scope:</span> <span style="color:var(--bright)">'+esc(scope)+'</span></div>'+
+      '<div><span style="color:var(--dim)">Threat:</span> <span style="'+threatCls+'">'+esc(threat)+'</span></div>'+
+      '<div><span style="color:var(--dim)">Requests:</span> <span style="color:var(--bright)">'+agent.request_count+'</span></div>'+
+      '<div><span style="color:var(--dim)">Total Cost:</span> <span class="cost-c">$'+agent.total_cost_usd.toFixed(4)+'</span></div>'+
+      '<div><span style="color:var(--dim)">Tokens:</span> <span style="color:var(--bright)">'+agent.total_tokens.toLocaleString()+'</span></div>'+
+      '<div><span style="color:var(--dim)">Created:</span> <span style="color:var(--dim)">'+ago(agent.created_at)+'</span></div>'+
+      '</div>'+
+      '<div style="margin-top:10px"><button class="cfg-btn" id="ag-rotate-btn" style="color:var(--cyan);border-color:var(--cyan)">ROTATE SECRET</button></div>'+
+      '<div id="ag-rotate-result" style="font-size:11px;color:var(--green);margin-top:6px;display:none"></div>';
+    document.getElementById('ag-rotate-btn').addEventListener('click',function(){
+      apiFetch('/api/agents/'+encodeURIComponent(id)+'/rotate-secret',{method:'POST'}).then(function(r){return r.json()}).then(function(r){
+        if(r&&r.secret){
+          var el=document.getElementById('ag-rotate-result');
+          el.style.display='';
+          el.textContent='New secret: '+r.secret+' (copy now — shown once)';
+        }
+      });
+    });
+  });
+}
+(function(){
+  var closeBtn=document.getElementById('ag-detail-close');
+  if(closeBtn)closeBtn.addEventListener('click',function(){document.getElementById('ag-detail').style.display='none'});
+  var regBtn=document.getElementById('ag-register-btn');
+  if(regBtn)regBtn.addEventListener('click',function(){
+    var name=document.getElementById('ag-name').value.trim();
+    if(!name)return;
+    var owner=document.getElementById('ag-owner').value.trim()||undefined;
+    var trust=document.getElementById('ag-trust').value;
+    var scopeStr=document.getElementById('ag-scope').value.trim();
+    var toolScope=scopeStr?scopeStr.split(',').map(function(s){return s.trim()}).filter(Boolean):undefined;
+    apiFetch('/api/agents',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:name,owner:owner,trustLevel:trust,toolScope:toolScope})}).then(function(r){return r.json()}).then(function(r){
+      var el=document.getElementById('ag-register-result');
+      if(r&&r.id){
+        el.style.display='';
+        el.textContent='Registered: '+r.name+' | Secret: '+r.secret+' (copy now — shown once)';
+        el.style.color='var(--green)';
+        document.getElementById('ag-name').value='';
+        document.getElementById('ag-owner').value='';
+        document.getElementById('ag-scope').value='';
+        refreshAgents();
+      } else {
+        el.style.display='';
+        el.textContent='Error: '+(r&&r.error||'Unknown');
+        el.style.color='var(--red)';
+      }
+    });
+  });
+})();
+
 function refreshPlayground(){/* static page, no periodic refresh needed */}
 
 var PIPE_SAMPLES={
@@ -2324,7 +2491,7 @@ if(document.getElementById('rl-reset-btn')){rlRefresh()}
 </script>`;
 
 const HTML = HEAD + '<body><div class="container">' +
-  TITLEBAR + PAGE_OVERVIEW + PAGE_DLP + PAGE_GUARD + PAGE_LOG + PAGE_SETTINGS + PAGE_PLAYGROUND + FOOTER +
+  TITLEBAR + PAGE_OVERVIEW + PAGE_DLP + PAGE_GUARD + PAGE_LOG + PAGE_AGENTS + PAGE_SETTINGS + PAGE_PLAYGROUND + FOOTER +
   '</div>' + SCRIPT + '</body></html>';
 
 export function serveDashboard(res: ServerResponse): void {

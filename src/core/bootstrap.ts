@@ -15,11 +15,13 @@ import { createAuditLoggerPlugin } from '../plugins/builtin/audit-logger.js';
 import { createToolGuardPlugin } from '../plugins/builtin/tool-guard.js';
 import { createThreatScorerPlugin } from '../plugins/builtin/threat-scorer.js';
 import { createRateLimiterPlugin } from '../plugins/builtin/rate-limiter.js';
+import { createAgentIdentityPlugin } from '../plugins/builtin/agent-identity.js';
 import { registerAnthropicProvider } from '../proxy/providers/anthropic.js';
 import { registerOpenAIProvider } from '../proxy/providers/openai.js';
 import { registerGeminiProvider } from '../proxy/providers/gemini.js';
 import { registerClaudeWebProvider } from '../proxy/providers/claude-web.js';
 import { registerMessagingProviders } from '../proxy/providers/messaging.js';
+import { registerChatGPTProvider } from '../proxy/providers/chatgpt.js';
 import { createProxyServer, startServer } from '../proxy/server.js';
 import { updateSemanticConfig } from '../dlp/semantics.js';
 import { RequestsRepository } from '../storage/repositories/requests.js';
@@ -28,6 +30,7 @@ import { OptimizerEventsRepository } from '../storage/repositories/optimizer-eve
 import { SessionsRepository } from '../storage/repositories/sessions.js';
 import { AuditLogRepository } from '../storage/repositories/audit-log.js';
 import { ToolCallsRepository } from '../storage/repositories/tool-calls.js';
+import { AgentsRepository } from '../storage/repositories/agents.js';
 import { PluginEventsRepository } from '../storage/repositories/plugin-events.js';
 import { loadExternalPlugins } from '../plugins/loader.js';
 import { getVersion } from '../version.js';
@@ -108,6 +111,7 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
   registerOpenAIProvider();
   registerGeminiProvider();
   registerClaudeWebProvider();
+  registerChatGPTProvider();
   registerMessagingProviders();
 
   // Initialize event bus (used by API consumers and external plugins)
@@ -115,6 +119,10 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
 
   // Initialize plugin manager
   const pluginManager = new PluginManager(config.timeouts.plugin, config.server.failMode ?? 'open', eventBus);
+
+  // Agent Identity — priority 0, must run before all other plugins
+  pluginManager.register(createAgentIdentityPlugin(db, () => configManager.get(), eventBus));
+  if (!config.plugins.agentIdentity?.enabled) pluginManager.disable('agent-identity');
 
   pluginManager.register(createMetricsCollectorPlugin(db));
   if (!config.plugins.metrics.enabled) pluginManager.disable('metrics-collector');
@@ -239,6 +247,7 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
     const auditLogRepo = new AuditLogRepository(db);
     const toolCallsRepo = new ToolCallsRepository(db);
     const pluginEventsRepo = new PluginEventsRepository(db);
+    const agentsRepo = new AgentsRepository(db);
 
     function runPurge(): void {
       const r = configManager.get().retention;
@@ -251,6 +260,7 @@ export async function bootstrap(options?: BootstrapOptions): Promise<BootstrapRe
         total += auditLogRepo.purgeOlderThan(r.auditLogHours);
         total += toolCallsRepo.purgeOlderThan(r.toolCallsHours);
         total += pluginEventsRepo.purgeOlderThan(r.pluginEventsHours ?? 720);
+        total += agentsRepo.purgeOlderThan(r.sessionsHours);
         if (total > 0) log.info('Data retention purge completed', { purged: total });
       } catch (err) {
         log.warn('Data retention purge failed', { error: (err as Error).message });
